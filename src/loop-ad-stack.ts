@@ -726,6 +726,10 @@ export class LoopAdAggregationPerfStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdAggregationPerfStackProps) {
         super(scope, id, props);
 
+        // 이 스택은 전체 서비스가 아니라 집계 경로만 검증합니다.
+        // Dev가 소유한 VPC/ECR/results bucket은 재사용하고, 테스트 중 필요한
+        // ECS capacity, ClickHouse, MSK, NLB, SSM contract만 임시로 만듭니다.
+
         // Dev에서 VPC 형태만 import합니다. aggregation perf server는 분리하면서
         // 별도 VPC와 subnet layout은 만들지 않습니다.
         const availabilityZones = cdk.Fn.importListValue('loop-ad-dev-vpc-availability-zones', 2);
@@ -737,6 +741,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             privateSubnetIds: [],
             isolatedSubnetIds: [],
         });
+        // public subnet만 다시 감싸서 NAT Gateway 없이 테스트 리소스를 올립니다.
+        // private subnet import를 피해야 perf stack이 dev NAT 경로에 기대지 않습니다.
         const publicSubnets = [
             {
                 id: 'PublicSubnet1',
@@ -752,12 +758,14 @@ export class LoopAdAggregationPerfStack extends Stack {
             subnetId: subnet.subnetId,
             availabilityZone: subnet.availabilityZone,
         }));
+        // 결과 bucket은 Dev 스택이 소유하고 retain합니다.
+        // perf stack을 destroy해도 분석 결과를 잃지 않도록 이름만 import합니다.
         const aggregationPerfResultsBucket = s3.Bucket.fromBucketName(
             this,
             'AggregationPerfResultsBucket',
             cdk.Fn.importValue('loop-ad-aggregation-perf-results-bucket-name'),
         );
-        // 별도 aggregation perf cluster를 만들어 test capacity가 dev와 분리되어 보이게 합니다.
+        // 별도 ECS cluster를 만들어 테스트 capacity와 metrics가 dev 서비스와 섞이지 않게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
             clusterName: 'aggregation-perf-loop-ad-cluster',
@@ -767,7 +775,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             },
         });
 
-        // Aggregation perf도 같은 SG 모델을 씁니다: public NLB, shared server, datasource.
+        // Security group은 역할별로 세 개만 둡니다.
+        // public ingress는 NLB에만 열고, ECS server와 datasource는 SG 참조로만 서로 통신합니다.
         const nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
             vpc,
             allowAllOutbound: false,
@@ -799,6 +808,7 @@ export class LoopAdAggregationPerfStack extends Stack {
 
         // Aggregation perf는 20k RPS/1KB 요청을 기본 목표로 두되, max capacity로 여유를 남깁니다.
         // 이 stack은 필요한 테스트 시간에만 올렸다가 destroy하는 ephemeral benchmark 환경입니다.
+        // desired/min/max를 명시해 테스트 시작 시 기본 capacity를 바로 확보하고 상한도 코드로 고정합니다.
         const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'EcsEc2AutoScalingGroup', {
             vpc,
             vpcSubnets: { subnets: publicSubnets },
@@ -836,6 +846,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             repository.repositoryName,
         ));
 
+        // ClickHouse는 집계 결과 write path의 sink입니다.
+        // Dev datasource와 분리해서 perf run의 write pattern이 개발 환경 데이터를 흔들지 않게 합니다.
         const aggregationPerfClickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
             vpcSubnets: { subnets: publicSubnets },
@@ -857,6 +869,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             ],
             requireImdsv2: true,
         });
+        // User data는 Docker 기반 ClickHouse bootstrap만 수행합니다.
+        // schema 생성, tuning, 결과 적재 방식은 애플리케이션/perf runner 쪽에서 검증합니다.
         aggregationPerfClickHouseInstance.userData.addCommands(
             'set -eux',
             'dnf update -y',
@@ -866,6 +880,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:latest',
         );
 
+        // MSK는 collector가 쓴 aggregation event를 projector가 읽는 전용 stream입니다.
+        // dev MSK와 분리해 benchmark partition/throughput 설정을 독립적으로 바꿀 수 있게 합니다.
         const aggregationPerfMskConfiguration = new msk.CfnConfiguration(this, 'MskConfiguration', {
             name: 'aggregation-perf-loop-ad-msk-throughput',
             kafkaVersionsList: [AGGREGATION_PERF_MSK_KAFKA_VERSION],
@@ -915,6 +931,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             },
             enhancedMonitoring: 'PER_BROKER',
         });
+        // topic을 명시적으로 생성해 auto-create topic 설정에 기대지 않습니다.
+        // partition/replication factor가 CDK diff와 테스트 expectation에 드러나게 하기 위함입니다.
         const aggregationEventsTopic = new msk.CfnTopic(this, 'AggregationEventsTopic', {
             clusterArn: aggregationPerfMskCluster.attrArn,
             topicName: 'aggregation-events',
@@ -923,6 +941,8 @@ export class LoopAdAggregationPerfStack extends Stack {
         });
         aggregationEventsTopic.node.addDependency(aggregationPerfMskCluster);
 
+        // MSK bootstrap broker 문자열은 CfnCluster attribute로 직접 얻을 수 없어 배포 중 조회합니다.
+        // 애플리케이션 task는 이 값을 직접 알지 않고 SSM parameter name만 env로 받습니다.
         const aggregationPerfMskBootstrapBrokers = new cr.AwsCustomResource(this, 'MskBootstrapBrokers', {
             resourceType: 'Custom::LoopAdAggregationPerfMskBootstrapBrokers',
             onUpdate: {
@@ -978,6 +998,7 @@ export class LoopAdAggregationPerfStack extends Stack {
             stringValue: parameter.stringValue,
             description: parameter.description,
         }));
+        // perf task가 분석 결과를 남길 수 있게 하되, 쓰기 권한은 결과 prefix로만 제한합니다.
         const grantAggregationPerfResultsUpload = (role: iam.IGrantable) => {
             role.grantPrincipal.addToPrincipalPolicy(new iam.PolicyStatement({
                 actions: [
@@ -1010,7 +1031,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
         });
 
-        // Aggregation perf Event Collector는 bridge networking으로 task density를 높입니다.
+        // Event Collector는 이 스택에서 유일하게 외부 요청을 받는 서비스입니다.
+        // bridge networking과 dynamic host port로 한 EC2에 여러 collector task를 밀도 있게 배치합니다.
         const eventCollectorTask = new ecs.Ec2TaskDefinition(this, 'EventCollectorTaskDefinition', {
             networkMode: ecs.NetworkMode.BRIDGE,
         });
@@ -1030,6 +1052,7 @@ export class LoopAdAggregationPerfStack extends Stack {
                 logGroup: eventCollectorLogGroup,
             }),
             environment: {
+                // app은 endpoint 값을 하드코딩하지 않고 SSM parameter name을 받아 런타임에 조회합니다.
                 LOOPAD_ENV: 'aggregation-perf',
                 LOOPAD_SERVICE_ID: 'event-collector',
                 LOOPAD_RUNTIME: 'go',
@@ -1043,6 +1066,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             },
         });
         eventCollectorContainer.addPortMappings({ containerPort: 80, hostPort: 0, protocol: ecs.Protocol.TCP });
+        // service autoscaling은 task count만 조정합니다.
+        // EC2 capacity는 위 ASG capacity provider가 받쳐주며, placement는 AZ와 instance에 분산합니다.
         const eventCollectorService = new ecs.Ec2Service(this, 'EventCollectorService', {
             cluster,
             taskDefinition: eventCollectorTask,
@@ -1073,6 +1098,7 @@ export class LoopAdAggregationPerfStack extends Stack {
             port: 80,
             protocol: elbv2.Protocol.TCP,
         });
+        // ECS service를 target으로 붙이면 dynamic host port를 NLB target group에 자동 등록합니다.
         nlbListener.addTargets('EventCollectorTargets', {
             targets: [eventCollectorService],
             port: 80,
@@ -1083,7 +1109,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             },
         });
 
-        // Aggregation perf Projector는 집계 결과를 ClickHouse에 쓰는 마지막 test service입니다.
+        // Projector는 같은 aggregation topic을 읽고 ClickHouse에 결과를 쓰는 마지막 단계입니다.
+        // Collector와 분리해 read/write 병목을 각각 CloudWatch/ECS metrics로 볼 수 있게 합니다.
         const projectorTask = new ecs.Ec2TaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             networkMode: ecs.NetworkMode.BRIDGE,
         });
@@ -1105,6 +1132,7 @@ export class LoopAdAggregationPerfStack extends Stack {
                 logGroup: projectorLogGroup,
             }),
             environment: {
+                // projector도 endpoint 실값 대신 contract parameter name을 받아 datasource를 찾습니다.
                 LOOPAD_ENV: 'aggregation-perf',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
                 LOOPAD_RUNTIME: 'go',
@@ -1120,6 +1148,8 @@ export class LoopAdAggregationPerfStack extends Stack {
             },
         });
         projectorContainer.addPortMappings({ containerPort: 80, hostPort: 0, protocol: ecs.Protocol.TCP });
+        // projector는 public ingress가 필요 없으므로 NLB에는 붙이지 않습니다.
+        // 같은 capacity provider 안에서 collector와 함께 스케줄되어 실제 집계 경로만 검증합니다.
         const projectorService = new ecs.Ec2Service(this, 'AdContextProjectorService', {
             cluster,
             taskDefinition: projectorTask,

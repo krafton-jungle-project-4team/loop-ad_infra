@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
+import { config as loadDotenv } from 'dotenv';
 import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
+
+const dotenvResult = loadDotenv({ path: '.env', quiet: true });
+if (dotenvResult.error) {
+    throw new Error(`Failed to load .env: ${dotenvResult.error.message}`);
+}
 
 const app = new cdk.App();
 
@@ -9,17 +15,23 @@ const env = {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: LOOP_AD_REGION,
 };
+const publicHostedZone = {
+    hostedZoneId: readRequiredEnv('LOOP_AD_PUBLIC_HOSTED_ZONE_ID'),
+    domainName: readRequiredEnv('LOOP_AD_PUBLIC_DOMAIN_NAME'),
+};
 
 if (environmentName === 'dev') {
     new LoopAdDevStack(app, 'LoopAdDevStack', {
         env,
         enableNatGateway: readBooleanContext(app, 'enableNatGateway', false),
+        publicHostedZone,
     });
 }
 
 if (environmentName === 'perf') {
     new LoopAdPerfStack(app, 'LoopAdPerfStack', {
         env,
+        publicHostedZone,
     });
 }
 
@@ -43,4 +55,13 @@ function readBooleanContext(app: cdk.App, key: string, defaultValue: boolean): b
     }
 
     return value === true || value === 'true' || value === '1';
+}
+
+function readRequiredEnv(key: string): string {
+    const value = process.env[key]?.trim();
+    if (!value) {
+        throw new Error(`Missing required environment variable ${key}. Define it in .env.`);
+    }
+
+    return value;
 }

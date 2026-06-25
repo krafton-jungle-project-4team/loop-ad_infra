@@ -5,15 +5,31 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 
 export const LOOP_AD_REGION = 'ap-northeast-2';
 
+export interface PublicHostedZoneConfig {
+    readonly hostedZoneId: string;
+    readonly domainName: string;
+}
+
+export interface LoopAdDevStackProps extends StackProps {
+    readonly enableNatGateway: boolean;
+    readonly publicHostedZone: PublicHostedZoneConfig;
+}
+
+export interface LoopAdPerfStackProps extends StackProps {
+    readonly publicHostedZone: PublicHostedZoneConfig;
+}
+
 // 상시 개발 스택입니다. 공유 VPC와 항상 떠 있는 개발 서버를 소유합니다.
 export class LoopAdDevStack extends Stack {
-    public constructor(scope: Construct, id: string, props: StackProps & { readonly enableNatGateway: boolean }) {
+    public constructor(scope: Construct, id: string, props: LoopAdDevStackProps) {
         super(scope, id, props);
 
         // Dev가 유일한 VPC를 만듭니다. Perf는 나중에 이 VPC를 import하므로
@@ -203,6 +219,32 @@ export class LoopAdDevStack extends Stack {
             securityGroups: [nlbSecurityGroup],
             vpcSubnets: { subnetGroupName: 'public' },
         });
+
+        // .env에서 받은 public hosted zone을 import합니다.
+        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
+        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
+            hostedZoneId: props.publicHostedZone.hostedZoneId,
+            zoneName: props.publicHostedZone.domainName,
+        });
+
+        for (const dnsRecord of [
+            {
+                id: 'DevApiDnsRecord',
+                recordName: 'api.dev',
+                target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
+            },
+            {
+                id: 'DevIngestDnsRecord',
+                recordName: 'ingest.dev',
+                target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
+            },
+        ] as const) {
+            new route53.ARecord(this, dnsRecord.id, {
+                zone: publicHostedZone,
+                recordName: dnsRecord.recordName,
+                target: dnsRecord.target,
+            });
+        }
 
         // Event Collector는 NLB 트래픽을 받고 event를 MSK로 발행합니다.
         const eventCollectorTask = new ecs.FargateTaskDefinition(this, 'EventCollectorTaskDefinition', {
@@ -539,7 +581,7 @@ export class LoopAdDevStack extends Stack {
 // 임시 성능 테스트 스택입니다. dev VPC를 import하지만 자체
 // cluster, load balancer, service, perf endpoint contract를 따로 만듭니다.
 export class LoopAdPerfStack extends Stack {
-    public constructor(scope: Construct, id: string, props: StackProps) {
+    public constructor(scope: Construct, id: string, props: LoopAdPerfStackProps) {
         super(scope, id, props);
 
         // Dev에서 VPC 형태만 import합니다. perf server는 분리하면서
@@ -699,6 +741,17 @@ export class LoopAdPerfStack extends Stack {
             internetFacing: true,
             securityGroups: [nlbSecurityGroup],
             vpcSubnets: { subnets: publicSubnets },
+        });
+
+        // Perf도 같은 public hosted zone에 임시 ingest record만 만듭니다.
+        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
+            hostedZoneId: props.publicHostedZone.hostedZoneId,
+            zoneName: props.publicHostedZone.domainName,
+        });
+        new route53.ARecord(this, 'PerfIngestDnsRecord', {
+            zone: publicHostedZone,
+            recordName: 'ingest.perf',
+            target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
         });
 
         // Perf Event Collector는 dev collector와 유사하지만 ECS EC2에서 실행됩니다.

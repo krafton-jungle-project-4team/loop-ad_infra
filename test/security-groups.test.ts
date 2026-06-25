@@ -3,6 +3,10 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
 
 const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
+const testPublicHostedZone = {
+    hostedZoneId: 'ZTESTHOSTEDZONEID',
+    domainName: 'example.test',
+};
 
 describe('security group policy', () => {
     it('dev public ingress is only ALB/NLB port 80', () => {
@@ -95,6 +99,7 @@ function synthDev(): LoopAdDevStack {
             region: LOOP_AD_REGION,
         },
         enableNatGateway: false,
+        publicHostedZone: testPublicHostedZone,
     });
 }
 
@@ -105,5 +110,6 @@ function synthPerf(): LoopAdPerfStack {
             account: '123456789012',
             region: LOOP_AD_REGION,
         },
+        publicHostedZone: testPublicHostedZone,
     });
 }

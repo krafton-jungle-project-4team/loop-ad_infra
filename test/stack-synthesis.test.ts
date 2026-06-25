@@ -6,6 +6,10 @@ const testEnv = {
     account: '123456789012',
     region: LOOP_AD_REGION,
 };
+const testPublicHostedZone = {
+    hostedZoneId: 'ZTESTHOSTEDZONEID',
+    domainName: 'example.test',
+};
 
 describe('loop-ad CDK stacks', () => {
     it('dev stack keeps the permanent VPC, ECR repositories, and five ECS services', () => {
@@ -64,6 +68,25 @@ describe('loop-ad CDK stacks', () => {
         });
     });
 
+    it('dev stack creates Route53 aliases for public API and ingest subdomains', () => {
+        const stack = synthDev();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::Route53::RecordSet', 2);
+        template.hasResourceProperties('AWS::Route53::RecordSet', {
+            Type: 'A',
+            HostedZoneId: testPublicHostedZone.hostedZoneId,
+            AliasTarget: Match.objectLike({
+                DNSName: Match.anyValue(),
+                HostedZoneId: Match.anyValue(),
+            }),
+        });
+        expect(route53RecordNamesFrom(template)).toEqual(expect.arrayContaining([
+            `api.dev.${testPublicHostedZone.domainName}.`,
+            `ingest.dev.${testPublicHostedZone.domainName}.`,
+        ]));
+    });
+
     it('perf stack imports the dev VPC and creates only the temporary collection path', () => {
         const stack = synthPerf();
         const template = Template.fromStack(stack);
@@ -107,6 +130,16 @@ describe('loop-ad CDK stacks', () => {
         }, 0);
     });
 
+    it('perf stack creates only the temporary Route53 ingest alias', () => {
+        const stack = synthPerf();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::Route53::RecordSet', 1);
+        expect(route53RecordNamesFrom(template)).toEqual([
+            `ingest.perf.${testPublicHostedZone.domainName}.`,
+        ]);
+    });
+
     it('dev stack exports the shared VPC values consumed by perf', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
@@ -129,11 +162,23 @@ describe('loop-ad CDK stacks', () => {
     });
 });
 
+function route53RecordNamesFrom(template: Template): string[] {
+    const resources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
+    return Object.values(resources).flatMap((resource) => {
+        if (resource.Type !== 'AWS::Route53::RecordSet') {
+            return [];
+        }
+
+        return [String(resource.Properties?.Name ?? '')];
+    });
+}
+
 function synthDev(): LoopAdDevStack {
     const app = new cdk.App();
     return new LoopAdDevStack(app, 'LoopAdDevStack', {
         env: testEnv,
         enableNatGateway: false,
+        publicHostedZone: testPublicHostedZone,
     });
 }
 
@@ -141,5 +186,6 @@ function synthPerf(): LoopAdPerfStack {
     const app = new cdk.App();
     return new LoopAdPerfStack(app, 'LoopAdPerfStack', {
         env: testEnv,
+        publicHostedZone: testPublicHostedZone,
     });
 }

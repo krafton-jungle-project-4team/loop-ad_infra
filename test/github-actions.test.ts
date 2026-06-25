@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(__dirname, '..');
@@ -37,30 +37,19 @@ describe('GitHub Actions reusable workflows', () => {
         expect(workflow).not.toContain('default:');
     });
 
-    it('각 앱 repository에서 복사할 caller workflow 템플릿을 제공한다', () => {
-        const templateDir = join(ROOT, 'docs/github-actions/templates');
-        const templates = readdirSync(templateDir).sort();
+    it('각 앱 repository는 uses로 reusable workflow를 호출한다', () => {
+        const ecsExample = readFileSync(join(ROOT, 'docs/github-actions/app-ecs-deploy.example.yml'), 'utf8');
+        const frontendExample = readFileSync(join(ROOT, 'docs/github-actions/frontend-deploy.example.yml'), 'utf8');
 
-        expect(templates).toEqual(expect.arrayContaining([
-            'ad-context-projector.ecs-deploy.yml',
-            'ad-decision-api.ecs-deploy.yml',
-            'dashboard-api.ecs-deploy.yml',
-            'dashboard-web.frontend-deploy.yml',
-            'event-collector.ecs-deploy.yml',
-            'recommendation.ecs-deploy.yml',
-        ]));
+        expect(ecsExample).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/ecs-deploy.yml@v1');
+        expect(ecsExample).toContain('ecr_repository: loop-ad/event-collector');
+        expect(ecsExample).toContain('ecs_service: dev-event-collector');
+        expect(ecsExample).toContain('image_tag: ${{ github.sha }}');
 
-        const eventCollector = readFileSync(join(templateDir, 'event-collector.ecs-deploy.yml'), 'utf8');
-        expect(eventCollector).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/ecs-deploy.yml@v1');
-        expect(eventCollector).toContain('ecr_repository: loop-ad/event-collector');
-        expect(eventCollector).toContain('ecs_service: dev-event-collector');
-        expect(eventCollector).toContain('image_tag: ${{ github.sha }}');
-
-        const dashboardWeb = readFileSync(join(templateDir, 'dashboard-web.frontend-deploy.yml'), 'utf8');
-        expect(dashboardWeb).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/frontend-deploy.yml@v1');
-        expect(dashboardWeb).toContain('build_output_dir: dist');
-        expect(dashboardWeb).toContain('s3_bucket: loop-ad-dev-dashboard-web');
-        expect(dashboardWeb).toContain('cloudfront_distribution_id: E1234567890ABC');
+        expect(frontendExample).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/frontend-deploy.yml@v1');
+        expect(frontendExample).toContain('build_output_dir: dist');
+        expect(frontendExample).toContain('s3_bucket: loop-ad-dev-dashboard-web');
+        expect(frontendExample).toContain('cloudfront_distribution_id: E1234567890ABC');
     });
 
     it('infra workflow는 deploy 없이 build/test/synth만 수행한다', () => {

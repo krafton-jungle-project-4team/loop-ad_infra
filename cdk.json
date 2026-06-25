@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/loop-ad_aws_cdk_v2.ts",
+  "app": "npx ts-node --prefer-ts-exts bin/loop-ad_aws_cdk.ts",
   "watch": {
     "include": [
       "**"

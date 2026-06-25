@@ -1,0 +1,42 @@
+name: Reusable Infra Check
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: CDK environment to synthesize.
+        required: true
+        type: string
+      node_version:
+        required: false
+        type: string
+        default: '20'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build, test, and synth CDK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout infra repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Synthesize
+        run: npx cdk synth --context environment=${{ inputs.environment }}

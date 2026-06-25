@@ -1,0 +1,20 @@
+name: Infra Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dev:
+    uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/infra-check.yml@v1
+    with:
+      environment: dev
+
+  perf:
+    uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/infra-check.yml@v1
+    with:
+      environment: perf

@@ -1,33 +1,33 @@
 {
-  "name": "loop-ad_aws_cdk",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Draft-only AWS CDK v2 infrastructure for loop-ad.",
-  "license": "UNLICENSED",
-  "scripts": {
-    "build": "tsc --noEmit",
-    "watch": "tsc -w",
-    "test": "jest --runInBand",
-    "synth:dev": "cdk synth LoopAdDevStack -c environment=dev",
-    "synth:perf": "cdk synth LoopAdPerfStack -c environment=perf",
-    "deploy:dev": "cdk deploy LoopAdDevStack -c environment=dev",
-    "deploy:perf": "cdk deploy LoopAdPerfStack -c environment=perf",
-    "destroy:perf": "cdk destroy LoopAdPerfStack -c environment=perf",
-    "deploy": "node scripts/refuse-deploy.mjs",
-    "destroy": "node scripts/refuse-deploy.mjs",
-    "cdk": "cdk"
-  },
-  "devDependencies": {
-    "@types/jest": "^29.5.14",
-    "@types/node": "^20.0.0",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.2.5",
-    "aws-cdk": "2.1128.1",
-    "ts-node": "^10.9.2",
-    "typescript": "~5.9.3"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.260.0",
-    "constructs": "^10.5.0"
-  }
+    "name": "loop-ad_aws_cdk",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Draft-only AWS CDK v2 infrastructure for loop-ad.",
+    "license": "UNLICENSED",
+    "scripts": {
+        "build": "tsc --noEmit",
+        "watch": "tsc -w",
+        "test": "jest --runInBand",
+        "synth:dev": "cdk synth LoopAdDevStack -c environment=dev",
+        "synth:perf": "cdk synth LoopAdPerfStack -c environment=perf",
+        "deploy:dev": "cdk deploy LoopAdDevStack -c environment=dev",
+        "deploy:perf": "cdk deploy LoopAdPerfStack -c environment=perf",
+        "destroy:perf": "cdk destroy LoopAdPerfStack -c environment=perf",
+        "deploy": "node scripts/refuse-deploy.mjs",
+        "destroy": "node scripts/refuse-deploy.mjs",
+        "cdk": "cdk"
+    },
+    "devDependencies": {
+        "@types/jest": "^29.5.14",
+        "@types/node": "^20.0.0",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.5",
+        "aws-cdk": "2.1128.1",
+        "ts-node": "^10.9.2",
+        "typescript": "~5.9.3"
+    },
+    "dependencies": {
+        "aws-cdk-lib": "^2.260.0",
+        "constructs": "^10.5.0"
+    }
 }

@@ -1,156 +1,156 @@
 name: Reusable ECS Deploy
 
 on:
-  workflow_call:
-    inputs:
-      environment:
-        description: GitHub environment name used for approval gates.
-        required: true
-        type: string
-      aws_region:
-        description: AWS region for ECR/ECS.
-        required: false
-        type: string
-        default: ap-northeast-2
-      aws_role_arn:
-        description: IAM role ARN assumed through GitHub OIDC.
-        required: true
-        type: string
-      service_name:
-        description: Logical service name used in logs/concurrency.
-        required: true
-        type: string
-      ecr_repository:
-        description: Target ECR repository name.
-        required: true
-        type: string
-      ecs_cluster:
-        description: ECS cluster name or ARN.
-        required: true
-        type: string
-      ecs_service:
-        description: ECS service name.
-        required: true
-        type: string
-      container_name:
-        description: Container name inside the task definition.
-        required: true
-        type: string
-      dockerfile:
-        description: Dockerfile path in the caller repository.
-        required: false
-        type: string
-        default: Dockerfile
-      context:
-        description: Docker build context in the caller repository.
-        required: false
-        type: string
-        default: .
-      image_tag:
-        description: Image tag to deploy. Empty value falls back to the commit SHA.
-        required: false
-        type: string
-        default: ''
-      wait_for_service_stability:
-        description: Wait until ECS reports the service stable.
-        required: false
-        type: boolean
-        default: true
-    outputs:
-      image:
-        description: Fully qualified ECR image URI deployed to ECS.
-        value: ${{ jobs.deploy.outputs.image }}
+    workflow_call:
+        inputs:
+            environment:
+                description: GitHub environment name used for approval gates.
+                required: true
+                type: string
+            aws_region:
+                description: AWS region for ECR/ECS.
+                required: false
+                type: string
+                default: ap-northeast-2
+            aws_role_arn:
+                description: IAM role ARN assumed through GitHub OIDC.
+                required: true
+                type: string
+            service_name:
+                description: Logical service name used in logs/concurrency.
+                required: true
+                type: string
+            ecr_repository:
+                description: Target ECR repository name.
+                required: true
+                type: string
+            ecs_cluster:
+                description: ECS cluster name or ARN.
+                required: true
+                type: string
+            ecs_service:
+                description: ECS service name.
+                required: true
+                type: string
+            container_name:
+                description: Container name inside the task definition.
+                required: true
+                type: string
+            dockerfile:
+                description: Dockerfile path in the caller repository.
+                required: false
+                type: string
+                default: Dockerfile
+            context:
+                description: Docker build context in the caller repository.
+                required: false
+                type: string
+                default: .
+            image_tag:
+                description: Image tag to deploy. Empty value falls back to the commit SHA.
+                required: false
+                type: string
+                default: ''
+            wait_for_service_stability:
+                description: Wait until ECS reports the service stable.
+                required: false
+                type: boolean
+                default: true
+        outputs:
+            image:
+                description: Fully qualified ECR image URI deployed to ECS.
+                value: ${{ jobs.deploy.outputs.image }}
 
 permissions:
-  contents: read
-  id-token: write
+    contents: read
+    id-token: write
 
 jobs:
-  deploy:
-    name: Build image and deploy ECS service
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    concurrency:
-      group: ecs-${{ inputs.environment }}-${{ inputs.ecs_cluster }}-${{ inputs.ecs_service }}
-      cancel-in-progress: false
-    outputs:
-      image: ${{ steps.image.outputs.image }}
-    steps:
-      - name: Checkout app repository
-        uses: actions/checkout@v4
+    deploy:
+        name: Build image and deploy ECS service
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment }}
+        concurrency:
+            group: ecs-${{ inputs.environment }}-${{ inputs.ecs_cluster }}-${{ inputs.ecs_service }}
+            cancel-in-progress: false
+        outputs:
+            image: ${{ steps.image.outputs.image }}
+        steps:
+            - name: Checkout app repository
+              uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws_role_arn }}
-          aws-region: ${{ inputs.aws_region }}
-          role-session-name: gha-${{ inputs.service_name }}-${{ github.run_id }}
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ inputs.aws_role_arn }}
+                  aws-region: ${{ inputs.aws_region }}
+                  role-session-name: gha-${{ inputs.service_name }}-${{ github.run_id }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+            - name: Login to Amazon ECR
+              id: login-ecr
+              uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push image
-        id: image
-        shell: bash
-        env:
-          BUILD_CONTEXT: ${{ inputs.context }}
-          DOCKERFILE: ${{ inputs.dockerfile }}
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ inputs.ecr_repository }}
-          REQUESTED_IMAGE_TAG: ${{ inputs.image_tag }}
-        run: |
-          set -euo pipefail
+            - name: Build and push image
+              id: image
+              shell: bash
+              env:
+                  BUILD_CONTEXT: ${{ inputs.context }}
+                  DOCKERFILE: ${{ inputs.dockerfile }}
+                  ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+                  ECR_REPOSITORY: ${{ inputs.ecr_repository }}
+                  REQUESTED_IMAGE_TAG: ${{ inputs.image_tag }}
+              run: |
+                  set -euo pipefail
 
-          image_tag="${REQUESTED_IMAGE_TAG:-${GITHUB_SHA}}"
-          image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
+                  image_tag="${REQUESTED_IMAGE_TAG:-${GITHUB_SHA}}"
+                  image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
 
-          docker build \
-            --file "${DOCKERFILE}" \
-            --tag "${image}" \
-            "${BUILD_CONTEXT}"
+                  docker build \
+                      --file "${DOCKERFILE}" \
+                      --tag "${image}" \
+                      "${BUILD_CONTEXT}"
 
-          docker push "${image}"
-          docker tag "${image}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+                  docker push "${image}"
+                  docker tag "${image}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+                  docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
 
-          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+                  echo "image=${image}" >> "${GITHUB_OUTPUT}"
 
-      - name: Download current ECS task definition
-        shell: bash
-        env:
-          ECS_CLUSTER: ${{ inputs.ecs_cluster }}
-          ECS_SERVICE: ${{ inputs.ecs_service }}
-        run: |
-          set -euo pipefail
+            - name: Download current ECS task definition
+              shell: bash
+              env:
+                  ECS_CLUSTER: ${{ inputs.ecs_cluster }}
+                  ECS_SERVICE: ${{ inputs.ecs_service }}
+              run: |
+                  set -euo pipefail
 
-          task_definition_arn="$(
-            aws ecs describe-services \
-              --cluster "${ECS_CLUSTER}" \
-              --services "${ECS_SERVICE}" \
-              --query 'services[0].taskDefinition' \
-              --output text
-          )"
+                  task_definition_arn="$(
+                      aws ecs describe-services \
+                          --cluster "${ECS_CLUSTER}" \
+                          --services "${ECS_SERVICE}" \
+                          --query 'services[0].taskDefinition' \
+                          --output text
+                  )"
 
-          aws ecs describe-task-definition \
-            --task-definition "${task_definition_arn}" \
-            --query taskDefinition \
-            > task-definition.json
+                  aws ecs describe-task-definition \
+                      --task-definition "${task_definition_arn}" \
+                      --query taskDefinition \
+                      > task-definition.json
 
-      - name: Render ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: ${{ inputs.container_name }}
-          image: ${{ steps.image.outputs.image }}
+            - name: Render ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                  task-definition: task-definition.json
+                  container-name: ${{ inputs.container_name }}
+                  image: ${{ steps.image.outputs.image }}
 
-      - name: Deploy ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ inputs.ecs_service }}
-          cluster: ${{ inputs.ecs_cluster }}
-          wait-for-service-stability: ${{ inputs.wait_for_service_stability }}
-          enable-ecs-managed-tags: true
-          propagate-tags: SERVICE
+            - name: Deploy ECS task definition
+              uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+              with:
+                  task-definition: ${{ steps.task-def.outputs.task-definition }}
+                  service: ${{ inputs.ecs_service }}
+                  cluster: ${{ inputs.ecs_cluster }}
+                  wait-for-service-stability: ${{ inputs.wait_for_service_stability }}
+                  enable-ecs-managed-tags: true
+                  propagate-tags: SERVICE

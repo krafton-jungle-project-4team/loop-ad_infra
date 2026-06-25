@@ -7,7 +7,7 @@ loop-ad 개발/성능 테스트용 AWS CDK v2 프로젝트입니다.
 ## 구조
 
 - `LoopAdDevStack`: 상시 개발용 스택
-  - VPC, public/private subnet, VPC endpoint
+  - VPC, public subnet, 단일 private subnet, VPC endpoint
   - ECR repository 5개
   - ECS Fargate 서비스 5개
   - Event Collector용 NLB

@@ -26,20 +26,14 @@ export class LoopAdDevStack extends Stack {
           cidrMask: 24,
         },
         {
-          name: 'private-app',
+          name: 'private',
           subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-          cidrMask: 24,
-        },
-        {
-          name: 'private-data',
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
       ],
     });
 
-    const appSubnets = vpc.selectSubnets({ subnetGroupName: 'private-app' });
-    const dataSubnets = vpc.selectSubnets({ subnetGroupName: 'private-data' });
+    const privateSubnets = vpc.selectSubnets({ subnetGroupName: 'private' });
 
     const endpointSecurityGroup = new ec2.SecurityGroup(this, 'VpcEndpointSecurityGroup', {
       vpc,
@@ -49,48 +43,48 @@ export class LoopAdDevStack extends Stack {
 
     vpc.addGatewayEndpoint('S3GatewayEndpoint', {
       service: ec2.GatewayVpcEndpointAwsService.S3,
-      subnets: [appSubnets, dataSubnets],
+      subnets: [privateSubnets],
     });
 
     vpc.addInterfaceEndpoint('EcrApiEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECR,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('EcrDockerEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('CloudWatchLogsEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('SecretsManagerEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('SsmEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.SSM,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('EcsEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECS,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('EcsAgentEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECS_AGENT,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
     vpc.addInterfaceEndpoint('EcsTelemetryEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY,
       securityGroups: [endpointSecurityGroup],
-      subnets: appSubnets,
+      subnets: privateSubnets,
     });
 
     const cluster = new ecs.Cluster(this, 'Cluster', {
@@ -321,7 +315,7 @@ export class LoopAdDevStack extends Stack {
       desiredCount: 1,
       assignPublicIp: false,
       securityGroups: [eventCollectorSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -385,7 +379,7 @@ export class LoopAdDevStack extends Stack {
       desiredCount: 1,
       assignPublicIp: false,
       securityGroups: [projectorSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -432,7 +426,7 @@ export class LoopAdDevStack extends Stack {
       desiredCount: 1,
       assignPublicIp: false,
       securityGroups: [decisionSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -495,7 +489,7 @@ export class LoopAdDevStack extends Stack {
       desiredCount: 1,
       assignPublicIp: false,
       securityGroups: [dashboardSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -556,7 +550,7 @@ export class LoopAdDevStack extends Stack {
       desiredCount: 1,
       assignPublicIp: false,
       securityGroups: [recommendationSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -582,13 +576,13 @@ export class LoopAdDevStack extends Stack {
       value: cdk.Fn.join(',', vpc.publicSubnets.map((subnet) => subnet.routeTable.routeTableId)),
       exportName: 'loop-ad-dev-public-subnet-route-table-ids',
     });
-    new cdk.CfnOutput(this, 'PrivateAppSubnetIds', {
-      value: cdk.Fn.join(',', appSubnets.subnets.map((subnet) => subnet.subnetId)),
-      exportName: 'loop-ad-dev-private-app-subnet-ids',
+    new cdk.CfnOutput(this, 'PrivateSubnetIds', {
+      value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.subnetId)),
+      exportName: 'loop-ad-dev-private-subnet-ids',
     });
-    new cdk.CfnOutput(this, 'PrivateAppSubnetRouteTableIds', {
-      value: cdk.Fn.join(',', appSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
-      exportName: 'loop-ad-dev-private-app-subnet-route-table-ids',
+    new cdk.CfnOutput(this, 'PrivateSubnetRouteTableIds', {
+      value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
+      exportName: 'loop-ad-dev-private-subnet-route-table-ids',
     });
     new cdk.CfnOutput(this, 'EndpointSecurityGroupId', {
       value: endpointSecurityGroup.securityGroupId,
@@ -604,8 +598,8 @@ export class LoopAdPerfStack extends Stack {
     const availabilityZones = cdk.Fn.importListValue('loop-ad-dev-vpc-availability-zones', 2);
     const publicSubnetIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-ids', 2);
     const publicSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-route-table-ids', 2);
-    const privateAppSubnetIds = cdk.Fn.importListValue('loop-ad-dev-private-app-subnet-ids', 2);
-    const privateAppSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-private-app-subnet-route-table-ids', 2);
+    const privateSubnetIds = cdk.Fn.importListValue('loop-ad-dev-private-subnet-ids', 2);
+    const privateSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-private-subnet-route-table-ids', 2);
     const vpc = ec2.Vpc.fromVpcAttributes(this, 'DevVpc', {
       vpcId: cdk.Fn.importValue('loop-ad-dev-vpc-id'),
       availabilityZones,
@@ -625,19 +619,18 @@ export class LoopAdPerfStack extends Stack {
         routeTableId: publicSubnetRouteTableIds[1],
       }),
     ];
-    const privateAppSubnets = [
-      ec2.Subnet.fromSubnetAttributes(this, 'PrivateAppSubnet1', {
-        subnetId: privateAppSubnetIds[0],
+    const privateSubnets = [
+      ec2.Subnet.fromSubnetAttributes(this, 'PrivateSubnet1', {
+        subnetId: privateSubnetIds[0],
         availabilityZone: availabilityZones[0],
-        routeTableId: privateAppSubnetRouteTableIds[0],
+        routeTableId: privateSubnetRouteTableIds[0],
       }),
-      ec2.Subnet.fromSubnetAttributes(this, 'PrivateAppSubnet2', {
-        subnetId: privateAppSubnetIds[1],
+      ec2.Subnet.fromSubnetAttributes(this, 'PrivateSubnet2', {
+        subnetId: privateSubnetIds[1],
         availabilityZone: availabilityZones[1],
-        routeTableId: privateAppSubnetRouteTableIds[1],
+        routeTableId: privateSubnetRouteTableIds[1],
       }),
     ];
-    const appSubnets = { subnets: privateAppSubnets };
 
     const endpointSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
       this,
@@ -659,7 +652,7 @@ export class LoopAdPerfStack extends Stack {
 
     const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'EcsEc2AutoScalingGroup', {
       vpc,
-      vpcSubnets: appSubnets,
+      vpcSubnets: { subnets: privateSubnets },
       instanceType: new ec2.InstanceType('t4g.small'),
       machineImage: ecs.EcsOptimizedImage.amazonLinux2023(ecs.AmiHardwareType.ARM),
       minCapacity: 0,
@@ -786,7 +779,7 @@ export class LoopAdPerfStack extends Stack {
       serviceName: 'perf-event-collector',
       desiredCount: 1,
       securityGroups: [eventCollectorSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: { subnets: privateSubnets },
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
@@ -850,7 +843,7 @@ export class LoopAdPerfStack extends Stack {
       serviceName: 'perf-ad-context-projector',
       desiredCount: 1,
       securityGroups: [projectorSecurityGroup],
-      vpcSubnets: appSubnets,
+      vpcSubnets: { subnets: privateSubnets },
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,

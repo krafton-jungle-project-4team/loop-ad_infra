@@ -116,9 +116,9 @@ describe('loop-ad CDK stacks', () => {
         Name: 'loop-ad-dev-vpc-id',
       },
     });
-    template.hasOutput('PrivateAppSubnetIds', {
+    template.hasOutput('PrivateSubnetIds', {
       Export: {
-        Name: 'loop-ad-dev-private-app-subnet-ids',
+        Name: 'loop-ad-dev-private-subnet-ids',
       },
     });
     template.hasOutput('EndpointSecurityGroupId', {

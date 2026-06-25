@@ -26,7 +26,7 @@ describe('GitHub Actions reusable workflows', () => {
         expect(workflow).not.toContain('cdk deploy');
     });
 
-    it('generic deploy/destroy는 막고 명시적 dev/aggregation perf lifecycle script만 둔다', () => {
+    it('generic deploy/destroy는 막고 명시적 dev lifecycle script만 둔다', () => {
         const packageJson = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
             scripts: Record<string, string>;
         };
@@ -35,10 +35,7 @@ describe('GitHub Actions reusable workflows', () => {
         expect(packageJson.scripts.deploy).toBe('node scripts/refuse-deploy.mjs');
         expect(packageJson.scripts.destroy).toBe('node scripts/refuse-deploy.mjs');
         expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevStack');
-        expect(packageJson.scripts['synth:aggregation-perf']).toContain('LoopAdAggregationPerfStack');
-        expect(packageJson.scripts['deploy:aggregation-perf']).toContain('LoopAdAggregationPerfStack');
-        expect(packageJson.scripts['destroy:aggregation-perf']).toContain('LoopAdAggregationPerfStack');
         expect(refusal).toContain('intentionally blocked');
-        expect(refusal).toContain('deploy:aggregation-perf');
+        expect(refusal).toContain('deploy:dev');
     });
 });

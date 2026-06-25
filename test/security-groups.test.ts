@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { LOOP_AD_REGION, LoopAdDevStack, LoopAdAggregationPerfStack } from '../src/loop-ad-stack';
+import { LOOP_AD_REGION, LoopAdDevStack } from '../src/loop-ad-stack';
 
 const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
 const testPublicHostedZone = {
@@ -23,38 +23,21 @@ describe('security group policy', () => {
         }
     });
 
-    it('aggregation perf public ingress is only the temporary NLB port 80', () => {
-        const template = Template.fromStack(synthAggregationPerf());
-        const publicIngressRules = publicIngressRulesFrom(template);
+    it('dev uses shared internal security groups with broad internal traffic', () => {
+        const template = Template.fromStack(synthDev());
 
-        expect(publicIngressRules).toHaveLength(1);
-        expect(publicIngressRules[0]).toMatchObject({
-            FromPort: 80,
-            ToPort: 80,
-            IpProtocol: 'tcp',
+        template.resourceCountIs('AWS::EC2::SecurityGroup', 4);
+        template.hasResourceProperties('AWS::EC2::SecurityGroupEgress', {
+            IpProtocol: '-1',
+            DestinationSecurityGroupId: Match.anyValue(),
+            GroupId: Match.anyValue(),
         });
-    });
-
-    it('dev and aggregation perf use shared internal security groups with broad internal traffic', () => {
-        for (const { stack, securityGroupCount } of [
-            { stack: synthDev(), securityGroupCount: 4 },
-            { stack: synthAggregationPerf(), securityGroupCount: 3 },
-        ]) {
-            const template = Template.fromStack(stack);
-
-            template.resourceCountIs('AWS::EC2::SecurityGroup', securityGroupCount);
-            template.hasResourceProperties('AWS::EC2::SecurityGroupEgress', {
-                IpProtocol: '-1',
-                DestinationSecurityGroupId: Match.anyValue(),
-                GroupId: Match.anyValue(),
-            });
-            template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
-                IpProtocol: '-1',
-                SourceSecurityGroupId: Match.anyValue(),
-                GroupId: Match.anyValue(),
-            });
-            expect(dataPortSecurityGroupRulesFrom(template)).toEqual([]);
-        }
+        template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
+            IpProtocol: '-1',
+            SourceSecurityGroupId: Match.anyValue(),
+            GroupId: Match.anyValue(),
+        });
+        expect(dataPortSecurityGroupRulesFrom(template)).toEqual([]);
     });
 });
 
@@ -94,17 +77,6 @@ function dataPortSecurityGroupRulesFrom(template: Template): Record<string, unkn
 function synthDev(): LoopAdDevStack {
     const app = new cdk.App();
     return new LoopAdDevStack(app, 'LoopAdDevStack', {
-        env: {
-            account: '123456789012',
-            region: LOOP_AD_REGION,
-        },
-        publicHostedZone: testPublicHostedZone,
-    });
-}
-
-function synthAggregationPerf(): LoopAdAggregationPerfStack {
-    const app = new cdk.App();
-    return new LoopAdAggregationPerfStack(app, 'LoopAdAggregationPerfStack', {
         env: {
             account: '123456789012',
             region: LOOP_AD_REGION,

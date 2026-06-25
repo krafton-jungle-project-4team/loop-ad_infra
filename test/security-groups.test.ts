@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
+import { LOOP_AD_REGION, LoopAdDevStack, LoopAdAggregationPerfStack } from '../src/loop-ad-stack';
 
 const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
 const testPublicHostedZone = {
@@ -23,8 +23,8 @@ describe('security group policy', () => {
         }
     });
 
-    it('perf public ingress is only the temporary NLB port 80', () => {
-        const template = Template.fromStack(synthPerf());
+    it('aggregation perf public ingress is only the temporary NLB port 80', () => {
+        const template = Template.fromStack(synthAggregationPerf());
         const publicIngressRules = publicIngressRulesFrom(template);
 
         expect(publicIngressRules).toHaveLength(1);
@@ -35,10 +35,10 @@ describe('security group policy', () => {
         });
     });
 
-    it('dev and perf use shared internal security groups with broad internal traffic', () => {
+    it('dev and aggregation perf use shared internal security groups with broad internal traffic', () => {
         for (const { stack, securityGroupCount } of [
             { stack: synthDev(), securityGroupCount: 4 },
-            { stack: synthPerf(), securityGroupCount: 4 },
+            { stack: synthAggregationPerf(), securityGroupCount: 3 },
         ]) {
             const template = Template.fromStack(stack);
 
@@ -102,9 +102,9 @@ function synthDev(): LoopAdDevStack {
     });
 }
 
-function synthPerf(): LoopAdPerfStack {
+function synthAggregationPerf(): LoopAdAggregationPerfStack {
     const app = new cdk.App();
-    return new LoopAdPerfStack(app, 'LoopAdPerfStack', {
+    return new LoopAdAggregationPerfStack(app, 'LoopAdAggregationPerfStack', {
         env: {
             account: '123456789012',
             region: LOOP_AD_REGION,

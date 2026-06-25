@@ -9,10 +9,10 @@
         "watch": "tsc -w",
         "test": "jest --runInBand",
         "synth:dev": "cdk -c environment=dev synth LoopAdDevStack",
-        "synth:perf": "cdk -c environment=perf synth LoopAdPerfStack",
+        "synth:aggregation-perf": "cdk -c environment=aggregation-perf synth LoopAdAggregationPerfStack",
         "deploy:dev": "cdk -c environment=dev deploy LoopAdDevStack",
-        "deploy:perf": "cdk -c environment=perf deploy LoopAdPerfStack",
-        "destroy:perf": "cdk -c environment=perf destroy LoopAdPerfStack",
+        "deploy:aggregation-perf": "cdk -c environment=aggregation-perf deploy LoopAdAggregationPerfStack",
+        "destroy:aggregation-perf": "cdk -c environment=aggregation-perf destroy LoopAdAggregationPerfStack",
         "deploy": "node scripts/refuse-deploy.mjs",
         "destroy": "node scripts/refuse-deploy.mjs",
         "cdk": "cdk"

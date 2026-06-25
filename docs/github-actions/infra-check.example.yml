@@ -14,7 +14,7 @@ jobs:
         with:
             environment: dev
 
-    perf:
+    aggregation-perf:
         uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/infra-check.yml@v1
         with:
-            environment: perf
+            environment: aggregation-perf

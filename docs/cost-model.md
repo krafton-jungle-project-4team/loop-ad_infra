@@ -61,6 +61,53 @@ Aurora CDK construct가 생성하는 Secrets Manager secret과 MSK bootstrap 조
 
 월 `$300` 목표에 맞추려면 Aurora가 실제 idle 시간에 auto-pause되어야 합니다. MSK는 작은 고정 스펙이어도 월 `$87.63` 수준이므로, 사용량이 아주 작다면 향후 Redpanda/EC2 단일 노드 Kafka/managed serverless 대안을 별도로 비교할 가치가 있습니다.
 
+## Aggregation Perf 20k RPS 스택 비용 범위
+
+Aggregation perf 스택은 위 월 `$300` 개발 비용 목표에 포함하지 않습니다. 집계 경로 20k RPS / request 1KB 검증을 위한 임시 benchmark 스택이며, 다음 리소스가 테스트 시간 동안 고정 과금됩니다.
+
+| 항목 | Aggregation perf 기본값 |
+|---|---:|
+| ECS capacity EC2 | `c7g.xlarge` 6대 기본, 최대 12대 |
+| Event Collector | 24 tasks 기본, 최대 48 tasks |
+| Ad Context Projector | 12 tasks 기본, 최대 24 tasks |
+| ClickHouse | EC2 `c7g.xlarge` 1대 + gp3 500GB, 3k IOPS |
+| MSK | `kafka.m7g.xlarge` 2 brokers + broker당 200GB |
+| MSK topic | `aggregation-events`, 128 partitions, replication factor 2 |
+
+공식 AWS Price List API 기준 온디맨드 단가는 다음으로 계산합니다.
+
+| 항목 | 단가 가정 |
+|---|---:|
+| EC2 `c7g.xlarge` Linux | `$0.1632/hour` |
+| MSK `kafka.m7g.xlarge` broker | `$0.5015/broker-hour` |
+| EC2 gp3 storage | `$0.0912/GB-month` |
+| EC2 gp3 추가 IOPS | `$0.0057/IOPS-month` |
+| MSK storage | `$0.114/GB-month` |
+| MSK provisioned storage throughput | `$0.0912/MiBps-month` |
+| NLB hourly | `$0.0225/hour` |
+| NLB NLCU | `$0.006/NLCU-hour` |
+| Public IPv4 | `$0.005/IP-hour` |
+
+20k RPS에서 request 1KB만 NLB를 통과하면 약 72GB/hour이고, response도 1KB라면 약 144GB/hour입니다. NLB는 TCP 기준 processed bytes 1GB/hour당 1 NLCU로 잡히므로 이 비용을 포함합니다.
+
+| 상태 | 요청 1KB만 | 요청 1KB + 응답 1KB |
+|---|---:|---:|
+| 기본 6대 | 약 `$2.91/hour` | 약 `$3.34/hour` |
+| 최대 12대 | 약 `$3.99/hour` | 약 `$4.42/hour` |
+
+| 테스트 시간 | 기본 6대, 요청 1KB만 | 최대 12대, 요청 1KB만 | 기본 6대, 왕복 2KB | 최대 12대, 왕복 2KB |
+|---|---:|---:|---:|---:|
+| 2시간 | 약 `$5.81` | 약 `$7.98` | 약 `$6.68` | 약 `$8.85` |
+| 4시간 | 약 `$11.63` | 약 `$15.97` | 약 `$13.36` | 약 `$17.69` |
+| 8시간 | 약 `$23.26` | 약 `$31.93` | 약 `$26.71` | 약 `$35.39` |
+| 12시간 | 약 `$34.89` | 약 `$47.90` | 약 `$40.07` | 약 `$53.08` |
+
+이 표는 aggregation perf 인프라 자체 비용입니다. load generator, 대량 CloudWatch Logs, public data transfer는 별도입니다. NLB는 세 차원 중 가장 큰 값으로 과금되며, 20k RPS / 1KB 패턴에서는 connection을 재사용해도 processed bytes 차원이 비용의 주된 항목입니다.
+
+Aggregation perf 결과 백업 S3 bucket은 Dev 스택이 소유하고 `RemovalPolicy.RETAIN`으로 유지합니다. S3 Standard는 50TB 전까지 `$0.025/GB-month`, PUT/LIST는 `$0.0045/1,000 requests` 수준이라 결과 파일이 수 GB/수천 objects 정도면 aggregation perf compute 비용 대비 작습니다.
+
+따라서 aggregation perf 스택은 켜 둔 시간에 비례해 비용이 증가합니다. 운영 원칙은 `deploy:aggregation-perf`로 테스트 직전에 올리고, load test와 결과 수집이 끝나면 결과를 S3 `aggregation-perf-runs/` prefix에 업로드한 뒤 즉시 `destroy:aggregation-perf`로 내리는 것입니다. 더 높은 RPS 검사가 필요하면 EC2/MSK instance type, broker count, partition count, task count를 함께 올려 같은 구조를 확장합니다.
+
 ## 가격 출처
 
 - AWS Price List API: `AmazonECS`, `AmazonEC2`, `AmazonVPC`, `AWSELB`, `AmazonCloudWatch`, `AmazonECR`, `AmazonRDS`, `AmazonMSK`

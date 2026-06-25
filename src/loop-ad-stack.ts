@@ -12,21 +12,18 @@ import * as msk from 'aws-cdk-lib/aws-msk';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 
 export const LOOP_AD_REGION = 'ap-northeast-2';
 export const LOOP_AD_MONTHLY_COST_TARGET_USD = 300;
+export const LOOP_AD_AGGREGATION_PERF_TARGET_RPS = 20_000;
 
 const DEV_SERVICE_DESIRED_TASKS = 1;
 const DEV_SERVICE_MIN_TASKS = 1;
 const DEV_SERVICE_MAX_TASKS = 2;
-const PERF_SERVICE_DESIRED_TASKS = 1;
-const PERF_SERVICE_MIN_TASKS = 0;
-const PERF_SERVICE_MAX_TASKS = 2;
-const PERF_EC2_MIN_INSTANCES = 0;
-const PERF_EC2_MAX_INSTANCES = 2;
 const SERVICE_CPU_SCALE_TARGET_PERCENT = 70;
 const DEV_AURORA_MIN_ACU = 0;
 const DEV_AURORA_MAX_ACU = 2;
@@ -34,6 +31,27 @@ const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 const DEV_CLICKHOUSE_VOLUME_GIB = 50;
 const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
+const AGGREGATION_PERF_EC2_DESIRED_INSTANCES = 6;
+const AGGREGATION_PERF_EC2_MIN_INSTANCES = 6;
+const AGGREGATION_PERF_EC2_MAX_INSTANCES = 12;
+const AGGREGATION_PERF_EC2_INSTANCE_TYPE = 'c7g.xlarge';
+const AGGREGATION_PERF_EVENT_COLLECTOR_DESIRED_TASKS = 24;
+const AGGREGATION_PERF_EVENT_COLLECTOR_MIN_TASKS = 24;
+const AGGREGATION_PERF_EVENT_COLLECTOR_MAX_TASKS = 48;
+const AGGREGATION_PERF_PROJECTOR_DESIRED_TASKS = 12;
+const AGGREGATION_PERF_PROJECTOR_MIN_TASKS = 12;
+const AGGREGATION_PERF_PROJECTOR_MAX_TASKS = 24;
+const AGGREGATION_PERF_CPU_SCALE_TARGET_PERCENT = 50;
+const AGGREGATION_PERF_CLICKHOUSE_INSTANCE_TYPE = 'c7g.xlarge';
+const AGGREGATION_PERF_CLICKHOUSE_VOLUME_GIB = 500;
+const AGGREGATION_PERF_CLICKHOUSE_VOLUME_IOPS = 3_000;
+const AGGREGATION_PERF_MSK_BROKER_COUNT = 2;
+const AGGREGATION_PERF_MSK_BROKER_INSTANCE_TYPE = 'kafka.m7g.xlarge';
+const AGGREGATION_PERF_MSK_STORAGE_GIB_PER_BROKER = 200;
+const AGGREGATION_PERF_MSK_VOLUME_THROUGHPUT = 250;
+const AGGREGATION_PERF_MSK_TOPIC_PARTITIONS = 128;
+const AGGREGATION_PERF_MSK_TOPIC_REPLICATION_FACTOR = 2;
+const AGGREGATION_PERF_MSK_KAFKA_VERSION = '3.6.0';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -44,7 +62,7 @@ export interface LoopAdDevStackProps extends StackProps {
     readonly publicHostedZone: PublicHostedZoneConfig;
 }
 
-export interface LoopAdPerfStackProps extends StackProps {
+export interface LoopAdAggregationPerfStackProps extends StackProps {
     readonly publicHostedZone: PublicHostedZoneConfig;
 }
 
@@ -54,7 +72,7 @@ export class LoopAdDevStack extends Stack {
         super(scope, id, props);
 
         // Dev가 유일한 VPC를 만듭니다. Dev server는 NAT가 있는 private subnet을 쓰고,
-        // Perf server는 NAT 없이 public subnet만 import해서 사용합니다.
+        // Aggregation perf server는 NAT 없이 public subnet만 import해서 사용합니다.
         const vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             maxAzs: 2,
@@ -142,13 +160,15 @@ export class LoopAdDevStack extends Stack {
         serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
         serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal datasources.');
         dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal datasources.');
+        dataSourceSecurityGroup.addIngressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev datasources may call each other.');
+        dataSourceSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev datasources may call each other.');
 
         // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
         serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
         // ClickHouse bootstrap과 datasource 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
         dataSourceSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev datasources may use external HTTPS through NAT.');
 
-        // ECR repository는 Dev가 소유합니다. Perf는 임시 image storage를 만들지 않고
+        // ECR repository는 Dev가 소유합니다. Aggregation perf는 임시 image storage를 만들지 않고
         // 이 repository들을 재사용합니다.
         const [
             eventCollectorRepository,
@@ -168,6 +188,21 @@ export class LoopAdDevStack extends Stack {
             lifecycleRules: [{ maxImageCount: 20 }],
             removalPolicy: RemovalPolicy.RETAIN,
         }));
+
+        const aggregationPerfResultsBucket = new s3.Bucket(this, 'AggregationPerfResultsBucket', {
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            versioned: true,
+            lifecycleRules: [
+                {
+                    prefix: 'aggregation-perf-runs/',
+                    abortIncompleteMultipartUploadAfter: Duration.days(7),
+                    noncurrentVersionExpiration: Duration.days(30),
+                },
+            ],
+            removalPolicy: RemovalPolicy.RETAIN,
+        });
 
         // 비용을 낮게 유지하는 개발용 datasource입니다.
         const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
@@ -639,7 +674,7 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
-        // Perf는 이 output들을 import해서 같은 VPC 안에 임시 서버를 만듭니다.
+        // Aggregation perf는 이 output들을 import해서 같은 VPC 안에 임시 서버를 만듭니다.
         for (const output of [
             {
                 id: 'VpcId',
@@ -671,6 +706,11 @@ export class LoopAdDevStack extends Stack {
                 value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
                 exportName: 'loop-ad-dev-private-subnet-route-table-ids',
             },
+            {
+                id: 'AggregationPerfResultsBucketName',
+                value: aggregationPerfResultsBucket.bucketName,
+                exportName: 'loop-ad-aggregation-perf-results-bucket-name',
+            },
         ] as const) {
             new cdk.CfnOutput(this, output.id, {
                 value: output.value,
@@ -680,13 +720,13 @@ export class LoopAdDevStack extends Stack {
     }
 }
 
-// 임시 성능 테스트 스택입니다. dev VPC를 import하지만 자체
-// cluster, load balancer, service, perf endpoint contract를 따로 만듭니다.
-export class LoopAdPerfStack extends Stack {
-    public constructor(scope: Construct, id: string, props: LoopAdPerfStackProps) {
+// 집계 경로 전용 임시 성능 테스트 스택입니다. dev VPC를 import하지만 자체
+// cluster, load balancer, service, aggregation perf endpoint contract를 따로 만듭니다.
+export class LoopAdAggregationPerfStack extends Stack {
+    public constructor(scope: Construct, id: string, props: LoopAdAggregationPerfStackProps) {
         super(scope, id, props);
 
-        // Dev에서 VPC 형태만 import합니다. perf server는 분리하면서
+        // Dev에서 VPC 형태만 import합니다. aggregation perf server는 분리하면서
         // 별도 VPC와 subnet layout은 만들지 않습니다.
         const availabilityZones = cdk.Fn.importListValue('loop-ad-dev-vpc-availability-zones', 2);
         const publicSubnetIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-ids', 2);
@@ -712,24 +752,72 @@ export class LoopAdPerfStack extends Stack {
             subnetId: subnet.subnetId,
             availabilityZone: subnet.availabilityZone,
         }));
-        // 별도 perf cluster를 만들어 test capacity가 dev와 분리되어 보이게 합니다.
+        const aggregationPerfResultsBucket = s3.Bucket.fromBucketName(
+            this,
+            'AggregationPerfResultsBucket',
+            cdk.Fn.importValue('loop-ad-aggregation-perf-results-bucket-name'),
+        );
+        // 별도 aggregation perf cluster를 만들어 test capacity가 dev와 분리되어 보이게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
-            clusterName: 'perf-loop-ad-cluster',
+            clusterName: 'aggregation-perf-loop-ad-cluster',
             containerInsightsV2: ecs.ContainerInsights.ENABLED,
             defaultCloudMapNamespace: {
-                name: 'perf.loop-ad.local',
+                name: 'aggregation-perf.loop-ad.local',
             },
         });
 
-        // Perf는 ECS on EC2를 사용해서 임시 capacity를 0까지 줄일 수 있게 합니다.
+        // Aggregation perf도 같은 SG 모델을 씁니다: public NLB, shared server, datasource.
+        const nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Aggregation perf NLB event ingestion ingress only.',
+        });
+        const serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Aggregation perf ECS server SG shared by test services.',
+        });
+        const dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Aggregation perf datasource SG shared by internal data endpoints.',
+        });
+
+        // 인터넷은 aggregation perf NLB까지만 접근할 수 있고 이후 트래픽은 내부 통신입니다.
+        nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to aggregation perf NLB.');
+        nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach aggregation perf servers.');
+        serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter aggregation perf servers.');
+        serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf servers may call each other.');
+        serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf servers may call each other.');
+        serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf servers may reach internal datasources.');
+        dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf servers may enter internal datasources.');
+        dataSourceSecurityGroup.addIngressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf datasources may call each other.');
+        dataSourceSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Aggregation perf datasources may call each other.');
+        serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Aggregation perf servers may use public HTTPS egress.');
+        dataSourceSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Aggregation perf datasources may use public HTTPS egress.');
+
+        // Aggregation perf는 20k RPS/1KB 요청을 기본 목표로 두되, max capacity로 여유를 남깁니다.
+        // 이 stack은 필요한 테스트 시간에만 올렸다가 destroy하는 ephemeral benchmark 환경입니다.
         const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'EcsEc2AutoScalingGroup', {
             vpc,
             vpcSubnets: { subnets: publicSubnets },
-            instanceType: new ec2.InstanceType('t4g.small'),
+            securityGroup: serverSecurityGroup,
+            instanceType: new ec2.InstanceType(AGGREGATION_PERF_EC2_INSTANCE_TYPE),
             machineImage: ecs.EcsOptimizedImage.amazonLinux2023(ecs.AmiHardwareType.ARM),
-            minCapacity: PERF_EC2_MIN_INSTANCES,
-            maxCapacity: PERF_EC2_MAX_INSTANCES,
+            minCapacity: AGGREGATION_PERF_EC2_MIN_INSTANCES,
+            desiredCapacity: AGGREGATION_PERF_EC2_DESIRED_INSTANCES,
+            maxCapacity: AGGREGATION_PERF_EC2_MAX_INSTANCES,
+            instanceMonitoring: autoscaling.Monitoring.DETAILED,
+            blockDevices: [
+                {
+                    deviceName: '/dev/xvda',
+                    volume: autoscaling.BlockDeviceVolume.ebs(100, {
+                        encrypted: true,
+                        volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+                    }),
+                },
+            ],
         });
         const capacityProvider = new ecs.AsgCapacityProvider(this, 'EcsEc2CapacityProvider', {
             autoScalingGroup,
@@ -738,34 +826,7 @@ export class LoopAdPerfStack extends Stack {
         });
         cluster.addAsgCapacityProvider(capacityProvider);
 
-        // Perf도 같은 SG 모델을 씁니다: public NLB, shared server, datasource.
-        const nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Perf NLB event ingestion ingress only.',
-        });
-        const serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Perf ECS server SG shared by test services.',
-        });
-        const dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Perf datasource SG shared by internal data endpoints.',
-        });
-
-        // 인터넷은 perf NLB까지만 접근할 수 있고 이후 트래픽은 내부 통신입니다.
-        nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to perf NLB.');
-        nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach perf servers.');
-        serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter perf servers.');
-        serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call each other.');
-        serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call each other.');
-        serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may reach internal datasources.');
-        dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may enter internal datasources.');
-        serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Perf servers may use public HTTPS egress.');
-
-        // Perf는 storage를 만들지 않고 dev가 소유한 image repository를 재사용합니다.
+        // Aggregation perf는 storage를 만들지 않고 dev가 소유한 image repository를 재사용합니다.
         const [eventCollectorRepository, projectorRepository] = [
             { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
             { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
@@ -775,33 +836,162 @@ export class LoopAdPerfStack extends Stack {
             repository.repositoryName,
         ));
 
-        // Perf endpoint contract는 분리해서 테스트가 별도 data path를 쓰게 합니다.
-        const [redisEndpoint, clickhouseEndpoint, mskEndpoint] = [
+        const aggregationPerfClickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
+            vpc,
+            vpcSubnets: { subnets: publicSubnets },
+            securityGroup: dataSourceSecurityGroup,
+            instanceName: 'aggregation-perf-loop-ad-clickhouse',
+            instanceType: new ec2.InstanceType(AGGREGATION_PERF_CLICKHOUSE_INSTANCE_TYPE),
+            machineImage: ec2.MachineImage.latestAmazonLinux2023({
+                cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+            }),
+            blockDevices: [
+                {
+                    deviceName: '/dev/xvda',
+                    volume: ec2.BlockDeviceVolume.ebs(AGGREGATION_PERF_CLICKHOUSE_VOLUME_GIB, {
+                        encrypted: true,
+                        iops: AGGREGATION_PERF_CLICKHOUSE_VOLUME_IOPS,
+                        volumeType: ec2.EbsDeviceVolumeType.GP3,
+                    }),
+                },
+            ],
+            requireImdsv2: true,
+        });
+        aggregationPerfClickHouseInstance.userData.addCommands(
+            'set -eux',
+            'dnf update -y',
+            'dnf install -y docker',
+            'systemctl enable --now docker',
+            'mkdir -p /var/lib/clickhouse',
+            'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:latest',
+        );
+
+        const aggregationPerfMskConfiguration = new msk.CfnConfiguration(this, 'MskConfiguration', {
+            name: 'aggregation-perf-loop-ad-msk-throughput',
+            kafkaVersionsList: [AGGREGATION_PERF_MSK_KAFKA_VERSION],
+            description: 'Cost-aware MSK configuration for loop-ad aggregation path 20k RPS tests.',
+            serverProperties: [
+                'auto.create.topics.enable=false',
+                'num.io.threads=8',
+                'num.network.threads=4',
+                'num.partitions=128',
+                'default.replication.factor=2',
+                'min.insync.replicas=1',
+                'log.retention.hours=6',
+            ].join('\n'),
+        });
+        const aggregationPerfMskCluster = new msk.CfnCluster(this, 'MskCluster', {
+            clusterName: 'aggregation-perf-loop-ad-msk',
+            kafkaVersion: AGGREGATION_PERF_MSK_KAFKA_VERSION,
+            numberOfBrokerNodes: AGGREGATION_PERF_MSK_BROKER_COUNT,
+            brokerNodeGroupInfo: {
+                clientSubnets: publicSubnets.map((subnet) => subnet.subnetId),
+                instanceType: AGGREGATION_PERF_MSK_BROKER_INSTANCE_TYPE,
+                securityGroups: [dataSourceSecurityGroup.securityGroupId],
+                storageInfo: {
+                    ebsStorageInfo: {
+                        provisionedThroughput: {
+                            enabled: true,
+                            volumeThroughput: AGGREGATION_PERF_MSK_VOLUME_THROUGHPUT,
+                        },
+                        volumeSize: AGGREGATION_PERF_MSK_STORAGE_GIB_PER_BROKER,
+                    },
+                },
+            },
+            clientAuthentication: {
+                unauthenticated: {
+                    enabled: true,
+                },
+            },
+            configurationInfo: {
+                arn: aggregationPerfMskConfiguration.attrArn,
+                revision: aggregationPerfMskConfiguration.attrLatestRevisionRevision,
+            },
+            encryptionInfo: {
+                encryptionInTransit: {
+                    clientBroker: 'TLS_PLAINTEXT',
+                    inCluster: true,
+                },
+            },
+            enhancedMonitoring: 'PER_BROKER',
+        });
+        const aggregationEventsTopic = new msk.CfnTopic(this, 'AggregationEventsTopic', {
+            clusterArn: aggregationPerfMskCluster.attrArn,
+            topicName: 'aggregation-events',
+            partitionCount: AGGREGATION_PERF_MSK_TOPIC_PARTITIONS,
+            replicationFactor: AGGREGATION_PERF_MSK_TOPIC_REPLICATION_FACTOR,
+        });
+        aggregationEventsTopic.node.addDependency(aggregationPerfMskCluster);
+
+        const aggregationPerfMskBootstrapBrokers = new cr.AwsCustomResource(this, 'MskBootstrapBrokers', {
+            resourceType: 'Custom::LoopAdAggregationPerfMskBootstrapBrokers',
+            onUpdate: {
+                service: 'kafka',
+                action: 'GetBootstrapBrokers',
+                parameters: {
+                    ClusterArn: aggregationPerfMskCluster.attrArn,
+                },
+                outputPaths: ['BootstrapBrokerString'],
+                physicalResourceId: cr.PhysicalResourceId.of('aggregation-perf-loop-ad-msk-bootstrap-brokers'),
+            },
+            installLatestAwsSdk: false,
+            logGroup: new logs.LogGroup(this, 'MskBootstrapBrokersLogGroup', {
+                retention: logs.RetentionDays.THREE_DAYS,
+                removalPolicy: RemovalPolicy.DESTROY,
+            }),
+            policy: cr.AwsCustomResourcePolicy.fromStatements([
+                new iam.PolicyStatement({
+                    actions: ['kafka:GetBootstrapBrokers'],
+                    resources: [aggregationPerfMskCluster.attrArn],
+                }),
+            ]),
+        });
+
+        // Aggregation perf endpoint contract는 집계 경로 성능 테스트 전용 data path로 분리합니다.
+        const [redisEndpoint, clickhouseEndpoint, mskEndpoint, resultsBucketName] = [
             {
                 id: 'RedisEndpointParameter',
-                parameterName: '/loop-ad/perf/redis/endpoint',
-                stringValue: 'pending://perf/redis',
-                description: 'Perf Redis endpoint contract.',
+                parameterName: '/loop-ad/aggregation-perf/redis/endpoint',
+                stringValue: 'pending://aggregation-perf/redis',
+                description: 'Aggregation perf Redis endpoint contract.',
             },
             {
                 id: 'ClickHouseEndpointParameter',
-                parameterName: '/loop-ad/perf/clickhouse/endpoint',
-                stringValue: 'pending://perf/clickhouse',
-                description: 'Perf ClickHouse endpoint contract.',
+                parameterName: '/loop-ad/aggregation-perf/clickhouse/endpoint',
+                stringValue: cdk.Fn.join('', ['http://', aggregationPerfClickHouseInstance.instancePrivateDnsName, ':8123']),
+                description: 'Aggregation perf ClickHouse endpoint contract.',
             },
             {
                 id: 'MskEndpointParameter',
-                parameterName: '/loop-ad/perf/msk/bootstrap-brokers',
-                stringValue: 'pending://perf/msk',
-                description: 'Perf MSK bootstrap broker contract.',
+                parameterName: '/loop-ad/aggregation-perf/msk/bootstrap-brokers',
+                stringValue: aggregationPerfMskBootstrapBrokers.getResponseField('BootstrapBrokerString'),
+                description: 'Aggregation perf MSK bootstrap broker contract.',
+            },
+            {
+                id: 'ResultsBucketNameParameter',
+                parameterName: '/loop-ad/aggregation-perf/results-bucket-name',
+                stringValue: aggregationPerfResultsBucket.bucketName,
+                description: 'Aggregation perf analysis result S3 backup bucket contract.',
             },
         ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
             parameterName: parameter.parameterName,
             stringValue: parameter.stringValue,
             description: parameter.description,
         }));
+        const grantAggregationPerfResultsUpload = (role: iam.IGrantable) => {
+            role.grantPrincipal.addToPrincipalPolicy(new iam.PolicyStatement({
+                actions: [
+                    's3:AbortMultipartUpload',
+                    's3:PutObject',
+                    's3:PutObjectTagging',
+                ],
+                resources: [
+                    aggregationPerfResultsBucket.arnForObjects('aggregation-perf-runs/*'),
+                ],
+            }));
+        };
 
-        // Perf는 ingestion 경로만 노출합니다. ALB, dashboard, API, frontend는 없습니다.
+        // Aggregation perf는 집계 경로만 노출합니다. ALB, dashboard, API, frontend는 없습니다.
         const nlb = new elbv2.NetworkLoadBalancer(this, 'NetworkLoadBalancer', {
             vpc,
             internetFacing: true,
@@ -809,53 +999,62 @@ export class LoopAdPerfStack extends Stack {
             vpcSubnets: { subnets: publicSubnets },
         });
 
-        // Perf도 같은 public hosted zone에 임시 ingest record만 만듭니다.
+        // Aggregation perf도 같은 public hosted zone에 임시 ingest record만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
         });
-        new route53.ARecord(this, 'PerfIngestDnsRecord', {
+        new route53.ARecord(this, 'AggregationPerfIngestDnsRecord', {
             zone: publicHostedZone,
-            recordName: 'ingest.perf',
+            recordName: 'ingest.aggregation-perf',
             target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
         });
 
-        // Perf Event Collector는 dev collector와 유사하지만 ECS EC2에서 실행됩니다.
+        // Aggregation perf Event Collector는 bridge networking으로 task density를 높입니다.
         const eventCollectorTask = new ecs.Ec2TaskDefinition(this, 'EventCollectorTaskDefinition', {
-            networkMode: ecs.NetworkMode.AWS_VPC,
+            networkMode: ecs.NetworkMode.BRIDGE,
         });
         mskEndpoint.grantRead(eventCollectorTask.taskRole);
+        resultsBucketName.grantRead(eventCollectorTask.taskRole);
+        grantAggregationPerfResultsUpload(eventCollectorTask.taskRole);
         const eventCollectorLogGroup = new logs.LogGroup(this, 'EventCollectorLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
         const eventCollectorContainer = eventCollectorTask.addContainer('EventCollectorContainer', {
             containerName: 'event-collector',
             image: ecs.ContainerImage.fromEcrRepository(eventCollectorRepository, 'latest'),
-            memoryReservationMiB: 1024,
+            cpu: 1024,
+            memoryReservationMiB: 2048,
             logging: ecs.LogDrivers.awsLogs({
                 streamPrefix: 'event-collector',
                 logGroup: eventCollectorLogGroup,
             }),
             environment: {
-                LOOPAD_ENV: 'perf',
+                LOOPAD_ENV: 'aggregation-perf',
                 LOOPAD_SERVICE_ID: 'event-collector',
                 LOOPAD_RUNTIME: 'go',
                 LOOPAD_COMPUTE_TARGET: 'ecs-ec2',
+                LOOPAD_AGGREGATION_PERF_TARGET_RPS: String(LOOP_AD_AGGREGATION_PERF_TARGET_RPS),
+                LOOPAD_MSK_TOPIC: 'aggregation-events',
+                LOOPAD_MSK_TOPIC_PARTITIONS: String(AGGREGATION_PERF_MSK_TOPIC_PARTITIONS),
                 LOOPAD_MSK_ENDPOINT_PARAMETER: mskEndpoint.parameterName,
+                LOOPAD_AGGREGATION_PERF_RESULTS_BUCKET_PARAMETER: resultsBucketName.parameterName,
+                LOOPAD_AGGREGATION_PERF_RESULTS_S3_PREFIX: 'aggregation-perf-runs/',
             },
         });
-        eventCollectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+        eventCollectorContainer.addPortMappings({ containerPort: 80, hostPort: 0, protocol: ecs.Protocol.TCP });
         const eventCollectorService = new ecs.Ec2Service(this, 'EventCollectorService', {
             cluster,
             taskDefinition: eventCollectorTask,
-            serviceName: 'perf-event-collector',
-            desiredCount: PERF_SERVICE_DESIRED_TASKS,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: { subnets: publicSubnets },
+            serviceName: 'aggregation-perf-event-collector',
+            desiredCount: AGGREGATION_PERF_EVENT_COLLECTOR_DESIRED_TASKS,
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'event-collector' },
+            placementStrategies: [
+                ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE),
+                ecs.PlacementStrategy.spreadAcrossInstances(),
+            ],
             capacityProviderStrategies: [
                 {
                     capacityProvider: capacityProvider.capacityProviderName,
@@ -863,8 +1062,11 @@ export class LoopAdPerfStack extends Stack {
                 },
             ],
         });
-        eventCollectorService.autoScaleTaskCount({ minCapacity: PERF_SERVICE_MIN_TASKS, maxCapacity: PERF_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
+        eventCollectorService.autoScaleTaskCount({
+            minCapacity: AGGREGATION_PERF_EVENT_COLLECTOR_MIN_TASKS,
+            maxCapacity: AGGREGATION_PERF_EVENT_COLLECTOR_MAX_TASKS,
+        }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
+            targetUtilizationPercent: AGGREGATION_PERF_CPU_SCALE_TARGET_PERCENT,
         });
 
         const nlbListener = nlb.addListener('EventCollectorListener', {
@@ -881,46 +1083,55 @@ export class LoopAdPerfStack extends Stack {
             },
         });
 
-        // Perf Projector는 마지막 perf service이며 ClickHouse 수집까지 테스트합니다.
+        // Aggregation perf Projector는 집계 결과를 ClickHouse에 쓰는 마지막 test service입니다.
         const projectorTask = new ecs.Ec2TaskDefinition(this, 'AdContextProjectorTaskDefinition', {
-            networkMode: ecs.NetworkMode.AWS_VPC,
+            networkMode: ecs.NetworkMode.BRIDGE,
         });
         mskEndpoint.grantRead(projectorTask.taskRole);
         redisEndpoint.grantRead(projectorTask.taskRole);
         clickhouseEndpoint.grantRead(projectorTask.taskRole);
+        resultsBucketName.grantRead(projectorTask.taskRole);
+        grantAggregationPerfResultsUpload(projectorTask.taskRole);
         const projectorLogGroup = new logs.LogGroup(this, 'AdContextProjectorLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
         const projectorContainer = projectorTask.addContainer('AdContextProjectorContainer', {
             containerName: 'ad-context-projector',
             image: ecs.ContainerImage.fromEcrRepository(projectorRepository, 'latest'),
-            memoryReservationMiB: 1024,
+            cpu: 1024,
+            memoryReservationMiB: 2048,
             logging: ecs.LogDrivers.awsLogs({
                 streamPrefix: 'ad-context-projector',
                 logGroup: projectorLogGroup,
             }),
             environment: {
-                LOOPAD_ENV: 'perf',
+                LOOPAD_ENV: 'aggregation-perf',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
                 LOOPAD_RUNTIME: 'go',
                 LOOPAD_COMPUTE_TARGET: 'ecs-ec2',
+                LOOPAD_AGGREGATION_PERF_TARGET_RPS: String(LOOP_AD_AGGREGATION_PERF_TARGET_RPS),
+                LOOPAD_MSK_TOPIC: 'aggregation-events',
+                LOOPAD_MSK_TOPIC_PARTITIONS: String(AGGREGATION_PERF_MSK_TOPIC_PARTITIONS),
                 LOOPAD_MSK_ENDPOINT_PARAMETER: mskEndpoint.parameterName,
                 LOOPAD_REDIS_ENDPOINT_PARAMETER: redisEndpoint.parameterName,
                 LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
+                LOOPAD_AGGREGATION_PERF_RESULTS_BUCKET_PARAMETER: resultsBucketName.parameterName,
+                LOOPAD_AGGREGATION_PERF_RESULTS_S3_PREFIX: 'aggregation-perf-runs/',
             },
         });
-        projectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+        projectorContainer.addPortMappings({ containerPort: 80, hostPort: 0, protocol: ecs.Protocol.TCP });
         const projectorService = new ecs.Ec2Service(this, 'AdContextProjectorService', {
             cluster,
             taskDefinition: projectorTask,
-            serviceName: 'perf-ad-context-projector',
-            desiredCount: PERF_SERVICE_DESIRED_TASKS,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: { subnets: publicSubnets },
+            serviceName: 'aggregation-perf-ad-context-projector',
+            desiredCount: AGGREGATION_PERF_PROJECTOR_DESIRED_TASKS,
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'ad-context-projector' },
+            placementStrategies: [
+                ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE),
+                ecs.PlacementStrategy.spreadAcrossInstances(),
+            ],
             capacityProviderStrategies: [
                 {
                     capacityProvider: capacityProvider.capacityProviderName,
@@ -928,8 +1139,11 @@ export class LoopAdPerfStack extends Stack {
                 },
             ],
         });
-        projectorService.autoScaleTaskCount({ minCapacity: PERF_SERVICE_MIN_TASKS, maxCapacity: PERF_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
+        projectorService.autoScaleTaskCount({
+            minCapacity: AGGREGATION_PERF_PROJECTOR_MIN_TASKS,
+            maxCapacity: AGGREGATION_PERF_PROJECTOR_MAX_TASKS,
+        }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
+            targetUtilizationPercent: AGGREGATION_PERF_CPU_SCALE_TARGET_PERCENT,
         });
     }
 }

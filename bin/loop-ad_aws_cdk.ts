@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { config as loadDotenv } from 'dotenv';
-import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
+import { LOOP_AD_REGION, LoopAdAggregationPerfStack, LoopAdDevStack } from '../src/loop-ad-stack';
 
 const dotenvResult = loadDotenv({ path: '.env', quiet: true });
 if (dotenvResult.error) {
@@ -27,8 +27,8 @@ if (environmentName === 'dev') {
     });
 }
 
-if (environmentName === 'perf') {
-    new LoopAdPerfStack(app, 'LoopAdPerfStack', {
+if (environmentName === 'aggregation-perf') {
+    new LoopAdAggregationPerfStack(app, 'LoopAdAggregationPerfStack', {
         env,
         publicHostedZone,
     });
@@ -38,10 +38,10 @@ cdk.Tags.of(app).add('Project', 'loop-ad');
 cdk.Tags.of(app).add('CdkProject', 'loop-ad_aws_cdk');
 cdk.Tags.of(app).add('Environment', environmentName);
 
-function readEnvironmentName(app: cdk.App): 'dev' | 'perf' {
+function readEnvironmentName(app: cdk.App): 'dev' | 'aggregation-perf' {
     const value = app.node.tryGetContext('environment') ?? 'dev';
-    if (value !== 'dev' && value !== 'perf') {
-        throw new Error(`environment context must be "dev" or "perf". Received: ${value}`);
+    if (value !== 'dev' && value !== 'aggregation-perf') {
+        throw new Error(`environment context must be "dev" or "aggregation-perf". Received: ${value}`);
     }
 
     return value;

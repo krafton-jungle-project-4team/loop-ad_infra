@@ -29,7 +29,7 @@ flowchart TB
 
     subgraph DevStack["LoopAdDevStack - 상시 개발"]
         Vpc["dev-loop-ad-vpc<br/>public subnet, private subnet"]
-        VpcEndpoints["VPC endpoint<br/>ECR, Logs, SSM, Secrets, ECS"]
+        VpcEndpoints["VPC endpoint<br/>ECR, Logs, SSM, ECS"]
         Ecr["ECR repository<br/>애플리케이션 이미지 5개"]
         DevAlb["ALB<br/>Ad Decision / Dashboard API 경로"]
         DevNlb["NLB<br/>Event Collector 수집"]

@@ -40,7 +40,7 @@ export class LoopAdDevStack extends Stack {
         const privateSubnets = vpc.selectSubnets({ subnetGroupName: 'private' });
 
         // private AWS API endpoint는 하나의 SG를 공유합니다. 이미지 pull, 로그,
-        // SSM, Secrets Manager, ECS control-plane 트래픽을 VPC 내부에 둡니다.
+        // SSM, ECS control-plane 트래픽을 VPC 내부에 둡니다.
         const endpointSecurityGroup = new ec2.SecurityGroup(this, 'VpcEndpointSecurityGroup', {
             vpc,
             allowAllOutbound: false,
@@ -53,47 +53,25 @@ export class LoopAdDevStack extends Stack {
             subnets: [privateSubnets],
         });
 
-        // Interface endpoint는 ECS task가 AWS API에 접근하는 private 경로입니다.
-        vpc.addInterfaceEndpoint('EcrApiEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECR,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('EcrDockerEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('CloudWatchLogsEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('SecretsManagerEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('SsmEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.SSM,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('EcsEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECS,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('EcsAgentEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECS_AGENT,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
-        vpc.addInterfaceEndpoint('EcsTelemetryEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY,
-            securityGroups: [endpointSecurityGroup],
-            subnets: privateSubnets,
-        });
+        // NAT Gateway를 기본으로 끄기 때문에 private ECS가 쓰는 AWS API endpoint를 명시합니다.
+        // Secrets Manager endpoint는 실제 secret 연결 전까지 만들지 않습니다.
+        const interfaceEndpoints = [
+            { id: 'EcrApiEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECR },
+            { id: 'EcrDockerEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER },
+            { id: 'CloudWatchLogsEndpoint', service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS },
+            { id: 'SsmEndpoint', service: ec2.InterfaceVpcEndpointAwsService.SSM },
+            { id: 'EcsEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS },
+            { id: 'EcsAgentEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS_AGENT },
+            { id: 'EcsTelemetryEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY },
+        ] as const;
+
+        for (const endpoint of interfaceEndpoints) {
+            vpc.addInterfaceEndpoint(endpoint.id, {
+                service: endpoint.service,
+                securityGroups: [endpointSecurityGroup],
+                subnets: privateSubnets,
+            });
+        }
 
         // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
@@ -151,59 +129,57 @@ export class LoopAdDevStack extends Stack {
 
         // ECR repository는 Dev가 소유합니다. Perf는 임시 image storage를 만들지 않고
         // 이 repository들을 재사용합니다.
-        const eventCollectorRepository = new ecr.Repository(this, 'EventCollectorRepository', {
-            repositoryName: 'loopad/event-collector',
+        const [
+            eventCollectorRepository,
+            projectorRepository,
+            decisionRepository,
+            dashboardRepository,
+            recommendationRepository,
+        ] = [
+            { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
+            { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
+            { id: 'AdDecisionApiRepository', repositoryName: 'loop-ad/ad-decision-api' },
+            { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api' },
+            { id: 'RecommendationRepository', repositoryName: 'loop-ad/recommendation' },
+        ].map((repository) => new ecr.Repository(this, repository.id, {
+            repositoryName: repository.repositoryName,
             imageScanOnPush: true,
             lifecycleRules: [{ maxImageCount: 20 }],
             removalPolicy: RemovalPolicy.RETAIN,
-        });
-        const projectorRepository = new ecr.Repository(this, 'AdContextProjectorRepository', {
-            repositoryName: 'loopad/ad-context-projector',
-            imageScanOnPush: true,
-            lifecycleRules: [{ maxImageCount: 20 }],
-            removalPolicy: RemovalPolicy.RETAIN,
-        });
-        const decisionRepository = new ecr.Repository(this, 'AdDecisionApiRepository', {
-            repositoryName: 'loopad/ad-decision-api',
-            imageScanOnPush: true,
-            lifecycleRules: [{ maxImageCount: 20 }],
-            removalPolicy: RemovalPolicy.RETAIN,
-        });
-        const dashboardRepository = new ecr.Repository(this, 'DashboardApiRepository', {
-            repositoryName: 'loopad/dashboard-api',
-            imageScanOnPush: true,
-            lifecycleRules: [{ maxImageCount: 20 }],
-            removalPolicy: RemovalPolicy.RETAIN,
-        });
-        const recommendationRepository = new ecr.Repository(this, 'RecommendationRepository', {
-            repositoryName: 'loopad/recommendation',
-            imageScanOnPush: true,
-            lifecycleRules: [{ maxImageCount: 20 }],
-            removalPolicy: RemovalPolicy.RETAIN,
-        });
+        }));
 
         // endpoint contract는 SSM에 둡니다. 실제 datasource는 task definition을
         // 바꾸지 않고도 나중에 교체할 수 있습니다.
-        const auroraEndpoint = new ssm.StringParameter(this, 'AuroraEndpointParameter', {
-            parameterName: '/loop-ad/dev/aurora/endpoint',
-            stringValue: 'pending://dev/aurora',
-            description: 'Dev Aurora PostgreSQL endpoint contract.',
-        });
-        const redisEndpoint = new ssm.StringParameter(this, 'RedisEndpointParameter', {
-            parameterName: '/loop-ad/dev/redis/endpoint',
-            stringValue: 'pending://dev/redis',
-            description: 'Dev Redis endpoint contract.',
-        });
-        const clickhouseEndpoint = new ssm.StringParameter(this, 'ClickHouseEndpointParameter', {
-            parameterName: '/loop-ad/dev/clickhouse/endpoint',
-            stringValue: 'pending://dev/clickhouse',
-            description: 'Dev ClickHouse endpoint contract.',
-        });
-        const mskEndpoint = new ssm.StringParameter(this, 'MskEndpointParameter', {
-            parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
-            stringValue: 'pending://dev/msk',
-            description: 'Dev MSK bootstrap broker contract.',
-        });
+        const [auroraEndpoint, redisEndpoint, clickhouseEndpoint, mskEndpoint] = [
+            {
+                id: 'AuroraEndpointParameter',
+                parameterName: '/loop-ad/dev/aurora/endpoint',
+                stringValue: 'pending://dev/aurora',
+                description: 'Dev Aurora PostgreSQL endpoint contract.',
+            },
+            {
+                id: 'RedisEndpointParameter',
+                parameterName: '/loop-ad/dev/redis/endpoint',
+                stringValue: 'pending://dev/redis',
+                description: 'Dev Redis endpoint contract.',
+            },
+            {
+                id: 'ClickHouseEndpointParameter',
+                parameterName: '/loop-ad/dev/clickhouse/endpoint',
+                stringValue: 'pending://dev/clickhouse',
+                description: 'Dev ClickHouse endpoint contract.',
+            },
+            {
+                id: 'MskEndpointParameter',
+                parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
+                stringValue: 'pending://dev/msk',
+                description: 'Dev MSK bootstrap broker contract.',
+            },
+        ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
+            parameterName: parameter.parameterName,
+            stringValue: parameter.stringValue,
+            description: parameter.description,
+        }));
 
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
@@ -515,34 +491,48 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Perf는 이 output들을 import해서 같은 VPC 안에 임시 서버를 만듭니다.
-        new cdk.CfnOutput(this, 'VpcId', {
-            value: vpc.vpcId,
-            exportName: 'loop-ad-dev-vpc-id',
-        });
-        new cdk.CfnOutput(this, 'VpcAvailabilityZones', {
-            value: cdk.Fn.join(',', vpc.availabilityZones),
-            exportName: 'loop-ad-dev-vpc-availability-zones',
-        });
-        new cdk.CfnOutput(this, 'PublicSubnetIds', {
-            value: cdk.Fn.join(',', vpc.publicSubnets.map((subnet) => subnet.subnetId)),
-            exportName: 'loop-ad-dev-public-subnet-ids',
-        });
-        new cdk.CfnOutput(this, 'PublicSubnetRouteTableIds', {
-            value: cdk.Fn.join(',', vpc.publicSubnets.map((subnet) => subnet.routeTable.routeTableId)),
-            exportName: 'loop-ad-dev-public-subnet-route-table-ids',
-        });
-        new cdk.CfnOutput(this, 'PrivateSubnetIds', {
-            value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.subnetId)),
-            exportName: 'loop-ad-dev-private-subnet-ids',
-        });
-        new cdk.CfnOutput(this, 'PrivateSubnetRouteTableIds', {
-            value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
-            exportName: 'loop-ad-dev-private-subnet-route-table-ids',
-        });
-        new cdk.CfnOutput(this, 'EndpointSecurityGroupId', {
-            value: endpointSecurityGroup.securityGroupId,
-            exportName: 'loop-ad-dev-vpc-endpoint-security-group-id',
-        });
+        for (const output of [
+            {
+                id: 'VpcId',
+                value: vpc.vpcId,
+                exportName: 'loop-ad-dev-vpc-id',
+            },
+            {
+                id: 'VpcAvailabilityZones',
+                value: cdk.Fn.join(',', vpc.availabilityZones),
+                exportName: 'loop-ad-dev-vpc-availability-zones',
+            },
+            {
+                id: 'PublicSubnetIds',
+                value: cdk.Fn.join(',', vpc.publicSubnets.map((subnet) => subnet.subnetId)),
+                exportName: 'loop-ad-dev-public-subnet-ids',
+            },
+            {
+                id: 'PublicSubnetRouteTableIds',
+                value: cdk.Fn.join(',', vpc.publicSubnets.map((subnet) => subnet.routeTable.routeTableId)),
+                exportName: 'loop-ad-dev-public-subnet-route-table-ids',
+            },
+            {
+                id: 'PrivateSubnetIds',
+                value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.subnetId)),
+                exportName: 'loop-ad-dev-private-subnet-ids',
+            },
+            {
+                id: 'PrivateSubnetRouteTableIds',
+                value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
+                exportName: 'loop-ad-dev-private-subnet-route-table-ids',
+            },
+            {
+                id: 'EndpointSecurityGroupId',
+                value: endpointSecurityGroup.securityGroupId,
+                exportName: 'loop-ad-dev-vpc-endpoint-security-group-id',
+            },
+        ] as const) {
+            new cdk.CfnOutput(this, output.id, {
+                value: output.value,
+                exportName: output.exportName,
+            });
+        }
     }
 }
 
@@ -567,29 +557,41 @@ export class LoopAdPerfStack extends Stack {
             isolatedSubnetIds: [],
         });
         const publicSubnets = [
-            ec2.Subnet.fromSubnetAttributes(this, 'PublicSubnet1', {
+            {
+                id: 'PublicSubnet1',
                 subnetId: publicSubnetIds[0],
                 availabilityZone: availabilityZones[0],
                 routeTableId: publicSubnetRouteTableIds[0],
-            }),
-            ec2.Subnet.fromSubnetAttributes(this, 'PublicSubnet2', {
+            },
+            {
+                id: 'PublicSubnet2',
                 subnetId: publicSubnetIds[1],
                 availabilityZone: availabilityZones[1],
                 routeTableId: publicSubnetRouteTableIds[1],
-            }),
-        ];
+            },
+        ].map((subnet) => ec2.Subnet.fromSubnetAttributes(this, subnet.id, {
+            subnetId: subnet.subnetId,
+            availabilityZone: subnet.availabilityZone,
+            routeTableId: subnet.routeTableId,
+        }));
         const privateSubnets = [
-            ec2.Subnet.fromSubnetAttributes(this, 'PrivateSubnet1', {
+            {
+                id: 'PrivateSubnet1',
                 subnetId: privateSubnetIds[0],
                 availabilityZone: availabilityZones[0],
                 routeTableId: privateSubnetRouteTableIds[0],
-            }),
-            ec2.Subnet.fromSubnetAttributes(this, 'PrivateSubnet2', {
+            },
+            {
+                id: 'PrivateSubnet2',
                 subnetId: privateSubnetIds[1],
                 availabilityZone: availabilityZones[1],
                 routeTableId: privateSubnetRouteTableIds[1],
-            }),
-        ];
+            },
+        ].map((subnet) => ec2.Subnet.fromSubnetAttributes(this, subnet.id, {
+            subnetId: subnet.subnetId,
+            availabilityZone: subnet.availabilityZone,
+            routeTableId: subnet.routeTableId,
+        }));
 
         // Perf task가 private AWS API에 접근할 수 있도록 dev endpoint SG를 재사용합니다.
         const endpointSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
@@ -656,33 +658,40 @@ export class LoopAdPerfStack extends Stack {
         endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may use VPC endpoints.');
 
         // Perf는 storage를 만들지 않고 dev가 소유한 image repository를 재사용합니다.
-        const eventCollectorRepository = ecr.Repository.fromRepositoryName(
+        const [eventCollectorRepository, projectorRepository] = [
+            { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
+            { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
+        ].map((repository) => ecr.Repository.fromRepositoryName(
             this,
-            'EventCollectorRepository',
-            'loopad/event-collector',
-        );
-        const projectorRepository = ecr.Repository.fromRepositoryName(
-            this,
-            'AdContextProjectorRepository',
-            'loopad/ad-context-projector',
-        );
+            repository.id,
+            repository.repositoryName,
+        ));
 
         // Perf endpoint contract는 분리해서 테스트가 별도 data path를 쓰게 합니다.
-        const redisEndpoint = new ssm.StringParameter(this, 'RedisEndpointParameter', {
-            parameterName: '/loop-ad/perf/redis/endpoint',
-            stringValue: 'pending://perf/redis',
-            description: 'Perf Redis endpoint contract.',
-        });
-        const clickhouseEndpoint = new ssm.StringParameter(this, 'ClickHouseEndpointParameter', {
-            parameterName: '/loop-ad/perf/clickhouse/endpoint',
-            stringValue: 'pending://perf/clickhouse',
-            description: 'Perf ClickHouse endpoint contract.',
-        });
-        const mskEndpoint = new ssm.StringParameter(this, 'MskEndpointParameter', {
-            parameterName: '/loop-ad/perf/msk/bootstrap-brokers',
-            stringValue: 'pending://perf/msk',
-            description: 'Perf MSK bootstrap broker contract.',
-        });
+        const [redisEndpoint, clickhouseEndpoint, mskEndpoint] = [
+            {
+                id: 'RedisEndpointParameter',
+                parameterName: '/loop-ad/perf/redis/endpoint',
+                stringValue: 'pending://perf/redis',
+                description: 'Perf Redis endpoint contract.',
+            },
+            {
+                id: 'ClickHouseEndpointParameter',
+                parameterName: '/loop-ad/perf/clickhouse/endpoint',
+                stringValue: 'pending://perf/clickhouse',
+                description: 'Perf ClickHouse endpoint contract.',
+            },
+            {
+                id: 'MskEndpointParameter',
+                parameterName: '/loop-ad/perf/msk/bootstrap-brokers',
+                stringValue: 'pending://perf/msk',
+                description: 'Perf MSK bootstrap broker contract.',
+            },
+        ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
+            parameterName: parameter.parameterName,
+            stringValue: parameter.stringValue,
+            description: parameter.description,
+        }));
 
         // Perf는 ingestion 경로만 노출합니다. ALB, dashboard, API, frontend는 없습니다.
         const nlb = new elbv2.NetworkLoadBalancer(this, 'NetworkLoadBalancer', {

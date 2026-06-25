@@ -16,10 +16,10 @@ describe('loop-ad CDK stacks', () => {
         template.resourceCountIs('AWS::ECR::Repository', 5);
         template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::ECR::Repository', {
-            RepositoryName: 'loopad/event-collector',
+            RepositoryName: 'loop-ad/event-collector',
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
-            RepositoryName: 'loopad/dashboard-api',
+            RepositoryName: 'loop-ad/dashboard-api',
         });
         template.hasResourceProperties('AWS::ECS::Service', {
             ServiceName: 'dev-event-collector',

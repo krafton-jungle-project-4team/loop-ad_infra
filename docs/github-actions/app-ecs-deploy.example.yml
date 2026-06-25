@@ -16,7 +16,7 @@ jobs:
             aws_region: ap-northeast-2
             aws_role_arn: arn:aws:iam::123456789012:role/github-actions-loop-ad-dev
             service_name: event-collector
-            ecr_repository: loopad/event-collector
+            ecr_repository: loop-ad/event-collector
             ecs_cluster: dev-loop-ad-cluster
             ecs_service: dev-event-collector
             container_name: event-collector

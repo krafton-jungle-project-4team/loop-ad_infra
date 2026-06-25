@@ -1,0 +1,226 @@
+name: Reusable Frontend Deploy
+
+on:
+    workflow_call:
+        inputs:
+            environment:
+                description: GitHub environment name used for approval gates.
+                required: true
+                type: string
+            aws_region:
+                description: AWS region for S3 and CloudFront operations.
+                required: true
+                type: string
+            aws_role_arn:
+                description: IAM role ARN assumed through GitHub OIDC.
+                required: true
+                type: string
+            node_version:
+                description: Node.js version used to build the frontend.
+                required: true
+                type: string
+            working_directory:
+                description: Frontend project directory inside the caller repository.
+                required: true
+                type: string
+            install_command:
+                description: Dependency install command executed in the working directory.
+                required: true
+                type: string
+            build_command:
+                description: Build command executed in the working directory.
+                required: true
+                type: string
+            build_output_dir:
+                description: Build output directory relative to the working directory.
+                required: true
+                type: string
+            s3_bucket:
+                description: Target S3 bucket for static frontend assets.
+                required: true
+                type: string
+            s3_prefix:
+                description: Target S3 prefix, or . for the bucket root.
+                required: true
+                type: string
+            cloudfront_distribution_id:
+                description: CloudFront distribution ID to invalidate after upload.
+                required: true
+                type: string
+            cloudfront_invalidation_paths:
+                description: Space-separated CloudFront invalidation paths.
+                required: true
+                type: string
+            asset_cache_control:
+                description: Cache-Control header for static assets.
+                required: true
+                type: string
+            html_cache_control:
+                description: Cache-Control header for HTML entry files.
+                required: true
+                type: string
+        outputs:
+            s3_uri:
+                description: S3 URI that received the frontend build output.
+                value: ${{ jobs.deploy.outputs.s3_uri }}
+            cloudfront_invalidation_id:
+                description: CloudFront invalidation ID created for this deploy.
+                value: ${{ jobs.deploy.outputs.cloudfront_invalidation_id }}
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    deploy:
+        name: Build and deploy frontend
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment }}
+        concurrency:
+            group: frontend-${{ inputs.environment }}-${{ inputs.s3_bucket }}-${{ inputs.s3_prefix }}
+            cancel-in-progress: false
+        outputs:
+            s3_uri: ${{ steps.upload.outputs.s3_uri }}
+            cloudfront_invalidation_id: ${{ steps.invalidate.outputs.invalidation_id }}
+        steps:
+            - name: Checkout frontend repository
+              uses: actions/checkout@v4
+
+            - name: Validate required inputs
+              shell: bash
+              env:
+                  ENVIRONMENT: ${{ inputs.environment }}
+                  AWS_REGION: ${{ inputs.aws_region }}
+                  AWS_ROLE_ARN: ${{ inputs.aws_role_arn }}
+                  NODE_VERSION: ${{ inputs.node_version }}
+                  WORKING_DIRECTORY: ${{ inputs.working_directory }}
+                  INSTALL_COMMAND: ${{ inputs.install_command }}
+                  BUILD_COMMAND: ${{ inputs.build_command }}
+                  BUILD_OUTPUT_DIR: ${{ inputs.build_output_dir }}
+                  S3_BUCKET: ${{ inputs.s3_bucket }}
+                  S3_PREFIX: ${{ inputs.s3_prefix }}
+                  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id }}
+                  CLOUDFRONT_INVALIDATION_PATHS: ${{ inputs.cloudfront_invalidation_paths }}
+                  ASSET_CACHE_CONTROL: ${{ inputs.asset_cache_control }}
+                  HTML_CACHE_CONTROL: ${{ inputs.html_cache_control }}
+              run: |
+                  set -euo pipefail
+
+                  for input_name in \
+                      ENVIRONMENT \
+                      AWS_REGION \
+                      AWS_ROLE_ARN \
+                      NODE_VERSION \
+                      WORKING_DIRECTORY \
+                      INSTALL_COMMAND \
+                      BUILD_COMMAND \
+                      BUILD_OUTPUT_DIR \
+                      S3_BUCKET \
+                      S3_PREFIX \
+                      CLOUDFRONT_DISTRIBUTION_ID \
+                      CLOUDFRONT_INVALIDATION_PATHS \
+                      ASSET_CACHE_CONTROL \
+                      HTML_CACHE_CONTROL; do
+                      if [[ -z "${!input_name}" ]]; then
+                          echo "${input_name} input is required." >&2
+                          exit 1
+                      fi
+                  done
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node_version }}
+
+            - name: Install dependencies
+              shell: bash
+              working-directory: ${{ inputs.working_directory }}
+              env:
+                  INSTALL_COMMAND: ${{ inputs.install_command }}
+              run: |
+                  set -euo pipefail
+                  bash -lc "${INSTALL_COMMAND}"
+
+            - name: Build frontend
+              shell: bash
+              working-directory: ${{ inputs.working_directory }}
+              env:
+                  BUILD_COMMAND: ${{ inputs.build_command }}
+              run: |
+                  set -euo pipefail
+                  bash -lc "${BUILD_COMMAND}"
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ inputs.aws_role_arn }}
+                  aws-region: ${{ inputs.aws_region }}
+                  role-session-name: gha-frontend-${{ github.run_id }}
+
+            - name: Upload frontend assets to S3
+              id: upload
+              shell: bash
+              env:
+                  WORKING_DIRECTORY: ${{ inputs.working_directory }}
+                  BUILD_OUTPUT_DIR: ${{ inputs.build_output_dir }}
+                  S3_BUCKET: ${{ inputs.s3_bucket }}
+                  S3_PREFIX: ${{ inputs.s3_prefix }}
+                  ASSET_CACHE_CONTROL: ${{ inputs.asset_cache_control }}
+                  HTML_CACHE_CONTROL: ${{ inputs.html_cache_control }}
+              run: |
+                  set -euo pipefail
+
+                  source_dir="${WORKING_DIRECTORY}/${BUILD_OUTPUT_DIR}"
+                  if [[ ! -d "${source_dir}" ]]; then
+                      echo "Build output directory does not exist: ${source_dir}" >&2
+                      exit 1
+                  fi
+
+                  normalized_prefix="${S3_PREFIX#/}"
+                  normalized_prefix="${normalized_prefix%/}"
+                  if [[ "${normalized_prefix}" = "." ]]; then
+                      normalized_prefix=""
+                  fi
+
+                  destination="s3://${S3_BUCKET}"
+                  if [[ -n "${normalized_prefix}" ]]; then
+                      destination="${destination}/${normalized_prefix}"
+                  fi
+
+                  aws s3 sync "${source_dir}" "${destination}" \
+                      --delete \
+                      --cache-control "${ASSET_CACHE_CONTROL}"
+
+                  aws s3 cp "${source_dir}" "${destination}" \
+                      --recursive \
+                      --exclude "*" \
+                      --include "*.html" \
+                      --cache-control "${HTML_CACHE_CONTROL}" \
+                      --content-type "text/html"
+
+                  echo "s3_uri=${destination}" >> "${GITHUB_OUTPUT}"
+
+            - name: Invalidate CloudFront
+              id: invalidate
+              shell: bash
+              env:
+                  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id }}
+                  CLOUDFRONT_INVALIDATION_PATHS: ${{ inputs.cloudfront_invalidation_paths }}
+              run: |
+                  set -euo pipefail
+
+                  read -r -a invalidation_paths <<< "${CLOUDFRONT_INVALIDATION_PATHS}"
+                  if [[ "${#invalidation_paths[@]}" -eq 0 ]]; then
+                      echo "CLOUDFRONT_INVALIDATION_PATHS input is required." >&2
+                      exit 1
+                  fi
+
+                  invalidation_id="$(
+                      aws cloudfront create-invalidation \
+                          --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+                          --paths "${invalidation_paths[@]}" \
+                          --query 'Invalidation.Id' \
+                          --output text
+                  )"
+
+                  echo "invalidation_id=${invalidation_id}" >> "${GITHUB_OUTPUT}"

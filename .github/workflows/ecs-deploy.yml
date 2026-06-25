@@ -162,6 +162,11 @@ jobs:
                           --output text
                   )"
 
+                  if [ -z "${task_definition_arn}" ] || [ "${task_definition_arn}" = "None" ]; then
+                      echo "Unable to resolve task definition for ${ECS_CLUSTER}/${ECS_SERVICE}" >&2
+                      exit 1
+                  fi
+
                   aws ecs describe-task-definition \
                       --task-definition "${task_definition_arn}" \
                       --query taskDefinition \

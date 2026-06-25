@@ -1,0 +1,28 @@
+name: Deploy Dashboard Web
+
+on:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    deploy:
+        uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/frontend-deploy.yml@v1
+        with:
+            environment: dev
+            aws_region: ap-northeast-2
+            aws_role_arn: arn:aws:iam::123456789012:role/github-actions-loop-ad-dev
+            node_version: '20'
+            working_directory: .
+            install_command: npm ci
+            build_command: npm run build
+            build_output_dir: dist
+            s3_bucket: loop-ad-dev-dashboard-web
+            s3_prefix: .
+            cloudfront_distribution_id: E1234567890ABC
+            cloudfront_invalidation_paths: '/*'
+            asset_cache_control: 'public,max-age=31536000,immutable'
+            html_cache_control: 'no-cache,no-store,must-revalidate'

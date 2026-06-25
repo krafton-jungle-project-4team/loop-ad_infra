@@ -11,10 +11,13 @@ import * as cdk from 'aws-cdk-lib';
 
 export const LOOP_AD_REGION = 'ap-northeast-2';
 
+// 상시 개발 스택입니다. 공유 VPC와 항상 떠 있는 개발 서버를 소유합니다.
 export class LoopAdDevStack extends Stack {
     public constructor(scope: Construct, id: string, props: StackProps & { readonly enableNatGateway: boolean }) {
         super(scope, id, props);
 
+        // Dev가 유일한 VPC를 만듭니다. Perf는 나중에 이 VPC를 import하므로
+        // 네트워크 경계는 단순하게 유지하면서 서버들은 분리됩니다.
         const vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             maxAzs: 2,
@@ -33,19 +36,24 @@ export class LoopAdDevStack extends Stack {
             ],
         });
 
+        // 모든 ECS 서비스는 private subnet 그룹에서 실행됩니다.
         const privateSubnets = vpc.selectSubnets({ subnetGroupName: 'private' });
 
+        // private AWS API endpoint는 하나의 SG를 공유합니다. 이미지 pull, 로그,
+        // SSM, Secrets Manager, ECS control-plane 트래픽을 VPC 내부에 둡니다.
         const endpointSecurityGroup = new ec2.SecurityGroup(this, 'VpcEndpointSecurityGroup', {
             vpc,
             allowAllOutbound: false,
             description: 'Private AWS API endpoint SG.',
         });
 
+        // S3는 route table 기반이므로 gateway endpoint를 사용합니다.
         vpc.addGatewayEndpoint('S3GatewayEndpoint', {
             service: ec2.GatewayVpcEndpointAwsService.S3,
             subnets: [privateSubnets],
         });
 
+        // Interface endpoint는 ECS task가 AWS API에 접근하는 private 경로입니다.
         vpc.addInterfaceEndpoint('EcrApiEndpoint', {
             service: ec2.InterfaceVpcEndpointAwsService.ECR,
             securityGroups: [endpointSecurityGroup],
@@ -87,6 +95,7 @@ export class LoopAdDevStack extends Stack {
             subnets: privateSubnets,
         });
 
+        // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
             clusterName: 'dev-loop-ad-cluster',
@@ -96,6 +105,8 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
+        // public ingress는 load balancer 종류별로 나누고, private 서비스는
+        // stack을 읽기 쉽게 유지하기 위해 넓은 내부 SG를 공유합니다.
         const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
             vpc,
             allowAllOutbound: false,
@@ -117,8 +128,11 @@ export class LoopAdDevStack extends Stack {
             description: 'Dev datasource SG shared by internal data endpoints.',
         });
 
+        // 인터넷 트래픽은 public load balancer만 받습니다.
         albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
         nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
+
+        // VPC 내부에서는 SG 경계를 기준으로 server와 datasource가 서로 신뢰합니다.
         albSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
         nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
         serverSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
@@ -131,9 +145,12 @@ export class LoopAdDevStack extends Stack {
         endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may use VPC endpoints.');
 
         if (props.enableNatGateway) {
+            // NAT는 선택 사항입니다. 켜면 모든 dev server가 HTTPS egress를 공유합니다.
             serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
         }
 
+        // ECR repository는 Dev가 소유합니다. Perf는 임시 image storage를 만들지 않고
+        // 이 repository들을 재사용합니다.
         const eventCollectorRepository = new ecr.Repository(this, 'EventCollectorRepository', {
             repositoryName: 'loopad/event-collector',
             imageScanOnPush: true,
@@ -165,6 +182,8 @@ export class LoopAdDevStack extends Stack {
             removalPolicy: RemovalPolicy.RETAIN,
         });
 
+        // endpoint contract는 SSM에 둡니다. 실제 datasource는 task definition을
+        // 바꾸지 않고도 나중에 교체할 수 있습니다.
         const auroraEndpoint = new ssm.StringParameter(this, 'AuroraEndpointParameter', {
             parameterName: '/loop-ad/dev/aurora/endpoint',
             stringValue: 'pending://dev/aurora',
@@ -186,6 +205,7 @@ export class LoopAdDevStack extends Stack {
             description: 'Dev MSK bootstrap broker contract.',
         });
 
+        // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
             vpc,
             internetFacing: true,
@@ -208,6 +228,7 @@ export class LoopAdDevStack extends Stack {
             vpcSubnets: { subnetGroupName: 'public' },
         });
 
+        // Event Collector는 NLB 트래픽을 받고 event를 MSK로 발행합니다.
         const eventCollectorTask = new ecs.FargateTaskDefinition(this, 'EventCollectorTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -254,6 +275,7 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: 70,
         });
 
+        // NLB는 TCP 80 포트를 collector service로 직접 전달합니다.
         const nlbListener = nlb.addListener('EventCollectorListener', {
             port: 80,
             protocol: elbv2.Protocol.TCP,
@@ -268,6 +290,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
+        // Projector는 MSK를 consume하고 가공된 context를 Redis/ClickHouse에 씁니다.
         const projectorTask = new ecs.FargateTaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -317,6 +340,7 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: 70,
         });
 
+        // Decision API는 ALB를 통해 public 광고 결정 경로를 제공합니다.
         const decisionTask = new ecs.FargateTaskDefinition(this, 'AdDecisionApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -377,6 +401,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
+        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Recommendation을 호출합니다.
         const dashboardTask = new ecs.FargateTaskDefinition(this, 'DashboardApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -440,6 +465,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
+        // Recommendation은 private 전용이며 public ALB에 연결하지 않습니다.
         const recommendationTask = new ecs.FargateTaskDefinition(this, 'RecommendationTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -488,6 +514,7 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: 70,
         });
 
+        // Perf는 이 output들을 import해서 같은 VPC 안에 임시 서버를 만듭니다.
         new cdk.CfnOutput(this, 'VpcId', {
             value: vpc.vpcId,
             exportName: 'loop-ad-dev-vpc-id',
@@ -519,10 +546,14 @@ export class LoopAdDevStack extends Stack {
     }
 }
 
+// 임시 성능 테스트 스택입니다. dev VPC를 import하지만 자체
+// cluster, load balancer, service, perf endpoint contract를 따로 만듭니다.
 export class LoopAdPerfStack extends Stack {
     public constructor(scope: Construct, id: string, props: StackProps) {
         super(scope, id, props);
 
+        // Dev에서 VPC 형태만 import합니다. perf server는 분리하면서
+        // 별도 VPC와 subnet layout은 만들지 않습니다.
         const availabilityZones = cdk.Fn.importListValue('loop-ad-dev-vpc-availability-zones', 2);
         const publicSubnetIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-ids', 2);
         const publicSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-route-table-ids', 2);
@@ -560,6 +591,7 @@ export class LoopAdPerfStack extends Stack {
             }),
         ];
 
+        // Perf task가 private AWS API에 접근할 수 있도록 dev endpoint SG를 재사용합니다.
         const endpointSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
             this,
             'VpcEndpointSecurityGroup',
@@ -569,6 +601,7 @@ export class LoopAdPerfStack extends Stack {
             },
         );
 
+        // 별도 perf cluster를 만들어 test capacity가 dev와 분리되어 보이게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
             clusterName: 'perf-loop-ad-cluster',
@@ -578,6 +611,7 @@ export class LoopAdPerfStack extends Stack {
             },
         });
 
+        // Perf는 ECS on EC2를 사용해서 임시 capacity를 0까지 줄일 수 있게 합니다.
         const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'EcsEc2AutoScalingGroup', {
             vpc,
             vpcSubnets: { subnets: privateSubnets },
@@ -593,6 +627,7 @@ export class LoopAdPerfStack extends Stack {
         });
         cluster.addAsgCapacityProvider(capacityProvider);
 
+        // Perf도 같은 SG 모델을 씁니다: public NLB, shared server, datasource.
         const nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
             vpc,
             allowAllOutbound: false,
@@ -609,6 +644,7 @@ export class LoopAdPerfStack extends Stack {
             description: 'Perf datasource SG shared by internal data endpoints.',
         });
 
+        // 인터넷은 perf NLB까지만 접근할 수 있고 이후 트래픽은 내부 통신입니다.
         nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to perf NLB.');
         nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach perf servers.');
         serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter perf servers.');
@@ -619,6 +655,7 @@ export class LoopAdPerfStack extends Stack {
         serverSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call private AWS APIs.');
         endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may use VPC endpoints.');
 
+        // Perf는 storage를 만들지 않고 dev가 소유한 image repository를 재사용합니다.
         const eventCollectorRepository = ecr.Repository.fromRepositoryName(
             this,
             'EventCollectorRepository',
@@ -630,6 +667,7 @@ export class LoopAdPerfStack extends Stack {
             'loopad/ad-context-projector',
         );
 
+        // Perf endpoint contract는 분리해서 테스트가 별도 data path를 쓰게 합니다.
         const redisEndpoint = new ssm.StringParameter(this, 'RedisEndpointParameter', {
             parameterName: '/loop-ad/perf/redis/endpoint',
             stringValue: 'pending://perf/redis',
@@ -646,6 +684,7 @@ export class LoopAdPerfStack extends Stack {
             description: 'Perf MSK bootstrap broker contract.',
         });
 
+        // Perf는 ingestion 경로만 노출합니다. ALB, dashboard, API, frontend는 없습니다.
         const nlb = new elbv2.NetworkLoadBalancer(this, 'NetworkLoadBalancer', {
             vpc,
             internetFacing: true,
@@ -653,6 +692,7 @@ export class LoopAdPerfStack extends Stack {
             vpcSubnets: { subnets: publicSubnets },
         });
 
+        // Perf Event Collector는 dev collector와 유사하지만 ECS EC2에서 실행됩니다.
         const eventCollectorTask = new ecs.Ec2TaskDefinition(this, 'EventCollectorTaskDefinition', {
             networkMode: ecs.NetworkMode.AWS_VPC,
         });
@@ -713,6 +753,7 @@ export class LoopAdPerfStack extends Stack {
             },
         });
 
+        // Perf Projector는 마지막 perf service이며 ClickHouse 수집까지 테스트합니다.
         const projectorTask = new ecs.Ec2TaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             networkMode: ecs.NetworkMode.AWS_VPC,
         });

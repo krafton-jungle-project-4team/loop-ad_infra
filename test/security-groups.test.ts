@@ -37,7 +37,7 @@ describe('security group policy', () => {
 
     it('dev and perf use shared internal security groups with broad internal traffic', () => {
         for (const { stack, securityGroupCount } of [
-            { stack: synthDev(), securityGroupCount: 5 },
+            { stack: synthDev(), securityGroupCount: 4 },
             { stack: synthPerf(), securityGroupCount: 4 },
         ]) {
             const template = Template.fromStack(stack);
@@ -98,7 +98,6 @@ function synthDev(): LoopAdDevStack {
             account: '123456789012',
             region: LOOP_AD_REGION,
         },
-        enableNatGateway: false,
         publicHostedZone: testPublicHostedZone,
     });
 }

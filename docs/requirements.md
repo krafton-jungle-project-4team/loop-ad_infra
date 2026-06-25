@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, VPC Endpoint, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
 - 리전: `ap-northeast-2`
 
@@ -15,16 +15,31 @@
 상시 개발용 스택이다.
 
 - 한 VPC를 소유한다.
+- 월 비용 목표는 기본 `$300` 이내로 둔다.
+- AWS Budget으로 월간 비용 목표를 명시한다.
+- Budget은 지출을 자동 차단하지 않으므로, ECS task 수와 EC2 capacity 수치로 실제 확장 상한을 둔다.
+- 외부 SaaS/API 연동을 위해 NAT Gateway가 있는 private subnet에서 실행한다.
+- ECR, CloudWatch Logs, SSM, ECS Interface Endpoint는 만들지 않고 NAT Gateway를 통해 public AWS API를 호출한다.
+- S3 Gateway Endpoint는 유지해서 S3/ECR layer 트래픽을 NAT data processing으로 보내지 않는다.
 - Event Collector, Ad Context Projector, Ad Decision API, Dashboard API, Recommendation을 ECS Fargate로 실행한다.
+- 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Ad Decision API와 Dashboard API는 ALB path rule에만 붙인다.
-- Aurora, Redis, ClickHouse, MSK는 SSM endpoint contract로 표현한다.
+- Aurora, Redis, ClickHouse, MSK는 SSM endpoint contract로 연결한다.
+- Aurora PostgreSQL은 Serverless v2 `16.13`, `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
+- ClickHouse는 EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
+- MSK는 provisioned `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
+- MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
+- Redis provision 방식은 별도 결정 전까지 endpoint contract만 유지한다.
+- 앱 인프라와 ClickHouse, Aurora, MSK를 합산했을 때 Aurora가 idle 시간대에 auto-pause되는 조건으로 월 `$300` 안쪽을 목표로 한다.
 
 ### Perf
 
 성능 테스트용 임시 스택이다.
 
-- Dev 스택이 export한 VPC/subnet/endpoint SG를 import해서 같은 VPC 안에 뜬다.
+- Dev 스택이 export한 VPC/public subnet을 import해서 같은 VPC 안에 뜬다.
+- NAT Gateway를 사용하지 않고 public subnet에서만 실행한다.
+- ECS on EC2 capacity는 최대 2대, 각 서비스 task도 최대 2개로 제한한다.
 - 성능 테스트가 끝나면 이 스택만 destroy할 수 있어야 한다.
 - Event Collector와 Ad Context Projector만 둔다.
 - ECS on EC2 capacity provider를 사용한다.

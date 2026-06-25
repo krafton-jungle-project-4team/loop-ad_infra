@@ -1,10 +1,15 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as cr from 'aws-cdk-lib/custom-resources';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as msk from 'aws-cdk-lib/aws-msk';
+import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -12,6 +17,23 @@ import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 
 export const LOOP_AD_REGION = 'ap-northeast-2';
+export const LOOP_AD_MONTHLY_COST_TARGET_USD = 300;
+
+const DEV_SERVICE_DESIRED_TASKS = 1;
+const DEV_SERVICE_MIN_TASKS = 1;
+const DEV_SERVICE_MAX_TASKS = 2;
+const PERF_SERVICE_DESIRED_TASKS = 1;
+const PERF_SERVICE_MIN_TASKS = 0;
+const PERF_SERVICE_MAX_TASKS = 2;
+const PERF_EC2_MIN_INSTANCES = 0;
+const PERF_EC2_MAX_INSTANCES = 2;
+const SERVICE_CPU_SCALE_TARGET_PERCENT = 70;
+const DEV_AURORA_MIN_ACU = 0;
+const DEV_AURORA_MAX_ACU = 2;
+const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
+const DEV_CLICKHOUSE_VOLUME_GIB = 50;
+const DEV_MSK_BROKER_COUNT = 2;
+const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -19,7 +41,6 @@ export interface PublicHostedZoneConfig {
 }
 
 export interface LoopAdDevStackProps extends StackProps {
-    readonly enableNatGateway: boolean;
     readonly publicHostedZone: PublicHostedZoneConfig;
 }
 
@@ -32,12 +53,12 @@ export class LoopAdDevStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdDevStackProps) {
         super(scope, id, props);
 
-        // Dev가 유일한 VPC를 만듭니다. Perf는 나중에 이 VPC를 import하므로
-        // 네트워크 경계는 단순하게 유지하면서 서버들은 분리됩니다.
+        // Dev가 유일한 VPC를 만듭니다. Dev server는 NAT가 있는 private subnet을 쓰고,
+        // Perf server는 NAT 없이 public subnet만 import해서 사용합니다.
         const vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             maxAzs: 2,
-            natGateways: props.enableNatGateway ? 1 : 0,
+            natGateways: 1,
             subnetConfiguration: [
                 {
                     name: 'public',
@@ -55,39 +76,25 @@ export class LoopAdDevStack extends Stack {
         // 모든 ECS 서비스는 private subnet 그룹에서 실행됩니다.
         const privateSubnets = vpc.selectSubnets({ subnetGroupName: 'private' });
 
-        // private AWS API endpoint는 하나의 SG를 공유합니다. 이미지 pull, 로그,
-        // SSM, ECS control-plane 트래픽을 VPC 내부에 둡니다.
-        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'VpcEndpointSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Private AWS API endpoint SG.',
+        // 비용 guardrail입니다. AWS Budget은 지출을 차단하지는 않지만 월간 목표를 계정에 명시합니다.
+        new budgets.CfnBudget(this, 'MonthlyCostBudget', {
+            budget: {
+                budgetName: 'loop-ad-monthly-cost-target',
+                budgetLimit: {
+                    amount: LOOP_AD_MONTHLY_COST_TARGET_USD,
+                    unit: 'USD',
+                },
+                budgetType: 'COST',
+                timeUnit: 'MONTHLY',
+            },
         });
 
-        // S3는 route table 기반이므로 gateway endpoint를 사용합니다.
+        // S3 Gateway Endpoint는 hourly 비용 없이 route table에 붙습니다.
+        // ECR layer 다운로드와 S3 접근 비용을 NAT data processing으로 보내지 않기 위해 유지합니다.
         vpc.addGatewayEndpoint('S3GatewayEndpoint', {
             service: ec2.GatewayVpcEndpointAwsService.S3,
             subnets: [privateSubnets],
         });
-
-        // NAT Gateway를 기본으로 끄기 때문에 private ECS가 쓰는 AWS API endpoint를 명시합니다.
-        // Secrets Manager endpoint는 실제 secret 연결 전까지 만들지 않습니다.
-        const interfaceEndpoints = [
-            { id: 'EcrApiEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECR },
-            { id: 'EcrDockerEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER },
-            { id: 'CloudWatchLogsEndpoint', service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS },
-            { id: 'SsmEndpoint', service: ec2.InterfaceVpcEndpointAwsService.SSM },
-            { id: 'EcsEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS },
-            { id: 'EcsAgentEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS_AGENT },
-            { id: 'EcsTelemetryEndpoint', service: ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY },
-        ] as const;
-
-        for (const endpoint of interfaceEndpoints) {
-            vpc.addInterfaceEndpoint(endpoint.id, {
-                service: endpoint.service,
-                securityGroups: [endpointSecurityGroup],
-                subnets: privateSubnets,
-            });
-        }
 
         // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
@@ -135,13 +142,11 @@ export class LoopAdDevStack extends Stack {
         serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
         serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal datasources.');
         dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal datasources.');
-        serverSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call private AWS APIs.');
-        endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may use VPC endpoints.');
 
-        if (props.enableNatGateway) {
-            // NAT는 선택 사항입니다. 켜면 모든 dev server가 HTTPS egress를 공유합니다.
-            serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        }
+        // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
+        serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
+        // ClickHouse bootstrap과 datasource 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
+        dataSourceSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev datasources may use external HTTPS through NAT.');
 
         // ECR repository는 Dev가 소유합니다. Perf는 임시 image storage를 만들지 않고
         // 이 repository들을 재사용합니다.
@@ -164,13 +169,115 @@ export class LoopAdDevStack extends Stack {
             removalPolicy: RemovalPolicy.RETAIN,
         }));
 
-        // endpoint contract는 SSM에 둡니다. 실제 datasource는 task definition을
-        // 바꾸지 않고도 나중에 교체할 수 있습니다.
+        // 비용을 낮게 유지하는 개발용 datasource입니다.
+        const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
+            clusterIdentifier: 'dev-loop-ad-aurora-postgres',
+            engine: rds.DatabaseClusterEngine.auroraPostgres({
+                version: rds.AuroraPostgresEngineVersion.VER_16_13,
+            }),
+            writer: rds.ClusterInstance.serverlessV2('writer'),
+            serverlessV2MinCapacity: DEV_AURORA_MIN_ACU,
+            serverlessV2MaxCapacity: DEV_AURORA_MAX_ACU,
+            serverlessV2AutoPauseDuration: Duration.minutes(DEV_AURORA_AUTO_PAUSE_MINUTES),
+            defaultDatabaseName: 'loopad',
+            vpc,
+            vpcSubnets: privateSubnets,
+            securityGroups: [dataSourceSecurityGroup],
+            backup: {
+                retention: Duration.days(1),
+            },
+            deletionProtection: false,
+            removalPolicy: RemovalPolicy.SNAPSHOT,
+        });
+
+        const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
+            vpc,
+            vpcSubnets: privateSubnets,
+            securityGroup: dataSourceSecurityGroup,
+            instanceName: 'dev-loop-ad-clickhouse',
+            instanceType: new ec2.InstanceType('t4g.small'),
+            machineImage: ec2.MachineImage.latestAmazonLinux2023({
+                cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+            }),
+            blockDevices: [
+                {
+                    deviceName: '/dev/xvda',
+                    volume: ec2.BlockDeviceVolume.ebs(DEV_CLICKHOUSE_VOLUME_GIB, {
+                        encrypted: true,
+                        volumeType: ec2.EbsDeviceVolumeType.GP3,
+                    }),
+                },
+            ],
+            requireImdsv2: true,
+        });
+        clickHouseInstance.userData.addCommands(
+            'set -eux',
+            'dnf update -y',
+            'dnf install -y docker',
+            'systemctl enable --now docker',
+            'mkdir -p /var/lib/clickhouse',
+            'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:latest',
+        );
+
+        const mskCluster = new msk.CfnCluster(this, 'MskCluster', {
+            clusterName: 'dev-loop-ad-msk',
+            kafkaVersion: '3.6.0',
+            numberOfBrokerNodes: DEV_MSK_BROKER_COUNT,
+            brokerNodeGroupInfo: {
+                clientSubnets: privateSubnets.subnetIds,
+                instanceType: 'kafka.t3.small',
+                securityGroups: [dataSourceSecurityGroup.securityGroupId],
+                storageInfo: {
+                    ebsStorageInfo: {
+                        volumeSize: DEV_MSK_STORAGE_GIB_PER_BROKER,
+                    },
+                },
+            },
+            clientAuthentication: {
+                unauthenticated: {
+                    enabled: true,
+                },
+            },
+            encryptionInfo: {
+                encryptionInTransit: {
+                    clientBroker: 'TLS_PLAINTEXT',
+                    inCluster: true,
+                },
+            },
+            enhancedMonitoring: 'DEFAULT',
+        });
+
+        const mskBootstrapBrokers = new cr.AwsCustomResource(this, 'MskBootstrapBrokers', {
+            resourceType: 'Custom::LoopAdMskBootstrapBrokers',
+            onUpdate: {
+                service: 'kafka',
+                action: 'GetBootstrapBrokers',
+                parameters: {
+                    ClusterArn: mskCluster.attrArn,
+                },
+                outputPaths: ['BootstrapBrokerString'],
+                physicalResourceId: cr.PhysicalResourceId.of('dev-loop-ad-msk-bootstrap-brokers'),
+            },
+            installLatestAwsSdk: false,
+            logGroup: new logs.LogGroup(this, 'MskBootstrapBrokersLogGroup', {
+                retention: logs.RetentionDays.THREE_DAYS,
+                removalPolicy: RemovalPolicy.DESTROY,
+            }),
+            policy: cr.AwsCustomResourcePolicy.fromStatements([
+                new iam.PolicyStatement({
+                    actions: ['kafka:GetBootstrapBrokers'],
+                    resources: [mskCluster.attrArn],
+                }),
+            ]),
+        });
+
+        // endpoint contract는 SSM에 둡니다. Task definition은 SSM parameter 이름만 알고,
+        // 실제 datasource endpoint는 여기에서 교체할 수 있습니다.
         const [auroraEndpoint, redisEndpoint, clickhouseEndpoint, mskEndpoint] = [
             {
                 id: 'AuroraEndpointParameter',
                 parameterName: '/loop-ad/dev/aurora/endpoint',
-                stringValue: 'pending://dev/aurora',
+                stringValue: auroraCluster.clusterEndpoint.hostname,
                 description: 'Dev Aurora PostgreSQL endpoint contract.',
             },
             {
@@ -182,13 +289,13 @@ export class LoopAdDevStack extends Stack {
             {
                 id: 'ClickHouseEndpointParameter',
                 parameterName: '/loop-ad/dev/clickhouse/endpoint',
-                stringValue: 'pending://dev/clickhouse',
+                stringValue: cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']),
                 description: 'Dev ClickHouse endpoint contract.',
             },
             {
                 id: 'MskEndpointParameter',
                 parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
-                stringValue: 'pending://dev/msk',
+                stringValue: mskBootstrapBrokers.getResponseField('BootstrapBrokerString'),
                 description: 'Dev MSK bootstrap broker contract.',
             },
         ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
@@ -279,7 +386,7 @@ export class LoopAdDevStack extends Stack {
             cluster,
             taskDefinition: eventCollectorTask,
             serviceName: 'dev-event-collector',
-            desiredCount: 1,
+            desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
             vpcSubnets: privateSubnets,
@@ -289,8 +396,8 @@ export class LoopAdDevStack extends Stack {
             cloudMapOptions: { name: 'event-collector' },
             healthCheckGracePeriod: Duration.seconds(60),
         });
-        eventCollectorService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
-            targetUtilizationPercent: 70,
+        eventCollectorService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
         // NLB는 TCP 80 포트를 collector service로 직접 전달합니다.
@@ -345,7 +452,7 @@ export class LoopAdDevStack extends Stack {
             cluster,
             taskDefinition: projectorTask,
             serviceName: 'dev-ad-context-projector',
-            desiredCount: 1,
+            desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
             vpcSubnets: privateSubnets,
@@ -354,8 +461,8 @@ export class LoopAdDevStack extends Stack {
             maxHealthyPercent: 200,
             cloudMapOptions: { name: 'ad-context-projector' },
         });
-        projectorService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
-            targetUtilizationPercent: 70,
+        projectorService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
         // Decision API는 ALB를 통해 public 광고 결정 경로를 제공합니다.
@@ -393,7 +500,7 @@ export class LoopAdDevStack extends Stack {
             cluster,
             taskDefinition: decisionTask,
             serviceName: 'dev-ad-decision-api',
-            desiredCount: 1,
+            desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
             vpcSubnets: privateSubnets,
@@ -403,8 +510,8 @@ export class LoopAdDevStack extends Stack {
             cloudMapOptions: { name: 'ad-decision-api' },
             healthCheckGracePeriod: Duration.seconds(60),
         });
-        decisionService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('AdDecisionApiCpuScaling', {
-            targetUtilizationPercent: 70,
+        decisionService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdDecisionApiCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
         albListener.addTargets('AdDecisionApiTargets', {
             targets: [decisionService],
@@ -457,7 +564,7 @@ export class LoopAdDevStack extends Stack {
             cluster,
             taskDefinition: dashboardTask,
             serviceName: 'dev-dashboard-api',
-            desiredCount: 1,
+            desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
             vpcSubnets: privateSubnets,
@@ -467,8 +574,8 @@ export class LoopAdDevStack extends Stack {
             cloudMapOptions: { name: 'dashboard-api' },
             healthCheckGracePeriod: Duration.seconds(60),
         });
-        dashboardService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('DashboardApiCpuScaling', {
-            targetUtilizationPercent: 70,
+        dashboardService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DashboardApiCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
         albListener.addTargets('DashboardApiTargets', {
             targets: [dashboardService],
@@ -519,7 +626,7 @@ export class LoopAdDevStack extends Stack {
             cluster,
             taskDefinition: recommendationTask,
             serviceName: 'dev-recommendation',
-            desiredCount: 1,
+            desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
             vpcSubnets: privateSubnets,
@@ -528,8 +635,8 @@ export class LoopAdDevStack extends Stack {
             maxHealthyPercent: 200,
             cloudMapOptions: { name: 'recommendation' },
         });
-        recommendationService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('RecommendationCpuScaling', {
-            targetUtilizationPercent: 70,
+        recommendationService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('RecommendationCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
         // Perf는 이 output들을 import해서 같은 VPC 안에 임시 서버를 만듭니다.
@@ -564,11 +671,6 @@ export class LoopAdDevStack extends Stack {
                 value: cdk.Fn.join(',', privateSubnets.subnets.map((subnet) => subnet.routeTable.routeTableId)),
                 exportName: 'loop-ad-dev-private-subnet-route-table-ids',
             },
-            {
-                id: 'EndpointSecurityGroupId',
-                value: endpointSecurityGroup.securityGroupId,
-                exportName: 'loop-ad-dev-vpc-endpoint-security-group-id',
-            },
         ] as const) {
             new cdk.CfnOutput(this, output.id, {
                 value: output.value,
@@ -588,9 +690,6 @@ export class LoopAdPerfStack extends Stack {
         // 별도 VPC와 subnet layout은 만들지 않습니다.
         const availabilityZones = cdk.Fn.importListValue('loop-ad-dev-vpc-availability-zones', 2);
         const publicSubnetIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-ids', 2);
-        const publicSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-public-subnet-route-table-ids', 2);
-        const privateSubnetIds = cdk.Fn.importListValue('loop-ad-dev-private-subnet-ids', 2);
-        const privateSubnetRouteTableIds = cdk.Fn.importListValue('loop-ad-dev-private-subnet-route-table-ids', 2);
         const vpc = ec2.Vpc.fromVpcAttributes(this, 'DevVpc', {
             vpcId: cdk.Fn.importValue('loop-ad-dev-vpc-id'),
             availabilityZones,
@@ -603,48 +702,16 @@ export class LoopAdPerfStack extends Stack {
                 id: 'PublicSubnet1',
                 subnetId: publicSubnetIds[0],
                 availabilityZone: availabilityZones[0],
-                routeTableId: publicSubnetRouteTableIds[0],
             },
             {
                 id: 'PublicSubnet2',
                 subnetId: publicSubnetIds[1],
                 availabilityZone: availabilityZones[1],
-                routeTableId: publicSubnetRouteTableIds[1],
             },
         ].map((subnet) => ec2.Subnet.fromSubnetAttributes(this, subnet.id, {
             subnetId: subnet.subnetId,
             availabilityZone: subnet.availabilityZone,
-            routeTableId: subnet.routeTableId,
         }));
-        const privateSubnets = [
-            {
-                id: 'PrivateSubnet1',
-                subnetId: privateSubnetIds[0],
-                availabilityZone: availabilityZones[0],
-                routeTableId: privateSubnetRouteTableIds[0],
-            },
-            {
-                id: 'PrivateSubnet2',
-                subnetId: privateSubnetIds[1],
-                availabilityZone: availabilityZones[1],
-                routeTableId: privateSubnetRouteTableIds[1],
-            },
-        ].map((subnet) => ec2.Subnet.fromSubnetAttributes(this, subnet.id, {
-            subnetId: subnet.subnetId,
-            availabilityZone: subnet.availabilityZone,
-            routeTableId: subnet.routeTableId,
-        }));
-
-        // Perf task가 private AWS API에 접근할 수 있도록 dev endpoint SG를 재사용합니다.
-        const endpointSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
-            this,
-            'VpcEndpointSecurityGroup',
-            cdk.Fn.importValue('loop-ad-dev-vpc-endpoint-security-group-id'),
-            {
-                mutable: true,
-            },
-        );
-
         // 별도 perf cluster를 만들어 test capacity가 dev와 분리되어 보이게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
@@ -658,11 +725,11 @@ export class LoopAdPerfStack extends Stack {
         // Perf는 ECS on EC2를 사용해서 임시 capacity를 0까지 줄일 수 있게 합니다.
         const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'EcsEc2AutoScalingGroup', {
             vpc,
-            vpcSubnets: { subnets: privateSubnets },
+            vpcSubnets: { subnets: publicSubnets },
             instanceType: new ec2.InstanceType('t4g.small'),
             machineImage: ecs.EcsOptimizedImage.amazonLinux2023(ecs.AmiHardwareType.ARM),
-            minCapacity: 0,
-            maxCapacity: 2,
+            minCapacity: PERF_EC2_MIN_INSTANCES,
+            maxCapacity: PERF_EC2_MAX_INSTANCES,
         });
         const capacityProvider = new ecs.AsgCapacityProvider(this, 'EcsEc2CapacityProvider', {
             autoScalingGroup,
@@ -696,8 +763,7 @@ export class LoopAdPerfStack extends Stack {
         serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call each other.');
         serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may reach internal datasources.');
         dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may enter internal datasources.');
-        serverSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call private AWS APIs.');
-        endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may use VPC endpoints.');
+        serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Perf servers may use public HTTPS egress.');
 
         // Perf는 storage를 만들지 않고 dev가 소유한 image repository를 재사용합니다.
         const [eventCollectorRepository, projectorRepository] = [
@@ -783,9 +849,9 @@ export class LoopAdPerfStack extends Stack {
             cluster,
             taskDefinition: eventCollectorTask,
             serviceName: 'perf-event-collector',
-            desiredCount: 1,
+            desiredCount: PERF_SERVICE_DESIRED_TASKS,
             securityGroups: [serverSecurityGroup],
-            vpcSubnets: { subnets: privateSubnets },
+            vpcSubnets: { subnets: publicSubnets },
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
@@ -797,8 +863,8 @@ export class LoopAdPerfStack extends Stack {
                 },
             ],
         });
-        eventCollectorService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
-            targetUtilizationPercent: 70,
+        eventCollectorService.autoScaleTaskCount({ minCapacity: PERF_SERVICE_MIN_TASKS, maxCapacity: PERF_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
         const nlbListener = nlb.addListener('EventCollectorListener', {
@@ -848,9 +914,9 @@ export class LoopAdPerfStack extends Stack {
             cluster,
             taskDefinition: projectorTask,
             serviceName: 'perf-ad-context-projector',
-            desiredCount: 1,
+            desiredCount: PERF_SERVICE_DESIRED_TASKS,
             securityGroups: [serverSecurityGroup],
-            vpcSubnets: { subnets: privateSubnets },
+            vpcSubnets: { subnets: publicSubnets },
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
@@ -862,8 +928,8 @@ export class LoopAdPerfStack extends Stack {
                 },
             ],
         });
-        projectorService.autoScaleTaskCount({ minCapacity: 0, maxCapacity: 2 }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
-            targetUtilizationPercent: 70,
+        projectorService.autoScaleTaskCount({ minCapacity: PERF_SERVICE_MIN_TASKS, maxCapacity: PERF_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
+            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
     }
 }

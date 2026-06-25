@@ -23,7 +23,6 @@ const publicHostedZone = {
 if (environmentName === 'dev') {
     new LoopAdDevStack(app, 'LoopAdDevStack', {
         env,
-        enableNatGateway: readBooleanContext(app, 'enableNatGateway', false),
         publicHostedZone,
     });
 }
@@ -46,15 +45,6 @@ function readEnvironmentName(app: cdk.App): 'dev' | 'perf' {
     }
 
     return value;
-}
-
-function readBooleanContext(app: cdk.App, key: string, defaultValue: boolean): boolean {
-    const value = app.node.tryGetContext(key);
-    if (value === undefined) {
-        return defaultValue;
-    }
-
-    return value === true || value === 'true' || value === '1';
 }
 
 function readRequiredEnv(key: string): string {

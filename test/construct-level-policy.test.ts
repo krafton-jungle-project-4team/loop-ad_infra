@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC_DIR = join(__dirname, '..', 'src');
-const ALLOWED_L1_CONSTRUCTS = new Set<string>(['cdk.CfnOutput']);
+const ALLOWED_L1_CONSTRUCTS = new Set<string>(['budgets.CfnBudget', 'cdk.CfnOutput', 'msk.CfnCluster']);
 
 describe('CDK construct level policy', () => {
     it('명시적 예외 없이 L1 Cfn* construct를 직접 생성하지 않는다', () => {

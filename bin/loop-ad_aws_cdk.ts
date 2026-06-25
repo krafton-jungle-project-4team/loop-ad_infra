@@ -12,7 +12,7 @@ const app = new cdk.App();
 
 const environmentName = readEnvironmentName(app);
 const env = {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
+    account: readRequiredEnv('CDK_DEFAULT_ACCOUNT'),
     region: LOOP_AD_REGION,
 };
 const publicHostedZone = {
@@ -32,7 +32,11 @@ cdk.Tags.of(app).add('CdkProject', 'loop-ad_aws_cdk');
 cdk.Tags.of(app).add('Environment', environmentName);
 
 function readEnvironmentName(app: cdk.App): 'dev' {
-    const value = app.node.tryGetContext('environment') ?? 'dev';
+    const value = app.node.tryGetContext('environment');
+    if (!value) {
+        throw new Error('Missing required CDK context "environment". Pass -c environment=dev.');
+    }
+
     if (value !== 'dev') {
         throw new Error(`environment context must be "dev". Received: ${value}`);
     }
@@ -43,7 +47,7 @@ function readEnvironmentName(app: cdk.App): 'dev' {
 function readRequiredEnv(key: string): string {
     const value = process.env[key]?.trim();
     if (!value) {
-        throw new Error(`Missing required environment variable ${key}. Define it in .env.`);
+        throw new Error(`Missing required environment variable ${key}. Define it in .env or the process environment.`);
     }
 
     return value;

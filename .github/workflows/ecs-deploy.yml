@@ -9,9 +9,8 @@ on:
                 type: string
             aws_region:
                 description: AWS region for ECR/ECS.
-                required: false
+                required: true
                 type: string
-                default: ap-northeast-2
             aws_role_arn:
                 description: IAM role ARN assumed through GitHub OIDC.
                 required: true
@@ -38,24 +37,20 @@ on:
                 type: string
             dockerfile:
                 description: Dockerfile path in the caller repository.
-                required: false
+                required: true
                 type: string
-                default: Dockerfile
             context:
                 description: Docker build context in the caller repository.
-                required: false
+                required: true
                 type: string
-                default: .
             image_tag:
-                description: Image tag to deploy. Empty value falls back to the commit SHA.
-                required: false
+                description: Image tag to deploy.
+                required: true
                 type: string
-                default: ''
             wait_for_service_stability:
                 description: Wait until ECS reports the service stable.
-                required: false
+                required: true
                 type: boolean
-                default: true
         outputs:
             image:
                 description: Fully qualified ECR image URI deployed to ECS.
@@ -78,6 +73,41 @@ jobs:
         steps:
             - name: Checkout app repository
               uses: actions/checkout@v4
+
+            - name: Validate required inputs
+              shell: bash
+              env:
+                  AWS_REGION: ${{ inputs.aws_region }}
+                  AWS_ROLE_ARN: ${{ inputs.aws_role_arn }}
+                  SERVICE_NAME: ${{ inputs.service_name }}
+                  ECR_REPOSITORY: ${{ inputs.ecr_repository }}
+                  ECS_CLUSTER: ${{ inputs.ecs_cluster }}
+                  ECS_SERVICE: ${{ inputs.ecs_service }}
+                  CONTAINER_NAME: ${{ inputs.container_name }}
+                  DOCKERFILE: ${{ inputs.dockerfile }}
+                  BUILD_CONTEXT: ${{ inputs.context }}
+                  IMAGE_TAG: ${{ inputs.image_tag }}
+                  WAIT_FOR_SERVICE_STABILITY: ${{ inputs.wait_for_service_stability }}
+              run: |
+                  set -euo pipefail
+
+                  for input_name in \
+                      AWS_REGION \
+                      AWS_ROLE_ARN \
+                      SERVICE_NAME \
+                      ECR_REPOSITORY \
+                      ECS_CLUSTER \
+                      ECS_SERVICE \
+                      CONTAINER_NAME \
+                      DOCKERFILE \
+                      BUILD_CONTEXT \
+                      IMAGE_TAG \
+                      WAIT_FOR_SERVICE_STABILITY; do
+                      if [[ -z "${!input_name}" ]]; then
+                          echo "${input_name} input is required." >&2
+                          exit 1
+                      fi
+                  done
 
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v4
@@ -102,7 +132,7 @@ jobs:
               run: |
                   set -euo pipefail
 
-                  image_tag="${REQUESTED_IMAGE_TAG:-${GITHUB_SHA}}"
+                  image_tag="${REQUESTED_IMAGE_TAG}"
                   image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
 
                   docker build \

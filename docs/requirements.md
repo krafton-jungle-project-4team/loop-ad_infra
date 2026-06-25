@@ -32,6 +32,7 @@
 - MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
 - Redis provision 방식은 별도 결정 전까지 endpoint contract만 유지한다.
 - 앱 인프라와 ClickHouse, Aurora, MSK를 합산했을 때 Aurora가 idle 시간대에 auto-pause되는 조건으로 월 `$300` 안쪽을 목표로 한다.
+- `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
 
 ## 운영 명령
 

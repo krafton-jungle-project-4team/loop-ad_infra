@@ -8,9 +8,8 @@ on:
                 required: true
                 type: string
             node_version:
-                required: false
+                required: true
                 type: string
-                default: '20'
 
 permissions:
     contents: read
@@ -22,6 +21,21 @@ jobs:
         steps:
             - name: Checkout infra repository
               uses: actions/checkout@v4
+
+            - name: Validate required inputs
+              shell: bash
+              env:
+                  ENVIRONMENT: ${{ inputs.environment }}
+                  NODE_VERSION: ${{ inputs.node_version }}
+              run: |
+                  set -euo pipefail
+
+                  for input_name in ENVIRONMENT NODE_VERSION; do
+                      if [[ -z "${!input_name}" ]]; then
+                          echo "${input_name} input is required." >&2
+                          exit 1
+                      fi
+                  done
 
             - name: Setup Node.js
               uses: actions/setup-node@v4

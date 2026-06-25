@@ -22,3 +22,5 @@ jobs:
             container_name: event-collector
             dockerfile: Dockerfile
             context: .
+            image_tag: ${{ github.sha }}
+            wait_for_service_stability: true

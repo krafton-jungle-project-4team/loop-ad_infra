@@ -13,3 +13,4 @@ jobs:
         uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/infra-check.yml@v1
         with:
             environment: dev
+            node_version: '20'

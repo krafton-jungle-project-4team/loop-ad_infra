@@ -14,7 +14,10 @@ describe('GitHub Actions reusable workflows', () => {
         expect(workflow).toContain('aws-actions/amazon-ecs-render-task-definition@v1');
         expect(workflow).toContain('aws-actions/amazon-ecs-deploy-task-definition@v2');
         expect(workflow).toContain('aws_region:');
-        expect(workflow).toContain('default: ap-northeast-2');
+        expect(workflow).toContain('Validate required inputs');
+        expect(workflow).toContain('IMAGE_TAG \\');
+        expect(workflow).toContain('${input_name} input is required.');
+        expect(workflow).not.toContain('default:');
     });
 
     it('infra workflow는 deploy 없이 build/test/synth만 수행한다', () => {
@@ -23,7 +26,18 @@ describe('GitHub Actions reusable workflows', () => {
         expect(workflow).toContain('npm run build');
         expect(workflow).toContain('npm test');
         expect(workflow).toContain('npm run synth:${{ inputs.environment }}');
+        expect(workflow).toContain('Validate required inputs');
         expect(workflow).not.toContain('cdk deploy');
+        expect(workflow).not.toContain('default:');
+    });
+
+    it('CDK app은 required env/context 없이 기본값으로 fallback하지 않는다', () => {
+        const cdkApp = readFileSync(join(ROOT, 'bin/loop-ad_aws_cdk.ts'), 'utf8');
+
+        expect(cdkApp).toContain("readRequiredEnv('CDK_DEFAULT_ACCOUNT')");
+        expect(cdkApp).toContain('Missing required CDK context "environment"');
+        expect(cdkApp).not.toContain("?? 'dev'");
+        expect(cdkApp).not.toContain('process.env.CDK_DEFAULT_ACCOUNT');
     });
 
     it('generic deploy/destroy는 막고 명시적 dev lifecycle script만 둔다', () => {

@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
 
+const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
+
 describe('security group policy', () => {
   it('dev public ingress is only ALB/NLB port 80', () => {
     const template = Template.fromStack(synthDev());
@@ -29,24 +31,25 @@ describe('security group policy', () => {
     });
   });
 
-  it('dev and perf ECS-to-data rules use security group references', () => {
-    for (const stack of [synthDev(), synthPerf()]) {
+  it('dev and perf use shared internal security groups with broad internal traffic', () => {
+    for (const { stack, securityGroupCount } of [
+      { stack: synthDev(), securityGroupCount: 5 },
+      { stack: synthPerf(), securityGroupCount: 4 },
+    ]) {
       const template = Template.fromStack(stack);
 
+      template.resourceCountIs('AWS::EC2::SecurityGroup', securityGroupCount);
       template.hasResourceProperties('AWS::EC2::SecurityGroupEgress', {
-        FromPort: 6379,
-        ToPort: 6379,
-        IpProtocol: 'tcp',
+        IpProtocol: '-1',
         DestinationSecurityGroupId: Match.anyValue(),
         GroupId: Match.anyValue(),
       });
       template.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
-        FromPort: 9098,
-        ToPort: 9098,
-        IpProtocol: 'tcp',
+        IpProtocol: '-1',
         SourceSecurityGroupId: Match.anyValue(),
         GroupId: Match.anyValue(),
       });
+      expect(dataPortSecurityGroupRulesFrom(template)).toEqual([]);
     }
   });
 });
@@ -64,6 +67,24 @@ function publicIngressRulesFrom(template: Template): Record<string, unknown>[] {
 
     return ((resource.Properties?.SecurityGroupIngress as Record<string, unknown>[] | undefined) ?? []).map((rule) => rule);
   }).filter((rule) => rule.CidrIp === '0.0.0.0/0' || rule.CidrIpv6 === '::/0');
+}
+
+function dataPortSecurityGroupRulesFrom(template: Template): Record<string, unknown>[] {
+  const resources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
+  return Object.values(resources).flatMap((resource) => {
+    if (resource.Type === 'AWS::EC2::SecurityGroupIngress' || resource.Type === 'AWS::EC2::SecurityGroupEgress') {
+      return [resource.Properties ?? {}];
+    }
+
+    if (resource.Type !== 'AWS::EC2::SecurityGroup') {
+      return [];
+    }
+
+    return [
+      ...((resource.Properties?.SecurityGroupIngress as Record<string, unknown>[] | undefined) ?? []),
+      ...((resource.Properties?.SecurityGroupEgress as Record<string, unknown>[] | undefined) ?? []),
+    ];
+  }).filter((rule) => DATA_PORTS.has(Number(rule.FromPort)) || DATA_PORTS.has(Number(rule.ToPort)));
 }
 
 function synthDev(): LoopAdDevStack {

@@ -29,7 +29,7 @@ loop-ad 개발/성능 테스트용 AWS CDK v2 프로젝트입니다.
 - generic `npm run deploy` / `npm run destroy`는 실수 방지를 위해 차단합니다.
 - 성능 테스트 리소스는 `deploy:perf`로 올리고 `destroy:perf`로 내립니다.
 - public ingress는 LB 80 포트에만 둡니다.
-- ECS/data 통신은 CIDR가 아니라 security group 관계로 표현합니다.
+- 외부 ingress는 LB security group의 80 포트만 열고, 내부 통신은 server/datasource 공유 security group으로 넓게 허용합니다.
 - NAT Gateway는 기본 off입니다.
 
 ## 명령

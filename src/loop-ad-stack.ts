@@ -106,104 +106,32 @@ export class LoopAdDevStack extends Stack {
       allowAllOutbound: false,
       description: 'Dev NLB event ingestion ingress only.',
     });
-    const eventCollectorSecurityGroup = new ec2.SecurityGroup(this, 'EventCollectorSecurityGroup', {
+    const serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
       vpc,
       allowAllOutbound: false,
-      description: 'Dev Event Collector ECS task SG.',
+      description: 'Dev ECS server SG shared by app services.',
     });
-    const projectorSecurityGroup = new ec2.SecurityGroup(this, 'AdContextProjectorSecurityGroup', {
+    const dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
       vpc,
       allowAllOutbound: false,
-      description: 'Dev Ad Context Projector ECS task SG.',
-    });
-    const decisionSecurityGroup = new ec2.SecurityGroup(this, 'AdDecisionApiSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev Ad Decision API ECS task SG.',
-    });
-    const dashboardSecurityGroup = new ec2.SecurityGroup(this, 'DashboardApiSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev Dashboard API ECS task SG.',
-    });
-    const recommendationSecurityGroup = new ec2.SecurityGroup(this, 'RecommendationSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev Recommendation ECS task SG.',
-    });
-    const auroraSecurityGroup = new ec2.SecurityGroup(this, 'AuroraSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev Aurora endpoint contract SG.',
-    });
-    const redisSecurityGroup = new ec2.SecurityGroup(this, 'RedisSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev Redis endpoint contract SG.',
-    });
-    const clickhouseSecurityGroup = new ec2.SecurityGroup(this, 'ClickHouseSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev ClickHouse endpoint contract SG.',
-    });
-    const mskSecurityGroup = new ec2.SecurityGroup(this, 'MskSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Dev MSK endpoint contract SG.',
+      description: 'Dev datasource SG shared by internal data endpoints.',
     });
 
     albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
     nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
-    albSecurityGroup.addEgressRule(decisionSecurityGroup, ec2.Port.tcp(80), 'ALB to Ad Decision API.');
-    albSecurityGroup.addEgressRule(dashboardSecurityGroup, ec2.Port.tcp(80), 'ALB to Dashboard API.');
-    nlbSecurityGroup.addEgressRule(eventCollectorSecurityGroup, ec2.Port.tcp(80), 'NLB to Event Collector.');
-    decisionSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.tcp(80), 'ALB may enter Ad Decision API.');
-    dashboardSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.tcp(80), 'ALB may enter Dashboard API.');
-    eventCollectorSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.tcp(80), 'NLB may enter Event Collector.');
-    dashboardSecurityGroup.addEgressRule(recommendationSecurityGroup, ec2.Port.tcp(80), 'Dashboard API calls Recommendation.');
-    recommendationSecurityGroup.addIngressRule(dashboardSecurityGroup, ec2.Port.tcp(80), 'Dashboard API may call Recommendation.');
-
-    eventCollectorSecurityGroup.addEgressRule(mskSecurityGroup, ec2.Port.tcp(9098), 'Event Collector publishes to MSK.');
-    mskSecurityGroup.addIngressRule(eventCollectorSecurityGroup, ec2.Port.tcp(9098), 'Event Collector may publish to MSK.');
-    projectorSecurityGroup.addEgressRule(mskSecurityGroup, ec2.Port.tcp(9098), 'Projector consumes from MSK.');
-    mskSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(9098), 'Projector may consume from MSK.');
-    projectorSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(8123), 'Projector writes ClickHouse HTTP.');
-    clickhouseSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(8123), 'Projector may write ClickHouse HTTP.');
-    projectorSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(9000), 'Projector writes ClickHouse native.');
-    clickhouseSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(9000), 'Projector may write ClickHouse native.');
-    projectorSecurityGroup.addEgressRule(redisSecurityGroup, ec2.Port.tcp(6379), 'Projector writes Redis.');
-    redisSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(6379), 'Projector may write Redis.');
-    decisionSecurityGroup.addEgressRule(redisSecurityGroup, ec2.Port.tcp(6379), 'Ad Decision API reads Redis.');
-    redisSecurityGroup.addIngressRule(decisionSecurityGroup, ec2.Port.tcp(6379), 'Ad Decision API may read Redis.');
-    decisionSecurityGroup.addEgressRule(auroraSecurityGroup, ec2.Port.tcp(5432), 'Ad Decision API reads Aurora.');
-    auroraSecurityGroup.addIngressRule(decisionSecurityGroup, ec2.Port.tcp(5432), 'Ad Decision API may read Aurora.');
-    dashboardSecurityGroup.addEgressRule(auroraSecurityGroup, ec2.Port.tcp(5432), 'Dashboard API reads Aurora.');
-    auroraSecurityGroup.addIngressRule(dashboardSecurityGroup, ec2.Port.tcp(5432), 'Dashboard API may read Aurora.');
-    dashboardSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(8123), 'Dashboard API reads ClickHouse HTTP.');
-    clickhouseSecurityGroup.addIngressRule(dashboardSecurityGroup, ec2.Port.tcp(8123), 'Dashboard API may read ClickHouse HTTP.');
-    dashboardSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(9000), 'Dashboard API reads ClickHouse native.');
-    clickhouseSecurityGroup.addIngressRule(dashboardSecurityGroup, ec2.Port.tcp(9000), 'Dashboard API may read ClickHouse native.');
-    recommendationSecurityGroup.addEgressRule(auroraSecurityGroup, ec2.Port.tcp(5432), 'Recommendation reads Aurora.');
-    auroraSecurityGroup.addIngressRule(recommendationSecurityGroup, ec2.Port.tcp(5432), 'Recommendation may read Aurora.');
-    recommendationSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(8123), 'Recommendation reads ClickHouse HTTP.');
-    clickhouseSecurityGroup.addIngressRule(recommendationSecurityGroup, ec2.Port.tcp(8123), 'Recommendation may read ClickHouse HTTP.');
-    recommendationSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(9000), 'Recommendation reads ClickHouse native.');
-    clickhouseSecurityGroup.addIngressRule(recommendationSecurityGroup, ec2.Port.tcp(9000), 'Recommendation may read ClickHouse native.');
-
-    for (const serviceSecurityGroup of [
-      eventCollectorSecurityGroup,
-      projectorSecurityGroup,
-      decisionSecurityGroup,
-      dashboardSecurityGroup,
-      recommendationSecurityGroup,
-    ]) {
-      serviceSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.tcp(443), 'ECS task calls private AWS APIs.');
-      endpointSecurityGroup.addIngressRule(serviceSecurityGroup, ec2.Port.tcp(443), 'ECS task may use VPC endpoints.');
-    }
+    albSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
+    nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
+    serverSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
+    serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter dev servers.');
+    serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
+    serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
+    serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal datasources.');
+    dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal datasources.');
+    serverSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call private AWS APIs.');
+    endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may use VPC endpoints.');
 
     if (props.enableNatGateway) {
-      dashboardSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dashboard external HTTPS egress through NAT.');
-      recommendationSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Recommendation external HTTPS egress through NAT.');
+      serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
     }
 
     const eventCollectorRepository = new ecr.Repository(this, 'EventCollectorRepository', {
@@ -240,22 +168,22 @@ export class LoopAdDevStack extends Stack {
     const auroraEndpoint = new ssm.StringParameter(this, 'AuroraEndpointParameter', {
       parameterName: '/loop-ad/dev/aurora/endpoint',
       stringValue: 'pending://dev/aurora',
-      description: 'Dev Aurora PostgreSQL endpoint contract. Port: 5432.',
+      description: 'Dev Aurora PostgreSQL endpoint contract.',
     });
     const redisEndpoint = new ssm.StringParameter(this, 'RedisEndpointParameter', {
       parameterName: '/loop-ad/dev/redis/endpoint',
       stringValue: 'pending://dev/redis',
-      description: 'Dev Redis endpoint contract. Port: 6379.',
+      description: 'Dev Redis endpoint contract.',
     });
     const clickhouseEndpoint = new ssm.StringParameter(this, 'ClickHouseEndpointParameter', {
       parameterName: '/loop-ad/dev/clickhouse/endpoint',
       stringValue: 'pending://dev/clickhouse',
-      description: 'Dev ClickHouse endpoint contract. Ports: 8123,9000.',
+      description: 'Dev ClickHouse endpoint contract.',
     });
     const mskEndpoint = new ssm.StringParameter(this, 'MskEndpointParameter', {
       parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
       stringValue: 'pending://dev/msk',
-      description: 'Dev MSK bootstrap broker contract. Port: 9098.',
+      description: 'Dev MSK bootstrap broker contract.',
     });
 
     const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
@@ -314,7 +242,7 @@ export class LoopAdDevStack extends Stack {
       serviceName: 'dev-event-collector',
       desiredCount: 1,
       assignPublicIp: false,
-      securityGroups: [eventCollectorSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -378,7 +306,7 @@ export class LoopAdDevStack extends Stack {
       serviceName: 'dev-ad-context-projector',
       desiredCount: 1,
       assignPublicIp: false,
-      securityGroups: [projectorSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -425,7 +353,7 @@ export class LoopAdDevStack extends Stack {
       serviceName: 'dev-ad-decision-api',
       desiredCount: 1,
       assignPublicIp: false,
-      securityGroups: [decisionSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -488,7 +416,7 @@ export class LoopAdDevStack extends Stack {
       serviceName: 'dev-dashboard-api',
       desiredCount: 1,
       assignPublicIp: false,
-      securityGroups: [dashboardSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -549,7 +477,7 @@ export class LoopAdDevStack extends Stack {
       serviceName: 'dev-recommendation',
       desiredCount: 1,
       assignPublicIp: false,
-      securityGroups: [recommendationSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: privateSubnets,
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -670,50 +598,26 @@ export class LoopAdPerfStack extends Stack {
       allowAllOutbound: false,
       description: 'Perf NLB event ingestion ingress only.',
     });
-    const eventCollectorSecurityGroup = new ec2.SecurityGroup(this, 'EventCollectorSecurityGroup', {
+    const serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
       vpc,
       allowAllOutbound: false,
-      description: 'Perf Event Collector ECS task SG.',
+      description: 'Perf ECS server SG shared by test services.',
     });
-    const projectorSecurityGroup = new ec2.SecurityGroup(this, 'AdContextProjectorSecurityGroup', {
+    const dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
       vpc,
       allowAllOutbound: false,
-      description: 'Perf Ad Context Projector ECS task SG.',
-    });
-    const redisSecurityGroup = new ec2.SecurityGroup(this, 'RedisSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Perf Redis endpoint contract SG.',
-    });
-    const clickhouseSecurityGroup = new ec2.SecurityGroup(this, 'ClickHouseSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Perf ClickHouse endpoint contract SG.',
-    });
-    const mskSecurityGroup = new ec2.SecurityGroup(this, 'MskSecurityGroup', {
-      vpc,
-      allowAllOutbound: false,
-      description: 'Perf MSK endpoint contract SG.',
+      description: 'Perf datasource SG shared by internal data endpoints.',
     });
 
     nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to perf NLB.');
-    nlbSecurityGroup.addEgressRule(eventCollectorSecurityGroup, ec2.Port.tcp(80), 'NLB to perf Event Collector.');
-    eventCollectorSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.tcp(80), 'NLB may enter perf Event Collector.');
-    eventCollectorSecurityGroup.addEgressRule(mskSecurityGroup, ec2.Port.tcp(9098), 'Event Collector publishes perf MSK.');
-    mskSecurityGroup.addIngressRule(eventCollectorSecurityGroup, ec2.Port.tcp(9098), 'Event Collector may publish perf MSK.');
-    projectorSecurityGroup.addEgressRule(mskSecurityGroup, ec2.Port.tcp(9098), 'Projector consumes perf MSK.');
-    mskSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(9098), 'Projector may consume perf MSK.');
-    projectorSecurityGroup.addEgressRule(redisSecurityGroup, ec2.Port.tcp(6379), 'Projector writes perf Redis.');
-    redisSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(6379), 'Projector may write perf Redis.');
-    projectorSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(8123), 'Projector writes perf ClickHouse HTTP.');
-    clickhouseSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(8123), 'Projector may write perf ClickHouse HTTP.');
-    projectorSecurityGroup.addEgressRule(clickhouseSecurityGroup, ec2.Port.tcp(9000), 'Projector writes perf ClickHouse native.');
-    clickhouseSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(9000), 'Projector may write perf ClickHouse native.');
-
-    eventCollectorSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.tcp(443), 'Perf Event Collector calls private AWS APIs.');
-    endpointSecurityGroup.addIngressRule(eventCollectorSecurityGroup, ec2.Port.tcp(443), 'Perf Event Collector may use VPC endpoints.');
-    projectorSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.tcp(443), 'Perf Projector calls private AWS APIs.');
-    endpointSecurityGroup.addIngressRule(projectorSecurityGroup, ec2.Port.tcp(443), 'Perf Projector may use VPC endpoints.');
+    nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach perf servers.');
+    serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter perf servers.');
+    serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call each other.');
+    serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call each other.');
+    serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may reach internal datasources.');
+    dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may enter internal datasources.');
+    serverSecurityGroup.addEgressRule(endpointSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may call private AWS APIs.');
+    endpointSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Perf servers may use VPC endpoints.');
 
     const eventCollectorRepository = ecr.Repository.fromRepositoryName(
       this,
@@ -729,17 +633,17 @@ export class LoopAdPerfStack extends Stack {
     const redisEndpoint = new ssm.StringParameter(this, 'RedisEndpointParameter', {
       parameterName: '/loop-ad/perf/redis/endpoint',
       stringValue: 'pending://perf/redis',
-      description: 'Perf Redis endpoint contract. Port: 6379.',
+      description: 'Perf Redis endpoint contract.',
     });
     const clickhouseEndpoint = new ssm.StringParameter(this, 'ClickHouseEndpointParameter', {
       parameterName: '/loop-ad/perf/clickhouse/endpoint',
       stringValue: 'pending://perf/clickhouse',
-      description: 'Perf ClickHouse endpoint contract. Ports: 8123,9000.',
+      description: 'Perf ClickHouse endpoint contract.',
     });
     const mskEndpoint = new ssm.StringParameter(this, 'MskEndpointParameter', {
       parameterName: '/loop-ad/perf/msk/bootstrap-brokers',
       stringValue: 'pending://perf/msk',
-      description: 'Perf MSK bootstrap broker contract. Port: 9098.',
+      description: 'Perf MSK bootstrap broker contract.',
     });
 
     const nlb = new elbv2.NetworkLoadBalancer(this, 'NetworkLoadBalancer', {
@@ -778,7 +682,7 @@ export class LoopAdPerfStack extends Stack {
       taskDefinition: eventCollectorTask,
       serviceName: 'perf-event-collector',
       desiredCount: 1,
-      securityGroups: [eventCollectorSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: { subnets: privateSubnets },
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,
@@ -842,7 +746,7 @@ export class LoopAdPerfStack extends Stack {
       taskDefinition: projectorTask,
       serviceName: 'perf-ad-context-projector',
       desiredCount: 1,
-      securityGroups: [projectorSecurityGroup],
+      securityGroups: [serverSecurityGroup],
       vpcSubnets: { subnets: privateSubnets },
       circuitBreaker: { rollback: true },
       minHealthyPercent: 100,

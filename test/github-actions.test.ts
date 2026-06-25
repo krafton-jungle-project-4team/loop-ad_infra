@@ -17,24 +17,16 @@ describe('GitHub Actions reusable workflows', () => {
     expect(workflow).toContain('default: ap-northeast-2');
   });
 
-  it('frontend workflow는 S3 sync와 CloudFront invalidation만 담당한다', () => {
-    const workflow = readFileSync(join(ROOT, '.github/workflows/frontend-deploy.yml'), 'utf8');
-
-    expect(workflow).toContain('workflow_call:');
-    expect(workflow).toContain('aws s3 sync');
-    expect(workflow).toContain('aws cloudfront create-invalidation');
-  });
-
   it('infra workflow는 deploy 없이 build/test/synth만 수행한다', () => {
     const workflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
 
     expect(workflow).toContain('npm run build');
     expect(workflow).toContain('npm test');
-    expect(workflow).toContain('cdk synth');
+    expect(workflow).toContain('npm run synth:${{ inputs.environment }}');
     expect(workflow).not.toContain('cdk deploy');
   });
 
-  it('package script가 deploy/destroy를 차단한다', () => {
+  it('generic deploy/destroy는 막고 명시적 dev/perf lifecycle script만 둔다', () => {
     const packageJson = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
@@ -42,6 +34,9 @@ describe('GitHub Actions reusable workflows', () => {
 
     expect(packageJson.scripts.deploy).toBe('node scripts/refuse-deploy.mjs');
     expect(packageJson.scripts.destroy).toBe('node scripts/refuse-deploy.mjs');
+    expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevStack');
+    expect(packageJson.scripts['deploy:perf']).toContain('LoopAdPerfStack');
+    expect(packageJson.scripts['destroy:perf']).toContain('LoopAdPerfStack');
     expect(refusal).toContain('intentionally blocked');
   });
 });

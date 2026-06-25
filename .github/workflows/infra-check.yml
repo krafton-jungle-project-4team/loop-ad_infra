@@ -39,4 +39,4 @@ jobs:
         run: npm test
 
       - name: Synthesize
-        run: npx cdk synth --context environment=${{ inputs.environment }}
+        run: npm run synth:${{ inputs.environment }} -- --quiet

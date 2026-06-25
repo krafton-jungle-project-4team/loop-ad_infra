@@ -1,86 +1,46 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { buildLoopAdEnvironment } from '../src/app/build-loop-ad-environment';
-import { ENVIRONMENT_MODES, LOOP_AD_REGION } from '../src/config/loop-ad-config';
+import { LOOP_AD_REGION, LoopAdDevStack, LoopAdPerfStack } from '../src/loop-ad-stack';
 
 const testEnv = {
   account: '123456789012',
   region: LOOP_AD_REGION,
 };
 
-describe('CDK stack synthesis', () => {
-  it('StorageStack이 서비스 정의에서 ECR repository를 만든다', () => {
-    const stacks = synth('dev');
-    const template = Template.fromStack(stacks.storage);
+describe('loop-ad CDK stacks', () => {
+  it('dev stack keeps the permanent VPC, ECR repositories, and five ECS services', () => {
+    const stack = synthDev();
+    const template = Template.fromStack(stack);
 
+    template.resourceCountIs('AWS::EC2::VPC', 1);
     template.resourceCountIs('AWS::ECR::Repository', 5);
+    template.resourceCountIs('AWS::ECS::Service', 5);
     template.hasResourceProperties('AWS::ECR::Repository', {
       RepositoryName: 'loopad/event-collector',
     });
     template.hasResourceProperties('AWS::ECR::Repository', {
       RepositoryName: 'loopad/dashboard-api',
     });
-  });
-
-  it('Data/Stream stack이 datastore endpoint contract를 SSM으로 만든다', () => {
-    const stacks = synth('dev');
-
-    Template.fromStack(stacks.data).hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/loop-ad/dev/redis/endpoint',
-      Value: 'pending://dev/redis',
-    });
-    Template.fromStack(stacks.stream).hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/loop-ad/dev/msk/bootstrap-brokers',
-      Value: 'pending://dev/msk',
-    });
-  });
-
-  it('dev에서는 collector가 Fargate로 실행되고 NLB target으로만 붙는다', () => {
-    const stacks = synth('dev');
-    const collectTemplate = Template.fromStack(stacks.collect);
-    const edgeTemplate = Template.fromStack(stacks.edge);
-
-    collectTemplate.hasResourceProperties('AWS::ECS::Service', {
+    template.hasResourceProperties('AWS::ECS::Service', {
       ServiceName: 'dev-event-collector',
       LaunchType: 'FARGATE',
     });
-    edgeTemplate.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+    template.hasResourceProperties('AWS::ECS::Service', {
+      ServiceName: 'dev-recommendation',
+      LaunchType: 'FARGATE',
+    });
+  });
+
+  it('dev stack exposes only collector through NLB and API services through ALB path rules', () => {
+    const stack = synthDev();
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
       Port: 80,
       Protocol: 'TCP',
     });
-    edgeTemplate.resourceCountIs('AWS::ElasticLoadBalancingV2::ListenerRule', 2);
-  });
-
-  it('perf에서는 collector/projector가 ECS on EC2 capacity provider 경로를 사용한다', () => {
-    const stacks = synth('perf');
-
-    Template.fromStack(stacks.network).resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
-    Template.fromStack(stacks.collect).hasResourceProperties('AWS::ECS::Service', {
-      ServiceName: 'perf-event-collector',
-      CapacityProviderStrategy: Match.arrayWith([
-        Match.objectLike({
-          Weight: 1,
-        }),
-      ]),
-    });
-    Template.fromStack(stacks.analytics).hasResourceProperties('AWS::ECS::Service', {
-      ServiceName: 'perf-ad-context-projector',
-      CapacityProviderStrategy: Match.arrayWith([
-        Match.objectLike({
-          Weight: 1,
-        }),
-      ]),
-    });
-    expect(stacks.decision).toBeUndefined();
-    expect(stacks.dashboard).toBeUndefined();
-  });
-
-  it('ALB는 dev API 서비스 두 개에만 listener rule을 만든다', () => {
-    const stacks = synth('dev');
-
-    const edgeTemplate = Template.fromStack(stacks.edge);
-
-    edgeTemplate.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+    template.resourceCountIs('AWS::ElasticLoadBalancingV2::ListenerRule', 2);
+    template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
       Priority: 20,
       Conditions: Match.arrayWith([
         Match.objectLike({
@@ -91,7 +51,7 @@ describe('CDK stack synthesis', () => {
         }),
       ]),
     });
-    edgeTemplate.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+    template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
       Priority: 30,
       Conditions: Match.arrayWith([
         Match.objectLike({
@@ -104,35 +64,82 @@ describe('CDK stack synthesis', () => {
     });
   });
 
-  it('task environment가 endpoint contract와 external placeholder를 받는다', () => {
-    const stacks = synth('dev');
+  it('perf stack imports the dev VPC and creates only the temporary collection path', () => {
+    const stack = synthPerf();
+    const template = Template.fromStack(stack);
 
-    Template.fromStack(stacks.analytics).hasResourceProperties('AWS::ECS::TaskDefinition', {
-      ContainerDefinitions: Match.arrayWith([
+    template.resourceCountIs('AWS::EC2::VPC', 0);
+    template.resourceCountIs('AWS::ECR::Repository', 0);
+    template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+    template.resourceCountIs('AWS::ECS::Service', 2);
+    template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 1);
+    template.resourceCountIs('AWS::SSM::Parameter', 3);
+    template.hasResourceProperties('AWS::ECS::Service', {
+      ServiceName: 'perf-event-collector',
+      CapacityProviderStrategy: Match.arrayWith([
         Match.objectLike({
-          Name: 'recommendation',
-          Environment: Match.arrayWith([
-            Match.objectLike({
-              Name: 'LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER',
-              Value: Match.anyValue(),
-            }),
-            Match.objectLike({
-              Name: 'LOOPAD_OPENAI_SECRET_PARAMETER',
-              Value: '/loop-ad/dev/external/openai/api-key',
-            }),
-          ]),
+          Weight: 1,
         }),
       ]),
+    });
+    template.hasResourceProperties('AWS::ECS::Service', {
+      ServiceName: 'perf-ad-context-projector',
+      CapacityProviderStrategy: Match.arrayWith([
+        Match.objectLike({
+          Weight: 1,
+        }),
+      ]),
+    });
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/loop-ad/perf/msk/bootstrap-brokers',
+      Value: 'pending://perf/msk',
+    });
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/loop-ad/perf/redis/endpoint',
+      Value: 'pending://perf/redis',
+    });
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/loop-ad/perf/clickhouse/endpoint',
+      Value: 'pending://perf/clickhouse',
+    });
+    template.resourcePropertiesCountIs('AWS::SSM::Parameter', {
+      Name: '/loop-ad/perf/aurora/endpoint',
+    }, 0);
+  });
+
+  it('dev stack exports the shared VPC values consumed by perf', () => {
+    const stack = synthDev();
+    const template = Template.fromStack(stack);
+
+    template.hasOutput('VpcId', {
+      Export: {
+        Name: 'loop-ad-dev-vpc-id',
+      },
+    });
+    template.hasOutput('PrivateAppSubnetIds', {
+      Export: {
+        Name: 'loop-ad-dev-private-app-subnet-ids',
+      },
+    });
+    template.hasOutput('EndpointSecurityGroupId', {
+      Export: {
+        Name: 'loop-ad-dev-vpc-endpoint-security-group-id',
+      },
     });
   });
 });
 
-function synth(modeName: 'dev' | 'perf') {
+function synthDev(): LoopAdDevStack {
   const app = new cdk.App();
-  return buildLoopAdEnvironment(app, {
-    mode: ENVIRONMENT_MODES[modeName],
+  return new LoopAdDevStack(app, 'LoopAdDevStack', {
     env: testEnv,
-    enableNatGateway: ENVIRONMENT_MODES[modeName].enableNatGatewayByDefault,
-    enableVpcEndpoints: ENVIRONMENT_MODES[modeName].enableVpcEndpointsByDefault,
+    enableNatGateway: false,
+  });
+}
+
+function synthPerf(): LoopAdPerfStack {
+  const app = new cdk.App();
+  return new LoopAdPerfStack(app, 'LoopAdPerfStack', {
+    env: testEnv,
   });
 }

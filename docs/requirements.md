@@ -1,51 +1,42 @@
 # loop-ad AWS CDK 요구사항
 
-이 프로젝트는 AWS CDK v2로 loop-ad 인프라 초안을 만든다. 실제 배포가 아니라 `build`, `test`, `synth` 가능한 구조가 목표다.
+이 프로젝트는 loop-ad 개발 환경과 성능 테스트 환경을 AWS CDK v2로 관리한다.
 
 ## 범위
 
-- 담당: AWS 인프라, GitHub Actions reusable workflow
-- 제외: 애플리케이션 코드, SDK, React 구현, OpenAI/n8n/Discord 자체 설정, 비즈니스 로직
-- 외부 연동: NAT egress, secret/env placeholder, endpoint contract처럼 AWS 관점의 연결 계약만 표현
+- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, VPC Endpoint, SSM endpoint contract, GitHub Actions reusable workflow
+- 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
+- 리전: `ap-northeast-2`
 
-## 리전/배포
+## 환경
 
-- 리전은 `ap-northeast-2` 고정
-- `deploy`/`destroy`는 기본 차단
-- `dev`, `perf` synth script 제공
+### Dev
 
-## 네트워크
+상시 개발용 스택이다.
 
-- Public edge: ALB, NLB, CloudFront
-- Private app: ECS Fargate, ECS on EC2
-- Data: Aurora, Redis, ClickHouse, MSK는 우선 SSM endpoint contract로 표현
-- AWS API 접근은 VPC Endpoint 우선
-- NAT Gateway는 기본 off, 외부 HTTPS egress가 필요한 서비스에만 명시적으로 허용
-- public ingress는 LB 80 포트에서만 허용
-- ECS/data 통신은 CIDR가 아니라 security group 관계로 표현
+- 한 VPC를 소유한다.
+- Event Collector, Ad Context Projector, Ad Decision API, Dashboard API, Recommendation을 ECS Fargate로 실행한다.
+- Event Collector는 NLB에만 붙인다.
+- Ad Decision API와 Dashboard API는 ALB path rule에만 붙인다.
+- Aurora, Redis, ClickHouse, MSK는 SSM endpoint contract로 표현한다.
 
-## Edge 라우팅
+### Perf
 
-- NLB는 Event SDK ingestion 전용이며 Event Collector만 target으로 허용
-- ALB는 사용자/API HTTP 전용이며 Ad Decision API와 Dashboard API만 target으로 허용
-- CloudFront는 S3 frontend/media bucket만 origin으로 사용하며, S3 bucket과 같은 FrontendStack에 둔다.
+성능 테스트용 임시 스택이다.
 
-## Compute policy
+- Dev 스택이 export한 VPC/subnet/endpoint SG를 import해서 같은 VPC 안에 뜬다.
+- 성능 테스트가 끝나면 이 스택만 destroy할 수 있어야 한다.
+- Event Collector와 Ad Context Projector만 둔다.
+- ECS on EC2 capacity provider를 사용한다.
+- 필요한 endpoint contract는 MSK, Redis, ClickHouse만 둔다.
+- API route, Dashboard, Recommendation, Aurora, frontend, 데이터 로그 관리는 포함하지 않는다.
 
-- Event Collector: dev Fargate, perf ECS on EC2
-- Ad Context Projector: dev Fargate, perf ECS on EC2
-- Ad Decision API: Fargate 우선
-- Dashboard API: Fargate 우선
-- Recommendation Server: 초기 Fargate, 병목 확인 후 EC2 전환 가능
+## 운영 명령
 
-## Stack 분리
+- `npm run synth:dev`
+- `npm run synth:perf`
+- `npm run deploy:dev`
+- `npm run deploy:perf`
+- `npm run destroy:perf`
 
-- Network, Edge, Frontend, Storage, Stream, Data, Collect, Decision, Dashboard, Analytics, Observability
-- stack 간 연결은 props/interface로 전달
-- output/import 남발 금지
-
-## CDK 레벨
-
-- project-owned construct 또는 L2를 우선 사용
-- L1 `Cfn*` 직접 생성은 특별한 이유가 없는 한 금지
-- config는 문서가 아니라 실제 ECS/ECR/LB/SG/SSM 생성 입력이어야 함
+`npm run deploy`와 `npm run destroy`는 실수 방지를 위해 차단한다.

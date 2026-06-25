@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-console.error('This repository is draft-only. AWS deploy/destroy is intentionally blocked.');
-console.error('Use npm run synth:dev or npm run synth:perf to inspect the generated templates.');
+console.error('Generic deploy/destroy is intentionally blocked.');
+console.error('Use deploy:dev, deploy:perf, or destroy:perf so the target lifecycle is explicit.');
 process.exit(1);

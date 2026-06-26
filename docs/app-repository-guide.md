@@ -73,18 +73,20 @@ Server deploy workflow 규칙:
 - 각 서버 repo는 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
 - workflow는 image build/push와 ECS service image 교체만 담당합니다.
 - runtime env와 secret은 workflow에서 정의하지 않습니다.
-- ECR repository, ECS service, container 이름 같은 deploy target 값은 인프라 담당자가 제공한 값을 사용합니다.
+- ECR repository, ECS cluster, ECS service, container 이름은 아래 dev deploy target 값을 그대로 사용합니다.
 - 최초 개발 환경 구성 시에는 인프라 repo에서 ECR repository를 먼저 만든 뒤, 각 서버 repo가 image를 push합니다.
+- ECS service가 아직 없을 때는 reusable ECS deploy workflow를 사용할 수 없습니다. 이 workflow는 현재 ECS task definition을 조회한 뒤 image만 교체하기 때문입니다.
+- 최초 seed image는 각 서버 repo에서 직접 ECR에 push하고, 최소 `latest` tag를 포함해야 합니다. 이후 runtime stack이 배포된 뒤에는 reusable ECS deploy workflow를 사용합니다.
 
-Dev ECR repository 이름:
+Dev server deploy target:
 
-| Service | ECR repository |
-|---|---|
-| Event Collector | `loop-ad/event-collector` |
-| Ad Context Projector | `loop-ad/ad-context-projector` |
-| Advertisement API | `loop-ad/advertisement-api` |
-| Dashboard API | `loop-ad/dashboard-api` |
-| Decision API | `loop-ad/decision-api` |
+| Service | `service_name` | `ecr_repository` | `ecs_cluster` | `ecs_service` | `container_name` |
+|---|---|---|---|---|---|
+| Event Collector | `event-collector` | `loop-ad/event-collector` | `dev-loop-ad-cluster` | `dev-event-collector` | `event-collector` |
+| Ad Context Projector | `ad-context-projector` | `loop-ad/ad-context-projector` | `dev-loop-ad-cluster` | `dev-ad-context-projector` | `ad-context-projector` |
+| Advertisement API | `advertisement-api` | `loop-ad/advertisement-api` | `dev-loop-ad-cluster` | `dev-advertisement-api` | `advertisement-api` |
+| Dashboard API | `dashboard-api` | `loop-ad/dashboard-api` | `dev-loop-ad-cluster` | `dev-dashboard-api` | `dashboard-api` |
+| Decision API | `decision-api` | `loop-ad/decision-api` | `dev-loop-ad-cluster` | `dev-decision-api` | `decision-api` |
 
 ## Server Env Contract
 
@@ -101,13 +103,13 @@ Dev ECR repository 이름:
 
 서비스별 `LOOPAD_SERVICE_ID`:
 
-| Service | `LOOPAD_SERVICE_ID` |
-|---|---|
-| Event Collector | `event-collector` |
-| Ad Context Projector | `ad-context-projector` |
-| Advertisement API | `advertisement-api` |
-| Dashboard API | `dashboard-api` |
-| Decision API | `decision-api` |
+| Service | `LOOPAD_SERVICE_ID` | `LOOPAD_RUNTIME` |
+|---|---|---|
+| Event Collector | `event-collector` | `go` |
+| Ad Context Projector | `ad-context-projector` | `go` |
+| Advertisement API | `advertisement-api` | `go` |
+| Dashboard API | `dashboard-api` | `go` |
+| Decision API | `decision-api` | `go` |
 
 Data env:
 
@@ -118,7 +120,7 @@ Data env:
 | `LOOPAD_AURORA_DATABASE` | Plain | `loopad` | 기본 database 이름입니다. |
 | `LOOPAD_AURORA_USERNAME` | Secret | secret 주입 | Aurora username입니다. |
 | `LOOPAD_AURORA_PASSWORD` | Secret | secret 주입 | Aurora password입니다. |
-| `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. |
+| `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. `http://...:8123` 형식입니다. |
 | `LOOPAD_CLICKHOUSE_USERNAME` | Plain | `default` | ClickHouse username입니다. |
 | `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis 호환 Valkey endpoint입니다. TLS 연결을 위해 `rediss://...:6379` 형식을 사용합니다. |
 | `LOOPAD_MSK_BOOTSTRAP_BROKERS` | Plain | 인프라 주입 | MSK bootstrap broker 목록입니다. |
@@ -214,8 +216,27 @@ Frontend deploy workflow 규칙:
 
 - 각 FE repo는 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
 - workflow는 정적 파일 업로드와 CDN invalidation만 담당합니다.
-- bucket, CDN distribution 같은 deploy target 값은 인프라 담당자가 제공한 값을 사용합니다.
+- bucket, CDN distribution 같은 deploy target 값은 아래 dev frontend deploy target 값을 사용합니다.
 - FE build env 값은 꼭 필요할 때만 GitHub Environment variables 등으로 관리할 수 있지만, secret과 고정 loop-ad domain은 넣지 않습니다.
+
+Dev frontend deploy target:
+
+| Site | Public domain | `s3_bucket` | `s3_prefix` | CloudFront distribution ID |
+|---|---|---|---|---|
+| Dashboard Web | `https://dashboard.dev.loop-ad.org` | `loop-ad-dev-dashboard-web` | `.` | 인프라 output 또는 `/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id` |
+| Demo shoppingmall Web | `https://demo-shoppingmall.dev.loop-ad.org` | `loop-ad-dev-demo-shoppingmall-web` | `.` | 인프라 output 또는 `/loop-ad/dev/frontend/demo-shoppingmall-web/cloudfront-distribution-id` |
+
+권장 frontend workflow input:
+
+| Input | 값 |
+|---|---|
+| `aws_region` | `ap-northeast-2` |
+| `install_command` | `npm ci` |
+| `build_command` | `npm run build` |
+| `build_output_dir` | `dist` |
+| `cloudfront_invalidation_paths` | `/*` |
+| `asset_cache_control` | `public,max-age=31536000,immutable` |
+| `html_cache_control` | `no-cache,no-store,must-revalidate` |
 
 ## Local Development
 
@@ -243,8 +264,6 @@ LOOPAD_AURORA_DATABASE=loopad
 - AWS resource ARN
 - SSM parameter path
 - Secrets Manager secret 이름
-- bucket 이름
-- CDN distribution ID
 - ALB/NLB listener rule
 - ECS launch type
 
@@ -258,7 +277,11 @@ LOOPAD_AURORA_DATABASE=loopad
 - 앱 코드가 SSM/Secrets Manager를 직접 조회하지 않는가?
 - secret이 repo, image, workflow env, 로그, FE bundle에 들어가지 않는가?
 - 서버 repo는 Dockerfile과 deploy workflow를 갖고 있는가?
+- 최초 seed image를 `latest` tag로 ECR에 push할 수 있는가?
+- deploy workflow input이 dev server deploy target 표와 일치하는가?
 - 서버 health check가 준비되어 있는가?
+- 서버 로그가 stdout/stderr로 출력되고 secret을 포함하지 않는가?
 - FE repo는 `npm ci`, `npm run build`, `dist` 기본 규칙을 따르는가?
+- FE deploy workflow input이 dev frontend deploy target 표와 일치하는가?
 - FE env는 public 값만 사용하는가?
 - deploy workflow가 인프라 repo reusable workflow를 `uses:`로 호출하는가?

@@ -15,6 +15,7 @@ import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
@@ -66,14 +67,14 @@ export interface LoopAdDevCertificateStackProps extends StackProps {
 }
 
 // Certificate stack의 출력값입니다.
-// 서로 다른 region stack을 직접 참조하지 않고 ARN만 넘겨 app stack synth를 단순하게 유지합니다.
+// 서로 다른 region stack을 직접 참조하지 않고 ARN만 넘겨 data/runtime stack synth를 단순하게 유지합니다.
 export interface LoopAdDevCertificateArns {
     readonly frontendSitesCertificateArn: string;
     readonly genAiGeneratedAssetsCertificateArn: string;
 }
 
 // CloudFront custom domain에 연결하는 ACM certificate는 us-east-1에 있어야 합니다.
-// 인증서는 자주 바뀌지 않으므로 dev app stack과 분리해 먼저 배포합니다.
+// 인증서는 자주 바뀌지 않으므로 dev data/runtime stack과 분리해 먼저 배포합니다.
 export class LoopAdDevCertificateStack extends Stack {
     public readonly frontendSitesCertificate: acm.ICertificate;
     public readonly genAiGeneratedAssetsCertificate: acm.ICertificate;
@@ -108,7 +109,7 @@ export class LoopAdDevCertificateStack extends Stack {
 }
 
 // ECR repository는 ECS보다 먼저 배포해야 합니다.
-// 각 앱 repo가 image를 직접 push한 뒤 app stack을 배포하면, 첫 ECS 배포 시 image not found를 피할 수 있습니다.
+// 각 앱 repo가 image를 직접 push한 뒤 runtime stack을 배포하면, 첫 ECS 배포 시 image not found를 피할 수 있습니다.
 export class LoopAdDevRepositoryStack extends Stack {
     public constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
@@ -129,7 +130,7 @@ export class LoopAdDevRepositoryStack extends Stack {
 }
 
 // VPC, subnet, endpoint, security group은 애플리케이션보다 변경 주기가 깁니다.
-// 최초 배포 전에 network stack으로 분리해 두면 이후 app stack 변경의 영향 범위를 줄일 수 있습니다.
+// 최초 배포 전에 network stack으로 분리해 두면 이후 data/runtime 변경의 영향 범위를 줄일 수 있습니다.
 export class LoopAdDevNetworkStack extends Stack {
     public readonly vpc: ec2.Vpc;
     public readonly privateSubnetSelection: ec2.SubnetSelection;
@@ -218,58 +219,37 @@ export class LoopAdDevNetworkStack extends Stack {
     }
 }
 
-export interface LoopAdDevStackProps extends StackProps {
+export interface LoopAdDevDataStackProps extends StackProps {
     readonly publicHostedZone: PublicHostedZoneConfig;
-    readonly certificateArns: LoopAdDevCertificateArns;
+    readonly genAiGeneratedAssetsCertificateArn: string;
     readonly network: LoopAdDevNetworkStack;
 }
 
-// 상시 개발 스택입니다.
-// 변경이 잦은 애플리케이션 런타임, 데이터 저장소, public endpoint, 배포 산출물 저장소를 소유합니다.
-// VPC와 certificate는 별도 stack에서 받고, 이 stack은 애플리케이션 배포 주기에 맞춰 자주 수정합니다.
-export class LoopAdDevStack extends Stack {
-    public constructor(scope: Construct, id: string, props: LoopAdDevStackProps) {
+// 데이터 저장소와 endpoint contract를 소유하는 스택입니다.
+// Runtime보다 먼저 배포해 DB/schema/topic 초기화 작업을 분리할 수 있게 합니다.
+export class LoopAdDevDataStack extends Stack {
+    public readonly dataStorageBucket: s3.Bucket;
+    public readonly auroraHost: string;
+    public readonly auroraPort: string;
+    public readonly auroraCredentialsSecret: secretsmanager.ISecret;
+    public readonly redisUrl: string;
+    public readonly clickHouseUrl: string;
+    public readonly mskBootstrapBrokerString: string;
+
+    public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
         super(scope, id, props);
 
         // Network stack에서 만든 기반 리소스를 재사용합니다.
         // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
             vpc,
-            privateSubnetSelection,
             privateSubnets,
-            albSecurityGroup,
-            nlbSecurityGroup,
-            serverSecurityGroup,
             dataStorageSecurityGroup,
         } = props.network;
 
-        // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
-        // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
-        const cluster = new ecs.Cluster(this, 'Cluster', {
-            vpc,
-            clusterName: 'dev-loop-ad-cluster',
-            containerInsightsV2: ecs.ContainerInsights.ENABLED,
-            defaultCloudMapNamespace: {
-                name: 'dev.loop-ad.local',
-            },
-        });
-
-        // ECR repository는 repository stack에서 먼저 만듭니다.
-        // app stack은 이름 contract만 import해서 ECS가 이미 push된 image를 참조하게 합니다.
-        const repositories = DEV_APPLICATION_REPOSITORIES.map((repository) => (
-            ecr.Repository.fromRepositoryName(this, `${repository.id}Import`, repository.repositoryName)
-        )) as DevApplicationRepositories;
-        const [
-            eventCollectorRepository,
-            projectorRepository,
-            advertisementRepository,
-            dashboardRepository,
-            decisionApiRepository,
-        ] = repositories;
-
         // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
         // bucket은 직접 public으로 열지 않고 CloudFront OAC를 통해 필요한 prefix만 읽히게 합니다.
-        const dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
+        this.dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             encryption: s3.BucketEncryption.S3_MANAGED,
             enforceSSL: true,
@@ -291,33 +271,6 @@ export class LoopAdDevStack extends Stack {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
         });
-        const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        // Certificate stack에서 만든 ACM ARN을 명시적으로 import합니다.
-        // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
-        const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
-            this,
-            'FrontendSitesCertificate',
-            props.certificateArns.frontendSitesCertificateArn,
-        );
-        createStaticFrontendSite(this, {
-            idPrefix: 'DashboardWeb',
-            siteName: 'dashboard-web',
-            bucketName: 'loop-ad-dev-dashboard-web',
-            recordName: DASHBOARD_WEB_RECORD_NAME,
-            domainName: dashboardWebDomainName,
-            certificate: frontendSitesCertificate,
-            publicHostedZone,
-        });
-        createStaticFrontendSite(this, {
-            idPrefix: 'DemoShoppingmallWeb',
-            siteName: 'demo-shoppingmall-web',
-            bucketName: 'loop-ad-dev-demo-shoppingmall-web',
-            recordName: DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
-            domainName: demoShoppingmallWebDomainName,
-            certificate: frontendSitesCertificate,
-            publicHostedZone,
-        });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
         // GenAI asset용 certificate도 별도 ARN으로 받습니다.
@@ -325,7 +278,7 @@ export class LoopAdDevStack extends Stack {
         const genAiGeneratedAssetsCertificate = acm.Certificate.fromCertificateArn(
             this,
             'GenAiGeneratedAssetsCertificate',
-            props.certificateArns.genAiGeneratedAssetsCertificateArn,
+            props.genAiGeneratedAssetsCertificateArn,
         );
         const genAiGeneratedAssetsDistribution = new cloudfront.Distribution(this, 'GenAiGeneratedAssetsDistribution', {
             domainNames: [genAiPublicAssetsDomainName],
@@ -335,7 +288,7 @@ export class LoopAdDevStack extends Stack {
             defaultBehavior: {
                 // originPath로 generated prefix만 공개합니다.
                 // bucket 전체를 static hosting으로 쓰지 않아도 asset URL contract를 안정적으로 제공합니다.
-                origin: origins.S3BucketOrigin.withOriginAccessControl(dataStorageBucket, {
+                origin: origins.S3BucketOrigin.withOriginAccessControl(this.dataStorageBucket, {
                     originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
                 }),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -344,6 +297,11 @@ export class LoopAdDevStack extends Stack {
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
                 compress: true,
             },
+        });
+        new route53.ARecord(this, 'GenAiGeneratedAssetsDnsRecord', {
+            zone: publicHostedZone,
+            recordName: GENAI_PUBLIC_ASSETS_RECORD_NAME,
+            target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistribution)),
         });
 
         // 비용을 낮게 유지하는 개발용 data storage입니다.
@@ -389,7 +347,7 @@ export class LoopAdDevStack extends Stack {
                 },
             },
         });
-        const redisUrl = cdk.Fn.join('', ['rediss://', valkeyCache.attrEndpointAddress, ':', valkeyCache.attrEndpointPort]);
+        this.redisUrl = cdk.Fn.join('', ['rediss://', valkeyCache.attrEndpointAddress, ':', valkeyCache.attrEndpointPort]);
 
         // ClickHouse는 dev 분석/집계용 단일 EC2 인스턴스로 시작합니다.
         // 버전은 LTS patch tag로 고정해 재부팅/재배포 시에도 같은 바이너리를 사용하게 합니다.
@@ -480,20 +438,15 @@ export class LoopAdDevStack extends Stack {
             ]),
         });
 
-        const auroraHost = auroraCluster.clusterEndpoint.hostname;
-        const auroraPort = '5432';
-        const clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
-        const mskBootstrapBrokerString = mskBootstrapBrokers.getResponseField('BootstrapBrokerString');
+        this.auroraHost = auroraCluster.clusterEndpoint.hostname;
+        this.auroraPort = '5432';
+        this.clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
+        this.mskBootstrapBrokerString = mskBootstrapBrokers.getResponseField('BootstrapBrokerString');
         const auroraCredentialsSecret = auroraCluster.secret;
         if (!auroraCredentialsSecret) {
             throw new Error('Aurora generated credentials secret is required.');
         }
-
-        // 외부 SaaS credential은 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
-        // 실제 secret 값은 배포 전 AWS 계정에 별도로 만들어 둡니다.
-        const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
-            parameterName: OPENAI_API_KEY_PARAMETER_NAME,
-        });
+        this.auroraCredentialsSecret = auroraCredentialsSecret;
 
         // endpoint contract는 SSM에도 남깁니다. 앱 task에는 아래 값을 env로 직접 주입합니다.
         // 다른 repository의 CI/CD나 운영 스크립트가 같은 endpoint 이름을 보고 연결값을 찾을 수 있게 하기 위함입니다.
@@ -501,31 +454,31 @@ export class LoopAdDevStack extends Stack {
             {
                 id: 'AuroraEndpointParameter',
                 parameterName: '/loop-ad/dev/aurora/endpoint',
-                stringValue: auroraHost,
+                stringValue: this.auroraHost,
                 description: 'Dev Aurora PostgreSQL endpoint contract.',
             },
             {
                 id: 'RedisEndpointParameter',
                 parameterName: '/loop-ad/dev/redis/endpoint',
-                stringValue: redisUrl,
+                stringValue: this.redisUrl,
                 description: 'Dev Redis-compatible Valkey endpoint contract.',
             },
             {
                 id: 'ClickHouseEndpointParameter',
                 parameterName: '/loop-ad/dev/clickhouse/endpoint',
-                stringValue: clickHouseUrl,
+                stringValue: this.clickHouseUrl,
                 description: 'Dev ClickHouse endpoint contract.',
             },
             {
                 id: 'MskEndpointParameter',
                 parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
-                stringValue: mskBootstrapBrokerString,
+                stringValue: this.mskBootstrapBrokerString,
                 description: 'Dev MSK bootstrap broker contract.',
             },
             {
                 id: 'DataStorageBucketNameParameter',
                 parameterName: '/loop-ad/dev/data-storage/bucket-name',
-                stringValue: dataStorageBucket.bucketName,
+                stringValue: this.dataStorageBucket.bucketName,
                 description: 'Dev DataStorage S3 bucket name contract.',
             },
             {
@@ -547,6 +500,104 @@ export class LoopAdDevStack extends Stack {
                 description: parameter.description,
             });
         }
+    }
+}
+
+export interface LoopAdDevRuntimeStackProps extends StackProps {
+    readonly publicHostedZone: PublicHostedZoneConfig;
+    readonly certificateArns: LoopAdDevCertificateArns;
+    readonly network: LoopAdDevNetworkStack;
+    readonly data: LoopAdDevDataStack;
+}
+
+// 상시 개발 런타임 스택입니다.
+// FE static hosting, public ingress, ECS cluster/service를 소유하고 데이터 저장소는 DataStack에서 받습니다.
+export class LoopAdDevRuntimeStack extends Stack {
+    public constructor(scope: Construct, id: string, props: LoopAdDevRuntimeStackProps) {
+        super(scope, id, props);
+
+        // Network/Data stack에서 만든 기반 리소스를 재사용합니다.
+        // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
+        const {
+            vpc,
+            privateSubnets,
+            albSecurityGroup,
+            nlbSecurityGroup,
+            serverSecurityGroup,
+        } = props.network;
+        const {
+            dataStorageBucket,
+            auroraHost,
+            auroraPort,
+            auroraCredentialsSecret,
+            redisUrl,
+            clickHouseUrl,
+            mskBootstrapBrokerString,
+        } = props.data;
+
+        // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
+        // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
+        const cluster = new ecs.Cluster(this, 'Cluster', {
+            vpc,
+            clusterName: 'dev-loop-ad-cluster',
+            containerInsightsV2: ecs.ContainerInsights.ENABLED,
+            defaultCloudMapNamespace: {
+                name: 'dev.loop-ad.local',
+            },
+        });
+
+        // ECR repository는 repository stack에서 먼저 만듭니다.
+        // runtime stack은 이름 contract만 import해서 ECS가 이미 push된 image를 참조하게 합니다.
+        const repositories = DEV_APPLICATION_REPOSITORIES.map((repository) => (
+            ecr.Repository.fromRepositoryName(this, `${repository.id}Import`, repository.repositoryName)
+        )) as DevApplicationRepositories;
+        const [
+            eventCollectorRepository,
+            projectorRepository,
+            advertisementRepository,
+            dashboardRepository,
+            decisionApiRepository,
+        ] = repositories;
+
+        // .env에서 받은 public hosted zone을 import합니다.
+        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
+        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
+            hostedZoneId: props.publicHostedZone.hostedZoneId,
+            zoneName: props.publicHostedZone.domainName,
+        });
+        const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        // Certificate stack에서 만든 ACM ARN을 명시적으로 import합니다.
+        // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
+        const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
+            this,
+            'FrontendSitesCertificate',
+            props.certificateArns.frontendSitesCertificateArn,
+        );
+        createStaticFrontendSite(this, {
+            idPrefix: 'DashboardWeb',
+            siteName: 'dashboard-web',
+            bucketName: 'loop-ad-dev-dashboard-web',
+            recordName: DASHBOARD_WEB_RECORD_NAME,
+            domainName: dashboardWebDomainName,
+            certificate: frontendSitesCertificate,
+            publicHostedZone,
+        });
+        createStaticFrontendSite(this, {
+            idPrefix: 'DemoShoppingmallWeb',
+            siteName: 'demo-shoppingmall-web',
+            bucketName: 'loop-ad-dev-demo-shoppingmall-web',
+            recordName: DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
+            domainName: demoShoppingmallWebDomainName,
+            certificate: frontendSitesCertificate,
+            publicHostedZone,
+        });
+
+        // 외부 SaaS credential은 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
+        // 실제 secret 값은 배포 전 AWS 계정에 별도로 만들어 둡니다.
+        const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
+            parameterName: OPENAI_API_KEY_PARAMETER_NAME,
+        });
 
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         // HTTP API와 ingestion traffic의 성격이 달라 listener/target group을 분리해 장애 범위를 줄입니다.
@@ -584,11 +635,6 @@ export class LoopAdDevStack extends Stack {
                 id: 'DevIngestDnsRecord',
                 recordName: 'ingest.dev',
                 target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
-            },
-            {
-                id: 'GenAiGeneratedAssetsDnsRecord',
-                recordName: GENAI_PUBLIC_ASSETS_RECORD_NAME,
-                target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistribution)),
             },
         ] as const) {
             new route53.ARecord(this, dnsRecord.id, {

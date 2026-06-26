@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: CloudFront용 ACM certificate, ECR repository, VPC, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: CloudFront용 ACM certificate, ECR repository, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
 - 리전: `ap-northeast-2`
 
@@ -16,9 +16,10 @@
 
 - 한 VPC를 소유한다.
 - CloudFront custom domain용 ACM certificate는 `us-east-1`의 별도 certificate stack에서 관리한다.
-- Dev app stack은 certificate stack output ARN을 `.env`로 받아 CloudFront distribution에 import한다.
-- ECR repository는 별도 repository stack에서 먼저 만들고, 각 앱 repo가 image를 push한 뒤 ECS app stack을 배포한다.
-- Dev app stack은 ECR repository를 생성하지 않고 고정 repository name contract로 import한다.
+- Dev data/runtime stack은 certificate stack output ARN을 `.env`로 받아 CloudFront distribution에 import한다.
+- ECR repository는 별도 repository stack에서 먼저 만들고, 각 앱 repo가 image를 push한 뒤 ECS runtime stack을 배포한다.
+- Dev runtime stack은 ECR repository를 생성하지 않고 고정 repository name contract로 import한다.
+- VPC/network, data storage, runtime service는 각각 stack을 나눈다.
 - ECS task 수와 EC2 capacity 수치로 실제 확장 상한을 둔다.
 - 외부 SaaS/API 연동을 위해 NAT Gateway가 있는 private subnet에서 실행한다.
 - VPC는 subnet 배치를 예측 가능하게 유지하기 위해 `ap-northeast-2a`, `ap-northeast-2c` 두 AZ를 명시해 생성한다.
@@ -29,6 +30,8 @@
 - DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
 - GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.<public-domain>/...`로 외부 조회할 수 있게 한다.
 - DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, CloudFront OAC 접근 제어를 필수 보안 조건으로 가진다.
+- Dev data stack은 Aurora/Valkey/ClickHouse/MSK/DataStorage S3와 SSM endpoint contract를 소유한다.
+- Dev runtime stack은 FE 정적 hosting, ALB/NLB, Route53 public runtime record, ECS cluster/service/log group을 소유한다.
 - Public domain과 private service endpoint는 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
 - Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
 - 각 ECS 서비스는 `/loop-ad/dev/ecs/<service-id>` 형식의 별도 CloudWatch LogGroup에 stdout/stderr 로그를 남기고 dev에서는 3일만 보관한다.
@@ -42,20 +45,25 @@
 - MSK는 AWS recommended Kafka `3.9.x`, provisioned `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
 - MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
 - `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
-- Dev app stack 실행 시 CloudFront certificate ARN 두 개를 필수로 요구한다.
+- Dev data stack 실행 시 GenAI asset용 CloudFront certificate ARN을 필수로 요구한다.
+- Dev runtime stack 실행 시 frontend site용 CloudFront certificate ARN과 data stack 참조를 필수로 요구한다.
 
 ## 운영 명령
 
 - `npm run synth:dev-certificate`
 - `npm run synth:dev-repositories`
 - `npm run synth:dev-network`
+- `npm run synth:dev-data`
+- `npm run synth:dev-runtime`
 - `npm run synth:dev`
 - `npm run deploy:dev-certificate`
 - `npm run deploy:dev-repositories`
 - `npm run deploy:dev-network`
+- `npm run deploy:dev-data`
+- `npm run deploy:dev-runtime`
 - `npm run deploy:dev`
 
-최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR image push -> `deploy:dev-network` 또는 `deploy:dev` 순서로 둔다. ECS service는 image가 존재한 뒤 배포해야 초기 배포에서 image pull 실패를 피할 수 있다.
+최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> DB migration/topic/schema 등 데이터 초기화 -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 data contract가 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime dependency 누락을 피할 수 있다.
 
 실제 CDK 배포 전에는 `ap-northeast-2`와 CloudFront certificate용 `us-east-1`에 CDK bootstrap을 먼저 수행한다.
 

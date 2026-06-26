@@ -53,6 +53,20 @@ describe('GitHub Actions reusable workflows', () => {
         expect(frontendExample).toContain('cloudfront_distribution_id: E1234567890ABC');
     });
 
+    it('app repository guide는 실제 dev deploy target contract를 문서화한다', () => {
+        const guide = readFileSync(join(ROOT, 'docs/app-repository-guide.md'), 'utf8');
+
+        expect(guide).toContain('dev-loop-ad-cluster');
+        expect(guide).toContain('loop-ad/decision-api');
+        expect(guide).toContain('dev-decision-api');
+        expect(guide).toContain('container_name');
+        expect(guide).toContain('최초 seed image');
+        expect(guide).toContain('latest');
+        expect(guide).toContain('/loop-ad/dev/ecs/decision-api');
+        expect(guide).toContain('loop-ad-dev-dashboard-web');
+        expect(guide).toContain('/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id');
+    });
+
     it('infra workflow는 deploy 없이 build/test/synth만 수행한다', () => {
         const workflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
 
@@ -86,7 +100,13 @@ describe('GitHub Actions reusable workflows', () => {
 
         expect(packageJson.scripts.deploy).toBe('node scripts/refuse-deploy.mjs');
         expect(packageJson.scripts.destroy).toBe('node scripts/refuse-deploy.mjs');
-        expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevStack');
+        expect(packageJson.scripts['deploy:dev-network']).toContain('LoopAdDevNetworkStack');
+        expect(packageJson.scripts['deploy:dev-data']).toContain('LoopAdDevDataStack');
+        expect(packageJson.scripts['deploy:dev-runtime']).toContain('LoopAdDevRuntimeStack');
+        expect(packageJson.scripts['synth:dev']).toContain('LoopAdDevDataStack');
+        expect(packageJson.scripts['synth:dev']).toContain('LoopAdDevRuntimeStack');
+        expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevDataStack');
+        expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevRuntimeStack');
         expect(refusal).toContain('intentionally blocked');
         expect(refusal).toContain('deploy:dev');
     });

@@ -4,6 +4,8 @@
 
 앱 repo는 인프라를 직접 구성하지 않습니다. 대신 앱은 이 문서의 env 이름을 정확히 읽고, 인프라 담당자는 ECS task definition 또는 FE build workflow에서 실제 값을 주입합니다.
 
+dev 환경의 실제 env 값은 앱 개발자가 알 필요가 없습니다. 앱 repo에는 dev 값이나 기본값을 적지 않고, 이름과 검증 규칙만 둡니다.
+
 Public domain과 private service endpoint는 env로 받지 않습니다. 고정 endpoint contract는 [service-endpoints.md](service-endpoints.md)에 둡니다.
 
 ## 핵심 규칙
@@ -81,52 +83,40 @@ Server deploy workflow 규칙:
 
 공통 서버 env:
 
-| Env | 값 또는 주입 방식 | 설명 |
-|---|---|---|
-| `LOOPAD_ENV` | `dev` | dev ECS에서 고정으로 주입되는 실행 환경 이름입니다. |
-| `LOOPAD_SERVICE_ID` | 서비스별 고정값 | 서비스 식별자입니다. 아래 service ID 값을 그대로 사용합니다. |
-| `LOOPAD_RUNTIME` | 앱 repo별 고정값 | 앱 런타임 구분입니다. |
-| `PORT` | `80` | dev ECS에서 고정으로 주입되는 listen 포트입니다. |
-
-서비스별 `LOOPAD_SERVICE_ID`:
-
-| Service | `LOOPAD_SERVICE_ID` |
+| Env | 설명 |
 |---|---|
-| Event Collector | `event-collector` |
-| Ad Context Projector | `ad-context-projector` |
-| Advertisement API | `advertisement-api` |
-| Dashboard API | `dashboard-api` |
-| Decision | `decision` |
+| `LOOPAD_ENV` | 실행 환경 이름입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_SERVICE_ID` | 서비스 식별자입니다. dev에서는 인프라가 서비스별로 주입합니다. |
+| `LOOPAD_RUNTIME` | 앱 런타임 구분입니다. dev에서는 인프라가 repo별로 주입합니다. |
+| `PORT` | 컨테이너가 listen할 포트입니다. dev에서는 인프라가 주입합니다. |
 
 Data env:
 
-| Env | 종류 | 값 또는 주입 방식 | 설명 |
-|---|---|---|---|
-| `LOOPAD_AURORA_HOST` | Plain | 인프라 주입 | Aurora PostgreSQL hostname입니다. |
-| `LOOPAD_AURORA_PORT` | Plain | `5432` | Aurora PostgreSQL port입니다. |
-| `LOOPAD_AURORA_DATABASE` | Plain | `loopad` | 기본 database 이름입니다. |
-| `LOOPAD_AURORA_USERNAME` | Secret | secret 주입 | Aurora username입니다. |
-| `LOOPAD_AURORA_PASSWORD` | Secret | secret 주입 | Aurora password입니다. |
-| `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. |
-| `LOOPAD_CLICKHOUSE_USERNAME` | Plain | `default` | ClickHouse username입니다. |
-| `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis endpoint입니다. Redis 확정 전 값은 `pending://dev/redis`입니다. |
-| `LOOPAD_MSK_BOOTSTRAP_BROKERS` | Plain | 인프라 주입 | MSK bootstrap broker 목록입니다. |
-| `LOOPAD_EVENT_TOPIC` | Plain | `loop-ad.events.raw` | raw event topic 이름입니다. |
+| Env | 종류 | 설명 |
+|---|---|---|
+| `LOOPAD_AURORA_HOST` | Plain | Aurora PostgreSQL hostname입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_AURORA_PORT` | Plain | Aurora PostgreSQL port입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_AURORA_DATABASE` | Plain | Aurora database 이름입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_AURORA_USERNAME` | Secret | Aurora username입니다. dev에서는 secret env로 주입합니다. |
+| `LOOPAD_AURORA_PASSWORD` | Secret | Aurora password입니다. dev에서는 secret env로 주입합니다. |
+| `LOOPAD_CLICKHOUSE_URL` | Plain | ClickHouse HTTP endpoint입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_CLICKHOUSE_USERNAME` | Plain | ClickHouse username입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_REDIS_URL` | Plain | Redis endpoint입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_MSK_BOOTSTRAP_BROKERS` | Plain | MSK bootstrap broker 목록입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_EVENT_TOPIC` | Plain | raw event topic 이름입니다. dev에서는 인프라가 주입합니다. |
 
 DataStorage env:
 
-| Env | 종류 | 값 또는 주입 방식 | 설명 |
-|---|---|---|---|
-| `LOOPAD_DATA_STORAGE_BUCKET` | Plain | 인프라 주입 | GenAI 생성물을 저장하는 S3 bucket 이름입니다. |
-| `LOOPAD_GENAI_GENERATED_ASSETS_PREFIX` | Plain | `genai/generated/` | GenAI 생성물 S3 prefix입니다. |
+| Env | 종류 | 설명 |
+|---|---|---|
+| `LOOPAD_DATA_STORAGE_BUCKET` | Plain | GenAI 생성물을 저장하는 S3 bucket 이름입니다. dev에서는 인프라가 주입합니다. |
+| `LOOPAD_GENAI_GENERATED_ASSETS_PREFIX` | Plain | GenAI 생성물 S3 prefix입니다. dev에서는 인프라가 주입합니다. |
 
 External secret env:
 
 | Env | 사용하는 서비스 | 설명 |
 |---|---|---|
 | `LOOPAD_OPENAI_API_KEY` | Decision | OpenAI API key입니다. |
-| `LOOPAD_N8N_WEBHOOK_URL` | Dashboard API | n8n webhook URL입니다. |
-| `LOOPAD_DISCORD_WEBHOOK_URL` | Dashboard API | Discord webhook URL입니다. |
 
 서비스별 필수 env:
 
@@ -135,12 +125,12 @@ External secret env:
 | Event Collector | 공통 서버 env, `LOOPAD_MSK_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC` |
 | Ad Context Projector | 공통 서버 env, `LOOPAD_MSK_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC`, `LOOPAD_REDIS_URL`, `LOOPAD_CLICKHOUSE_URL`, `LOOPAD_CLICKHOUSE_USERNAME` |
 | Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
-| Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_N8N_WEBHOOK_URL`, `LOOPAD_DISCORD_WEBHOOK_URL` |
+| Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
 | Decision | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
 
 내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision을 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
 
-Redis가 필요한 서비스는 `LOOPAD_REDIS_URL` 값이 `pending://...`이면 시작 시점에 명확히 실패해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
+Redis가 필요한 서비스는 `LOOPAD_REDIS_URL` 값이 실제로 연결 가능한 Redis URL이 아니면 시작 시점에 명확히 실패해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
 
 ## Frontend Static Site Repo
 
@@ -173,11 +163,10 @@ FE env 규칙:
 금지 패턴:
 
 ```text
-VITE_API_BASE_URL=https://api.dev.loop-ad.org
-VITE_INGEST_BASE_URL=https://ingest.dev.loop-ad.org
+VITE_API_BASE_URL=...
+VITE_INGEST_BASE_URL=...
 VITE_OPENAI_API_KEY=...
 VITE_AURORA_PASSWORD=...
-VITE_DISCORD_WEBHOOK_URL=...
 ```
 
 Frontend deploy workflow 규칙:
@@ -192,19 +181,8 @@ Frontend deploy workflow 규칙:
 - `.env.example`은 필요한 env 이름과 형식을 알려주는 용도로만 둡니다.
 - 실제 local 값은 `.env.local` 또는 개인 shell 환경에서 관리하고 commit하지 않습니다.
 - local 개발에서도 fallback/default를 넣지 않습니다.
-- local에서 필요한 DB/cache/broker 주소도 명시적으로 env에 넣고 실행합니다.
-
-로컬 `.env.local` 형태:
-
-```text
-LOOPAD_ENV=local
-LOOPAD_SERVICE_ID=dashboard-api
-LOOPAD_RUNTIME=go
-PORT=8080
-LOOPAD_AURORA_HOST=localhost
-LOOPAD_AURORA_PORT=15432
-LOOPAD_AURORA_DATABASE=loopad
-```
+- local에서 필요한 DB/cache/broker 주소는 각 앱 repo의 로컬 실행 방식에 맞춰 명시적으로 넣고 실행합니다.
+- 이 인프라 문서는 local 값을 정하지 않습니다.
 
 ## 개발자가 몰라도 되는 세부 구현
 

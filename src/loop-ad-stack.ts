@@ -1,5 +1,7 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
@@ -30,6 +32,7 @@ const DEV_CLICKHOUSE_VOLUME_GIB = 50;
 const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
+const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -145,15 +148,15 @@ export class LoopAdDevStack extends Stack {
         const [
             eventCollectorRepository,
             projectorRepository,
-            decisionRepository,
+            advertisementRepository,
             dashboardRepository,
-            recommendationRepository,
+            decisionRepository,
         ] = [
             { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
             { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
-            { id: 'AdDecisionApiRepository', repositoryName: 'loop-ad/ad-decision-api' },
+            { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api' },
             { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api' },
-            { id: 'RecommendationRepository', repositoryName: 'loop-ad/recommendation' },
+            { id: 'DecisionRepository', repositoryName: 'loop-ad/decision' },
         ].map((repository) => new ecr.Repository(this, repository.id, {
             repositoryName: repository.repositoryName,
             imageScanOnPush: true,
@@ -176,6 +179,85 @@ export class LoopAdDevStack extends Stack {
                     abortIncompleteMultipartUploadAfter: Duration.days(7),
                 },
             ],
+        });
+
+        // .env에서 받은 public hosted zone을 import합니다.
+        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
+        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
+            hostedZoneId: props.publicHostedZone.hostedZoneId,
+            zoneName: props.publicHostedZone.domainName,
+        });
+        const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
+        const genAiGeneratedAssetsCertificate = new acm.DnsValidatedCertificate(this, 'GenAiGeneratedAssetsCertificate', {
+            domainName: genAiPublicAssetsDomainName,
+            hostedZone: publicHostedZone,
+            region: 'us-east-1',
+        });
+        const genAiGeneratedAssetsOriginAccessControl = new cloudfront.CfnOriginAccessControl(this, 'GenAiGeneratedAssetsOriginAccessControl', {
+            originAccessControlConfig: {
+                name: 'dev-loop-ad-gen-ai-generated-assets',
+                description: 'CloudFront OAC for dev GenAI generated assets.',
+                originAccessControlOriginType: 's3',
+                signingBehavior: 'always',
+                signingProtocol: 'sigv4',
+            },
+        });
+        const genAiGeneratedAssetsDistribution = new cloudfront.CfnDistribution(this, 'GenAiGeneratedAssetsDistribution', {
+            distributionConfig: {
+                enabled: true,
+                aliases: [genAiPublicAssetsDomainName],
+                comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
+                httpVersion: 'http2',
+                ipv6Enabled: true,
+                priceClass: 'PriceClass_100',
+                origins: [
+                    {
+                        id: 'DataStorageGenAiGeneratedAssetsOrigin',
+                        domainName: dataStorageBucket.bucketRegionalDomainName,
+                        originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
+                        originAccessControlId: genAiGeneratedAssetsOriginAccessControl.attrId,
+                        s3OriginConfig: {
+                            originAccessIdentity: '',
+                        },
+                    },
+                ],
+                defaultCacheBehavior: {
+                    targetOriginId: 'DataStorageGenAiGeneratedAssetsOrigin',
+                    viewerProtocolPolicy: 'redirect-to-https',
+                    allowedMethods: ['GET', 'HEAD'],
+                    cachedMethods: ['GET', 'HEAD'],
+                    cachePolicyId: cloudfront.CachePolicy.CACHING_OPTIMIZED.cachePolicyId,
+                    compress: true,
+                },
+                viewerCertificate: {
+                    acmCertificateArn: genAiGeneratedAssetsCertificate.certificateArn,
+                    sslSupportMethod: 'sni-only',
+                    minimumProtocolVersion: 'TLSv1.2_2021',
+                },
+            },
+        });
+        dataStorageBucket.addToResourcePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+            actions: ['s3:GetObject'],
+            resources: [dataStorageBucket.arnForObjects(`${GENAI_GENERATED_ASSETS_PREFIX}*`)],
+            conditions: {
+                StringEquals: {
+                    'AWS:SourceArn': cdk.Fn.join('', [
+                        'arn:',
+                        cdk.Aws.PARTITION,
+                        ':cloudfront::',
+                        cdk.Aws.ACCOUNT_ID,
+                        ':distribution/',
+                        genAiGeneratedAssetsDistribution.attrId,
+                    ]),
+                },
+            },
+        }));
+        const genAiGeneratedAssetsDistributionTarget = cloudfront.Distribution.fromDistributionAttributes(this, 'GenAiGeneratedAssetsDistributionTarget', {
+            domainName: genAiGeneratedAssetsDistribution.attrDomainName,
+            distributionId: genAiGeneratedAssetsDistribution.attrId,
         });
 
         // 비용을 낮게 유지하는 개발용 data storage입니다.
@@ -326,6 +408,12 @@ export class LoopAdDevStack extends Stack {
                 stringValue: GENAI_GENERATED_ASSETS_PREFIX,
                 description: 'Dev DataStorage GenAI generated assets prefix contract.',
             },
+            {
+                id: 'GenAiGeneratedAssetsPublicUrlParameter',
+                parameterName: '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url',
+                stringValue: genAiGeneratedAssetsPublicBaseUrl,
+                description: 'Dev DataStorage GenAI generated assets public base URL contract.',
+            },
         ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
             parameterName: parameter.parameterName,
             stringValue: parameter.stringValue,
@@ -355,13 +443,6 @@ export class LoopAdDevStack extends Stack {
             vpcSubnets: { subnetGroupName: 'public' },
         });
 
-        // .env에서 받은 public hosted zone을 import합니다.
-        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
-        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
-            hostedZoneId: props.publicHostedZone.hostedZoneId,
-            zoneName: props.publicHostedZone.domainName,
-        });
-
         for (const dnsRecord of [
             {
                 id: 'DevApiDnsRecord',
@@ -372,6 +453,11 @@ export class LoopAdDevStack extends Stack {
                 id: 'DevIngestDnsRecord',
                 recordName: 'ingest.dev',
                 target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
+            },
+            {
+                id: 'GenAiGeneratedAssetsDnsRecord',
+                recordName: GENAI_PUBLIC_ASSETS_RECORD_NAME,
+                target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistributionTarget)),
             },
         ] as const) {
             new route53.ARecord(this, dnsRecord.id, {
@@ -493,8 +579,8 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
-        // Decision API는 ALB를 통해 public 광고 결정 경로를 제공합니다.
-        const decisionTask = new ecs.FargateTaskDefinition(this, 'AdDecisionApiTaskDefinition', {
+        // Advertisement API는 ALB를 통해 public 광고 조회 경로를 제공합니다.
+        const advertisementTask = new ecs.FargateTaskDefinition(this, 'AdvertisementApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
             runtimePlatform: {
@@ -502,32 +588,32 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        redisEndpoint.grantRead(decisionTask.taskRole);
-        auroraEndpoint.grantRead(decisionTask.taskRole);
-        const decisionLogGroup = new logs.LogGroup(this, 'AdDecisionApiLogGroup', {
+        redisEndpoint.grantRead(advertisementTask.taskRole);
+        auroraEndpoint.grantRead(advertisementTask.taskRole);
+        const advertisementLogGroup = new logs.LogGroup(this, 'AdvertisementApiLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
-        const decisionContainer = decisionTask.addContainer('AdDecisionApiContainer', {
-            containerName: 'ad-decision-api',
-            image: ecs.ContainerImage.fromEcrRepository(decisionRepository, 'latest'),
+        const advertisementContainer = advertisementTask.addContainer('AdvertisementApiContainer', {
+            containerName: 'advertisement-api',
+            image: ecs.ContainerImage.fromEcrRepository(advertisementRepository, 'latest'),
             logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'ad-decision-api',
-                logGroup: decisionLogGroup,
+                streamPrefix: 'advertisement-api',
+                logGroup: advertisementLogGroup,
             }),
             environment: {
                 LOOPAD_ENV: 'dev',
-                LOOPAD_SERVICE_ID: 'ad-decision-api',
+                LOOPAD_SERVICE_ID: 'advertisement-api',
                 LOOPAD_RUNTIME: 'go',
                 LOOPAD_COMPUTE_TARGET: 'fargate',
                 LOOPAD_REDIS_ENDPOINT_PARAMETER: redisEndpoint.parameterName,
                 LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
             },
         });
-        decisionContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const decisionService = new ecs.FargateService(this, 'AdDecisionApiService', {
+        advertisementContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+        const advertisementService = new ecs.FargateService(this, 'AdvertisementApiService', {
             cluster,
-            taskDefinition: decisionTask,
-            serviceName: 'dev-ad-decision-api',
+            taskDefinition: advertisementTask,
+            serviceName: 'dev-advertisement-api',
             desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
@@ -535,18 +621,18 @@ export class LoopAdDevStack extends Stack {
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'ad-decision-api' },
+            cloudMapOptions: { name: 'advertisement-api' },
             healthCheckGracePeriod: Duration.seconds(60),
         });
-        decisionService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdDecisionApiCpuScaling', {
+        advertisementService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdvertisementApiCpuScaling', {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
-        albListener.addTargets('AdDecisionApiTargets', {
-            targets: [decisionService],
+        albListener.addTargets('AdvertisementApiTargets', {
+            targets: [advertisementService],
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 20,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/ads/*', '/decision/*'])],
+            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/ads/*', '/advertisements/*'])],
             healthCheck: {
                 enabled: true,
                 path: '/health',
@@ -554,7 +640,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Recommendation을 호출합니다.
+        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision을 호출합니다.
         const dashboardTask = new ecs.FargateTaskDefinition(this, 'DashboardApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -583,9 +669,10 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_COMPUTE_TARGET: 'fargate',
                 LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
                 LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
-                LOOPAD_RECOMMENDATION_URL: 'http://recommendation.dev.loop-ad.local:80',
+                LOOPAD_DECISION_URL: 'http://decision.dev.loop-ad.local:80',
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
+                LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL: genAiGeneratedAssetsPublicBaseUrl,
                 LOOPAD_N8N_SECRET_PARAMETER: '/loop-ad/dev/external/n8n/webhook',
                 LOOPAD_DISCORD_SECRET_PARAMETER: '/loop-ad/dev/external/discord/webhook',
             },
@@ -621,8 +708,8 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // Recommendation은 private 전용이며 public ALB에 연결하지 않습니다.
-        const recommendationTask = new ecs.FargateTaskDefinition(this, 'RecommendationTaskDefinition', {
+        // Decision은 private 전용이며 public ALB에 연결하지 않습니다.
+        const decisionTask = new ecs.FargateTaskDefinition(this, 'DecisionTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
             runtimePlatform: {
@@ -630,36 +717,37 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        auroraEndpoint.grantRead(recommendationTask.taskRole);
-        clickhouseEndpoint.grantRead(recommendationTask.taskRole);
-        dataStorageBucket.grantReadWrite(recommendationTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
-        const recommendationLogGroup = new logs.LogGroup(this, 'RecommendationLogGroup', {
+        auroraEndpoint.grantRead(decisionTask.taskRole);
+        clickhouseEndpoint.grantRead(decisionTask.taskRole);
+        dataStorageBucket.grantReadWrite(decisionTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
+        const decisionLogGroup = new logs.LogGroup(this, 'DecisionLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
-        const recommendationContainer = recommendationTask.addContainer('RecommendationContainer', {
-            containerName: 'recommendation',
-            image: ecs.ContainerImage.fromEcrRepository(recommendationRepository, 'latest'),
+        const decisionContainer = decisionTask.addContainer('DecisionContainer', {
+            containerName: 'decision',
+            image: ecs.ContainerImage.fromEcrRepository(decisionRepository, 'latest'),
             logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'recommendation',
-                logGroup: recommendationLogGroup,
+                streamPrefix: 'decision',
+                logGroup: decisionLogGroup,
             }),
             environment: {
                 LOOPAD_ENV: 'dev',
-                LOOPAD_SERVICE_ID: 'recommendation',
+                LOOPAD_SERVICE_ID: 'decision',
                 LOOPAD_RUNTIME: 'go',
                 LOOPAD_COMPUTE_TARGET: 'fargate',
                 LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
                 LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
+                LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL: genAiGeneratedAssetsPublicBaseUrl,
                 LOOPAD_OPENAI_SECRET_PARAMETER: '/loop-ad/dev/external/openai/api-key',
             },
         });
-        recommendationContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const recommendationService = new ecs.FargateService(this, 'RecommendationService', {
+        decisionContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+        const decisionService = new ecs.FargateService(this, 'DecisionService', {
             cluster,
-            taskDefinition: recommendationTask,
-            serviceName: 'dev-recommendation',
+            taskDefinition: decisionTask,
+            serviceName: 'dev-decision',
             desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
@@ -667,9 +755,9 @@ export class LoopAdDevStack extends Stack {
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'recommendation' },
+            cloudMapOptions: { name: 'decision' },
         });
-        recommendationService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('RecommendationCpuScaling', {
+        decisionService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DecisionCpuScaling', {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 

@@ -59,9 +59,9 @@ loop-ad_data_contract/
   env/
     event-collector.env.example
     ad-context-projector.env.example
-    ad-decision-api.env.example
+    advertisement-api.env.example
     dashboard-api.env.example
-    recommendation.env.example
+    decision.env.example
 
   scripts/
     init.sh
@@ -297,11 +297,11 @@ REDIS_PORT=6379
 
 각 서버 repo용 `.env.example`은 runtime contract의 env 이름을 사용합니다.
 
-예: `env/ad-decision-api.env.example`
+예: `env/advertisement-api.env.example`
 
 ```env
 LOOPAD_ENV=local
-LOOPAD_SERVICE_ID=ad-decision-api
+LOOPAD_SERVICE_ID=advertisement-api
 LOOPAD_RUNTIME=go
 LOOPAD_COMPUTE_TARGET=local
 PORT=8080
@@ -387,7 +387,7 @@ Redis key contract 문서입니다.
 ## ad-context:{user_id}
 
 Owner: ad-context-projector
-Readers: ad-decision-api
+Readers: advertisement-api
 Type: JSON
 TTL: 300s
 
@@ -405,7 +405,7 @@ Redis CLI 명령 파일입니다.
 
 ```redis
 SETEX ad-context:u_001 300 '{"userId":"u_001","segments":["sports","mobile"],"updatedAt":"2026-06-25T12:00:00Z"}'
-SETEX decision-cache:u_001:slot_main 60 '{"campaignId":"c_001","creativeId":"cr_001"}'
+SETEX advertisement-cache:u_001:slot_main 60 '{"campaignId":"c_001","creativeId":"cr_001"}'
 ```
 
 ## AI Patch Guide

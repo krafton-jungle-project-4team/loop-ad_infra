@@ -11,6 +11,7 @@
 - Dev private subnet은 NAT Gateway 1개를 통해 ECR, CloudWatch Logs, SSM, ECS public API, 외부 SaaS/API를 호출합니다.
 - ECR, CloudWatch Logs, SSM, ECS Interface Endpoint 7개는 만들지 않습니다.
 - S3 Gateway Endpoint는 유지합니다.
+- GenAI 생성물은 private S3 bucket 앞에 CloudFront Price Class 100을 두고 `gen-ai.asset.dev.<public-domain>`으로 공개합니다.
 - ClickHouse는 EC2 `t4g.small` 1대와 gp3 50GB로 시작합니다.
 - Aurora PostgreSQL은 Serverless v2 Standard mode, `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작합니다.
 - MSK는 provisioned `kafka.t3.small` 2 brokers와 broker storage 20GB씩으로 시작합니다.
@@ -28,9 +29,12 @@
 | ALB/NLB LCU 소량 트래픽 | 각 1 LCU 가정 | `$10.22` |
 | CloudWatch Logs | 5GB ingest 가정 | `$3.80` |
 | ECR storage | 10GB 가정 | `$1.00` |
+| GenAI assets CloudFront/S3 GET | 소량 테스트 트래픽 | 사용량 기반 소액 |
 | 앱 인프라 소계 | Interface Endpoint 없음 | `$150.64` |
 
 Interface Endpoint 7개를 2개 AZ에 만들면 endpoint hourly 비용만 약 `$132.86/month`가 추가됩니다. NAT Gateway가 이미 필요한 개발 환경에서는 Interface Endpoint를 제거하는 편이 월 비용 목표에 더 유리합니다.
+
+CloudFront는 ALB/NLB처럼 고정 hourly 비용이 없고 요청 수와 data transfer에 따라 비용이 붙습니다. 개발 테스트 트래픽이 작다는 현재 가정에서는 월 합계의 고정 항목에는 넣지 않고, 실제 사용량 기반 소액 부대 비용으로 봅니다.
 
 ## 데이터소스
 

@@ -30,6 +30,8 @@ describe('loop-ad CDK stacks', () => {
         }, 1);
         template.resourceCountIs('AWS::Budgets::Budget', 1);
         template.resourceCountIs('AWS::S3::Bucket', 1);
+        template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
         template.resourceCountIs('AWS::ECR::Repository', 5);
         template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::Budgets::Budget', {
@@ -47,6 +49,12 @@ describe('loop-ad CDK stacks', () => {
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/dashboard-api',
+        });
+        template.hasResourceProperties('AWS::ECR::Repository', {
+            RepositoryName: 'loop-ad/advertisement-api',
+        });
+        template.hasResourceProperties('AWS::ECR::Repository', {
+            RepositoryName: 'loop-ad/decision',
         });
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
@@ -102,12 +110,50 @@ describe('loop-ad CDK stacks', () => {
                 ]),
             },
         });
+        const bucketPolicyStatements = bucketPolicyStatementsFrom(template);
+        expect(bucketPolicyStatements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                Effect: 'Allow',
+                Principal: {
+                    Service: 'cloudfront.amazonaws.com',
+                },
+                Action: 's3:GetObject',
+                Condition: {
+                    StringEquals: {
+                        'AWS:SourceArn': expect.anything(),
+                    },
+                },
+            }),
+        ]));
+        expect(JSON.stringify(bucketPolicyStatements)).toContain('genai/generated/*');
+        template.hasResourceProperties('AWS::CloudFront::Distribution', {
+            DistributionConfig: Match.objectLike({
+                Aliases: [`gen-ai.asset.dev.${testPublicHostedZone.domainName}`],
+                Origins: Match.arrayWith([
+                    Match.objectLike({
+                        OriginPath: '/genai/generated',
+                        OriginAccessControlId: Match.anyValue(),
+                    }),
+                ]),
+                DefaultCacheBehavior: Match.objectLike({
+                    TargetOriginId: 'DataStorageGenAiGeneratedAssetsOrigin',
+                    ViewerProtocolPolicy: 'redirect-to-https',
+                    AllowedMethods: ['GET', 'HEAD'],
+                    CachedMethods: ['GET', 'HEAD'],
+                }),
+                ViewerCertificate: Match.objectLike({
+                    AcmCertificateArn: Match.anyValue(),
+                    SslSupportMethod: 'sni-only',
+                    MinimumProtocolVersion: 'TLSv1.2_2021',
+                }),
+            }),
+        });
         template.hasResourceProperties('AWS::ECS::Service', {
             ServiceName: 'dev-event-collector',
             LaunchType: 'FARGATE',
         });
         template.hasResourceProperties('AWS::ECS::Service', {
-            ServiceName: 'dev-recommendation',
+            ServiceName: 'dev-decision',
             LaunchType: 'FARGATE',
         });
         template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
@@ -131,7 +177,7 @@ describe('loop-ad CDK stacks', () => {
                 Match.objectLike({
                     Field: 'path-pattern',
                     PathPatternConfig: {
-                        Values: ['/api/ads/*', '/decision/*'],
+                        Values: ['/api/ads/*', '/advertisements/*'],
                     },
                 }),
             ]),
@@ -149,11 +195,11 @@ describe('loop-ad CDK stacks', () => {
         });
     });
 
-    it('dev stack creates Route53 aliases for public API and ingest subdomains', () => {
+    it('dev stack creates Route53 aliases for public API, ingest, and GenAI assets subdomains', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
 
-        template.resourceCountIs('AWS::Route53::RecordSet', 2);
+        template.resourceCountIs('AWS::Route53::RecordSet', 3);
         template.hasResourceProperties('AWS::Route53::RecordSet', {
             Type: 'A',
             HostedZoneId: testPublicHostedZone.hostedZoneId,
@@ -165,6 +211,7 @@ describe('loop-ad CDK stacks', () => {
         expect(route53RecordNamesFrom(template)).toEqual(expect.arrayContaining([
             `api.dev.${testPublicHostedZone.domainName}.`,
             `ingest.dev.${testPublicHostedZone.domainName}.`,
+            `gen-ai.asset.dev.${testPublicHostedZone.domainName}.`,
         ]));
     });
 
@@ -234,6 +281,7 @@ describe('loop-ad CDK stacks', () => {
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url')).toBe(`https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`);
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({
@@ -247,6 +295,10 @@ describe('loop-ad CDK stacks', () => {
                             Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
                             Value: 'genai/generated/',
                         }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL',
+                            Value: `https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
+                        }),
                     ]),
                 }),
             ]),
@@ -254,7 +306,7 @@ describe('loop-ad CDK stacks', () => {
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({
-                    Name: 'recommendation',
+                    Name: 'decision',
                     Environment: Match.arrayWith([
                         Match.objectLike({
                             Name: 'LOOPAD_DATA_STORAGE_BUCKET',
@@ -263,6 +315,10 @@ describe('loop-ad CDK stacks', () => {
                         Match.objectLike({
                             Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
                             Value: 'genai/generated/',
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL',
+                            Value: `https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
                         }),
                     ]),
                 }),
@@ -280,6 +336,18 @@ function route53RecordNamesFrom(template: Template): string[] {
         }
 
         return [String(resource.Properties?.Name ?? '')];
+    });
+}
+
+function bucketPolicyStatementsFrom(template: Template): Record<string, unknown>[] {
+    const resources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
+    return Object.values(resources).flatMap((resource) => {
+        if (resource.Type !== 'AWS::S3::BucketPolicy') {
+            return [];
+        }
+
+        const policyDocument = resource.Properties?.PolicyDocument as { Statement?: Record<string, unknown>[] } | undefined;
+        return policyDocument?.Statement ?? [];
     });
 }
 

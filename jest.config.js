@@ -5,5 +5,6 @@ module.exports = {
     transform: {
         '^.+\\.tsx?$': 'ts-jest'
     },
+    setupFiles: ['<rootDir>/test/setup-jsii-deprecations.ts'],
     setupFilesAfterEnv: ['aws-cdk-lib/testhelpers/jest-autoclean'],
 };

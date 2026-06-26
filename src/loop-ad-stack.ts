@@ -199,6 +199,8 @@ export class LoopAdDevStack extends Stack {
         });
         const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        // CloudFront custom domain certificates must live in us-east-1. Keep this
+        // construct until the certificate lifecycle is split into a separate stack.
         const frontendSitesCertificate = new acm.DnsValidatedCertificate(this, 'FrontendSitesCertificate', {
             domainName: dashboardWebDomainName,
             subjectAlternativeNames: [demoShoppingmallWebDomainName],
@@ -225,6 +227,8 @@ export class LoopAdDevStack extends Stack {
         });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
+        // CloudFront custom domain certificates must live in us-east-1. Keep this
+        // construct until the certificate lifecycle is split into a separate stack.
         const genAiGeneratedAssetsCertificate = new acm.DnsValidatedCertificate(this, 'GenAiGeneratedAssetsCertificate', {
             domainName: genAiPublicAssetsDomainName,
             hostedZone: publicHostedZone,

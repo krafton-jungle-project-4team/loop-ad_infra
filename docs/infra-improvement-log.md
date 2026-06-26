@@ -224,3 +224,34 @@ Initial priority:
 - 별도 정기 비용 알림이 실제 계정과 dev workload 범위를 포함하는지는 CDK repo 밖에서 검증해야 한다.
 - Cost Explorer 기반 7일/30일 actual cost comparison은 실제 배포 후에만 가능하다.
 - 사용자 승인 전 `cdk diff`는 실행하지 않았으므로 CloudFormation replacement 검토는 unit/synth 기반으로만 수행한다.
+
+## Cycle 5 - Extract ECS Service Helper
+
+목적:
+
+- 반복되던 ECS `FargateTaskDefinition`, log group, container, `FargateService`, autoscaling 생성을 `createFargateHttpService` helper로 분리한다.
+- 서비스별 env, secret, S3 grant, ALB/NLB target 연결은 stack에 남겨 service contract를 읽기 쉽게 유지한다.
+- 기존 construct id를 config로 그대로 넘겨 runtime ECS logical ID가 바뀌지 않도록 한다.
+
+변경 파일:
+
+- `src/runtime-helpers.ts`
+- `src/loop-ad-stack.ts`
+- `test/infra-contract.test.ts`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 14 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 리소스 shape 변경 없이 helper만 추출했다. |
+| 보안/안전성 | 90 | 90 | secret/env와 S3 grant contract를 유지했다. |
+| 운영 안정성 | 91 | 91 | ECS logical ID stability test를 추가해 helper refactor replacement 위험을 낮췄다. |
+| CDK 모범사례/유지보수성 | 95 | 96 | 반복 runtime service 생성 로직을 helper로 모으고 stack은 service별 contract 중심으로 줄였다. |
+| 테스트/문서화 | 95 | 96 | runtime ECS task/service/log/scaling logical ID guard를 추가했다. |

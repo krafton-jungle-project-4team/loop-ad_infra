@@ -1,6 +1,8 @@
 import { Duration, RemovalPolicy } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -11,6 +13,10 @@ import { Construct } from 'constructs';
 import {
     DEV_ECS_LOG_GROUP_PREFIX,
     DEV_LOG_RETENTION,
+    DEV_SERVICE_DESIRED_TASKS,
+    DEV_SERVICE_MAX_TASKS,
+    DEV_SERVICE_MIN_TASKS,
+    SERVICE_CPU_SCALE_TARGET_PERCENT,
 } from './dev-config';
 
 export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
@@ -18,6 +24,78 @@ export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId
         logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
         retention: DEV_LOG_RETENTION,
     });
+}
+
+export interface FargateHttpServiceConfig {
+    readonly taskDefinitionId: string;
+    readonly logGroupId: string;
+    readonly containerId: string;
+    readonly serviceConstructId: string;
+    readonly cpuScalingId: string;
+    readonly serviceId: string;
+    readonly image: ecs.ContainerImage;
+    readonly cluster: ecs.ICluster;
+    readonly securityGroup: ec2.ISecurityGroup;
+    readonly vpcSubnets: ec2.SubnetSelection;
+    readonly environment: Record<string, string>;
+    readonly secrets?: Record<string, ecs.Secret>;
+    readonly healthCheckGracePeriod?: Duration;
+    readonly grantTaskRole?: (taskDefinition: ecs.FargateTaskDefinition) => void;
+}
+
+export interface FargateHttpService {
+    readonly taskDefinition: ecs.FargateTaskDefinition;
+    readonly container: ecs.ContainerDefinition;
+    readonly service: ecs.FargateService;
+}
+
+export function createFargateHttpService(scope: Construct, config: FargateHttpServiceConfig): FargateHttpService {
+    const taskDefinition = new ecs.FargateTaskDefinition(scope, config.taskDefinitionId, {
+        cpu: 256,
+        memoryLimitMiB: 512,
+        runtimePlatform: {
+            cpuArchitecture: ecs.CpuArchitecture.ARM64,
+            operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+        },
+    });
+    config.grantTaskRole?.(taskDefinition);
+
+    const logGroup = createEcsServiceLogGroup(scope, config.logGroupId, config.serviceId);
+    const container = taskDefinition.addContainer(config.containerId, {
+        containerName: config.serviceId,
+        image: config.image,
+        logging: ecs.LogDrivers.awsLogs({
+            streamPrefix: config.serviceId,
+            logGroup,
+        }),
+        environment: config.environment,
+        secrets: config.secrets,
+    });
+    container.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+
+    const service = new ecs.FargateService(scope, config.serviceConstructId, {
+        cluster: config.cluster,
+        taskDefinition,
+        serviceName: `dev-${config.serviceId}`,
+        desiredCount: DEV_SERVICE_DESIRED_TASKS,
+        assignPublicIp: false,
+        securityGroups: [config.securityGroup],
+        vpcSubnets: config.vpcSubnets,
+        circuitBreaker: { rollback: true },
+        minHealthyPercent: 100,
+        maxHealthyPercent: 200,
+        cloudMapOptions: { name: config.serviceId },
+        healthCheckGracePeriod: config.healthCheckGracePeriod,
+    });
+    service.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization(config.cpuScalingId, {
+        targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
+    });
+
+    return {
+        taskDefinition,
+        container,
+        service,
+    };
 }
 
 export interface StaticFrontendSiteConfig {

@@ -28,9 +28,6 @@ import {
     DEV_KAFKA_SCALA_VERSION,
     DEV_KAFKA_VERSION,
     DEV_KAFKA_VOLUME_GIB,
-    DEV_SERVICE_DESIRED_TASKS,
-    DEV_SERVICE_MAX_TASKS,
-    DEV_SERVICE_MIN_TASKS,
     DEV_VALKEY_MAJOR_ENGINE_VERSION,
     DEV_VALKEY_MAX_DATA_STORAGE_GB,
     DEV_VALKEY_MAX_ECPU_PER_SECOND,
@@ -41,12 +38,11 @@ import {
     OPENAI_API_KEY_PARAMETER_NAME,
     PUBLIC_API_RECORD_NAME,
     PUBLIC_INGEST_RECORD_NAME,
-    SERVICE_CPU_SCALE_TARGET_PERCENT,
     type LoopAdDevCertificateArns,
     type PublicHostedZoneConfig,
 } from './dev-config';
 import {
-    createEcsServiceLogGroup,
+    createFargateHttpService,
     createStaticFrontendSite,
 } from './runtime-helpers';
 
@@ -613,22 +609,18 @@ export class LoopAdDevRuntimeStack extends Stack {
 
         // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
         // public ingestion 진입점이지만 task 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
-        const eventCollectorTask = new ecs.FargateTaskDefinition(this, 'EventCollectorTaskDefinition', {
-            cpu: 256,
-            memoryLimitMiB: 512,
-            runtimePlatform: {
-                cpuArchitecture: ecs.CpuArchitecture.ARM64,
-                operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-            },
-        });
-        const eventCollectorLogGroup = createEcsServiceLogGroup(this, 'EventCollectorLogGroup', 'event-collector');
-        const eventCollectorContainer = eventCollectorTask.addContainer('EventCollectorContainer', {
-            containerName: 'event-collector',
+        const eventCollector = createFargateHttpService(this, {
+            taskDefinitionId: 'EventCollectorTaskDefinition',
+            logGroupId: 'EventCollectorLogGroup',
+            containerId: 'EventCollectorContainer',
+            serviceConstructId: 'EventCollectorService',
+            cpuScalingId: 'EventCollectorCpuScaling',
+            serviceId: 'event-collector',
             image: ecs.ContainerImage.fromEcrRepository(eventCollectorRepository, 'latest'),
-            logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'event-collector',
-                logGroup: eventCollectorLogGroup,
-            }),
+            cluster,
+            securityGroup: serverSecurityGroup,
+            vpcSubnets: privateSubnets,
+            healthCheckGracePeriod: Duration.seconds(60),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
@@ -636,24 +628,6 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
             },
-        });
-        eventCollectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const eventCollectorService = new ecs.FargateService(this, 'EventCollectorService', {
-            cluster,
-            taskDefinition: eventCollectorTask,
-            serviceName: 'dev-event-collector',
-            desiredCount: DEV_SERVICE_DESIRED_TASKS,
-            assignPublicIp: false,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: privateSubnets,
-            circuitBreaker: { rollback: true },
-            minHealthyPercent: 100,
-            maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'event-collector' },
-            healthCheckGracePeriod: Duration.seconds(60),
-        });
-        eventCollectorService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('EventCollectorCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
         // NLB는 443에서 TLS를 종료하고 collector service의 80 포트로 전달합니다.
@@ -663,7 +637,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             certificates: [regionalIngressListenerCertificate],
         });
         tlsNlbListener.addTargets('TlsEventCollectorTargets', {
-            targets: [eventCollectorService],
+            targets: [eventCollector.service],
             port: 80,
             protocol: elbv2.Protocol.TCP,
             healthCheck: {
@@ -677,22 +651,17 @@ export class LoopAdDevRuntimeStack extends Stack {
 
         // Projector는 Kafka를 consume하고 가공된 context를 Valkey/ClickHouse에 씁니다.
         // 앱에서는 Redis client를 그대로 쓸 수 있게 LOOPAD_REDIS_URL에 rediss:// Valkey endpoint를 주입합니다.
-        const projectorTask = new ecs.FargateTaskDefinition(this, 'AdContextProjectorTaskDefinition', {
-            cpu: 256,
-            memoryLimitMiB: 512,
-            runtimePlatform: {
-                cpuArchitecture: ecs.CpuArchitecture.ARM64,
-                operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-            },
-        });
-        const projectorLogGroup = createEcsServiceLogGroup(this, 'AdContextProjectorLogGroup', 'ad-context-projector');
-        const projectorContainer = projectorTask.addContainer('AdContextProjectorContainer', {
-            containerName: 'ad-context-projector',
+        createFargateHttpService(this, {
+            taskDefinitionId: 'AdContextProjectorTaskDefinition',
+            logGroupId: 'AdContextProjectorLogGroup',
+            containerId: 'AdContextProjectorContainer',
+            serviceConstructId: 'AdContextProjectorService',
+            cpuScalingId: 'AdContextProjectorCpuScaling',
+            serviceId: 'ad-context-projector',
             image: ecs.ContainerImage.fromEcrRepository(projectorRepository, 'latest'),
-            logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'ad-context-projector',
-                logGroup: projectorLogGroup,
-            }),
+            cluster,
+            securityGroup: serverSecurityGroup,
+            vpcSubnets: privateSubnets,
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
@@ -704,42 +673,21 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_USERNAME: 'default',
             },
         });
-        projectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const projectorService = new ecs.FargateService(this, 'AdContextProjectorService', {
-            cluster,
-            taskDefinition: projectorTask,
-            serviceName: 'dev-ad-context-projector',
-            desiredCount: DEV_SERVICE_DESIRED_TASKS,
-            assignPublicIp: false,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: privateSubnets,
-            circuitBreaker: { rollback: true },
-            minHealthyPercent: 100,
-            maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'ad-context-projector' },
-        });
-        projectorService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdContextProjectorCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
-        });
 
         // Advertisement API는 ALB를 통해 public 광고 조회 경로를 제공합니다.
         // Aurora credential은 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Valkey contract로 연결합니다.
-        const advertisementTask = new ecs.FargateTaskDefinition(this, 'AdvertisementApiTaskDefinition', {
-            cpu: 256,
-            memoryLimitMiB: 512,
-            runtimePlatform: {
-                cpuArchitecture: ecs.CpuArchitecture.ARM64,
-                operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-            },
-        });
-        const advertisementLogGroup = createEcsServiceLogGroup(this, 'AdvertisementApiLogGroup', 'advertisement-api');
-        const advertisementContainer = advertisementTask.addContainer('AdvertisementApiContainer', {
-            containerName: 'advertisement-api',
+        const advertisement = createFargateHttpService(this, {
+            taskDefinitionId: 'AdvertisementApiTaskDefinition',
+            logGroupId: 'AdvertisementApiLogGroup',
+            containerId: 'AdvertisementApiContainer',
+            serviceConstructId: 'AdvertisementApiService',
+            cpuScalingId: 'AdvertisementApiCpuScaling',
+            serviceId: 'advertisement-api',
             image: ecs.ContainerImage.fromEcrRepository(advertisementRepository, 'latest'),
-            logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'advertisement-api',
-                logGroup: advertisementLogGroup,
-            }),
+            cluster,
+            securityGroup: serverSecurityGroup,
+            vpcSubnets: privateSubnets,
+            healthCheckGracePeriod: Duration.seconds(60),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'advertisement-api',
@@ -754,26 +702,8 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
             },
         });
-        advertisementContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const advertisementService = new ecs.FargateService(this, 'AdvertisementApiService', {
-            cluster,
-            taskDefinition: advertisementTask,
-            serviceName: 'dev-advertisement-api',
-            desiredCount: DEV_SERVICE_DESIRED_TASKS,
-            assignPublicIp: false,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: privateSubnets,
-            circuitBreaker: { rollback: true },
-            minHealthyPercent: 100,
-            maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'advertisement-api' },
-            healthCheckGracePeriod: Duration.seconds(60),
-        });
-        advertisementService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdvertisementApiCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
-        });
         httpsAlbListener.addTargets('AdvertisementApiTargets', {
-            targets: [advertisementService],
+            targets: [advertisement.service],
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 20,
@@ -787,23 +717,19 @@ export class LoopAdDevRuntimeStack extends Stack {
 
         // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision API를 호출합니다.
         // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage bucket의 generated prefix 읽기 권한만 부여합니다.
-        const dashboardTask = new ecs.FargateTaskDefinition(this, 'DashboardApiTaskDefinition', {
-            cpu: 256,
-            memoryLimitMiB: 512,
-            runtimePlatform: {
-                cpuArchitecture: ecs.CpuArchitecture.ARM64,
-                operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-            },
-        });
-        dataStorageBucket.grantRead(dashboardTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
-        const dashboardLogGroup = createEcsServiceLogGroup(this, 'DashboardApiLogGroup', 'dashboard-api');
-        const dashboardContainer = dashboardTask.addContainer('DashboardApiContainer', {
-            containerName: 'dashboard-api',
+        const dashboard = createFargateHttpService(this, {
+            taskDefinitionId: 'DashboardApiTaskDefinition',
+            logGroupId: 'DashboardApiLogGroup',
+            containerId: 'DashboardApiContainer',
+            serviceConstructId: 'DashboardApiService',
+            cpuScalingId: 'DashboardApiCpuScaling',
+            serviceId: 'dashboard-api',
             image: ecs.ContainerImage.fromEcrRepository(dashboardRepository, 'latest'),
-            logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'dashboard-api',
-                logGroup: dashboardLogGroup,
-            }),
+            cluster,
+            securityGroup: serverSecurityGroup,
+            vpcSubnets: privateSubnets,
+            healthCheckGracePeriod: Duration.seconds(60),
+            grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
@@ -821,26 +747,8 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
             },
         });
-        dashboardContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const dashboardService = new ecs.FargateService(this, 'DashboardApiService', {
-            cluster,
-            taskDefinition: dashboardTask,
-            serviceName: 'dev-dashboard-api',
-            desiredCount: DEV_SERVICE_DESIRED_TASKS,
-            assignPublicIp: false,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: privateSubnets,
-            circuitBreaker: { rollback: true },
-            minHealthyPercent: 100,
-            maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'dashboard-api' },
-            healthCheckGracePeriod: Duration.seconds(60),
-        });
-        dashboardService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DashboardApiCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
-        });
         httpsAlbListener.addTargets('DashboardApiTargets', {
-            targets: [dashboardService],
+            targets: [dashboard.service],
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 30,
@@ -854,23 +762,18 @@ export class LoopAdDevRuntimeStack extends Stack {
 
         // Decision API는 private 전용이며 public ALB에 연결하지 않습니다.
         // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 task에만 줍니다.
-        const decisionApiTask = new ecs.FargateTaskDefinition(this, 'DecisionApiTaskDefinition', {
-            cpu: 256,
-            memoryLimitMiB: 512,
-            runtimePlatform: {
-                cpuArchitecture: ecs.CpuArchitecture.ARM64,
-                operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-            },
-        });
-        dataStorageBucket.grantReadWrite(decisionApiTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
-        const decisionApiLogGroup = createEcsServiceLogGroup(this, 'DecisionApiLogGroup', 'decision-api');
-        const decisionApiContainer = decisionApiTask.addContainer('DecisionApiContainer', {
-            containerName: 'decision-api',
+        createFargateHttpService(this, {
+            taskDefinitionId: 'DecisionApiTaskDefinition',
+            logGroupId: 'DecisionApiLogGroup',
+            containerId: 'DecisionApiContainer',
+            serviceConstructId: 'DecisionApiService',
+            cpuScalingId: 'DecisionApiCpuScaling',
+            serviceId: 'decision-api',
             image: ecs.ContainerImage.fromEcrRepository(decisionApiRepository, 'latest'),
-            logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'decision-api',
-                logGroup: decisionApiLogGroup,
-            }),
+            cluster,
+            securityGroup: serverSecurityGroup,
+            vpcSubnets: privateSubnets,
+            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
@@ -888,23 +791,6 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
                 LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSsmParameter(openAiApiKeyParameter),
             },
-        });
-        decisionApiContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const decisionApiService = new ecs.FargateService(this, 'DecisionApiService', {
-            cluster,
-            taskDefinition: decisionApiTask,
-            serviceName: 'dev-decision-api',
-            desiredCount: DEV_SERVICE_DESIRED_TASKS,
-            assignPublicIp: false,
-            securityGroups: [serverSecurityGroup],
-            vpcSubnets: privateSubnets,
-            circuitBreaker: { rollback: true },
-            minHealthyPercent: 100,
-            maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'decision-api' },
-        });
-        decisionApiService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DecisionApiCpuScaling', {
-            targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
     }

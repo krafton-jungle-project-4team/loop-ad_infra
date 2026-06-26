@@ -111,6 +111,35 @@ describe('loop-ad CDK guardrails', () => {
         expect(dataResources).toHaveProperty('KafkaInstance5AAC3452');
     });
 
+    it('keeps runtime ECS logical IDs stable across helper refactors', () => {
+        const resources = Template.fromStack(synthRuntime()).toJSON().Resources as Record<string, { Type: string }>;
+
+        for (const logicalId of [
+            'EventCollectorTaskDefinitionD7E6990A',
+            'EventCollectorLogGroup84568A76',
+            'EventCollectorService1F8A822E',
+            'EventCollectorServiceTaskCountTarget3C89D8FF',
+            'AdContextProjectorTaskDefinition8F2EFDF4',
+            'AdContextProjectorLogGroup8D90FFA9',
+            'AdContextProjectorService77FD757F',
+            'AdContextProjectorServiceTaskCountTarget852E32AD',
+            'AdvertisementApiTaskDefinition3BE1FB97',
+            'AdvertisementApiLogGroup0D4EBE76',
+            'AdvertisementApiServiceE83FF4CB',
+            'AdvertisementApiServiceTaskCountTargetC183CF8C',
+            'DashboardApiTaskDefinitionD8626F22',
+            'DashboardApiLogGroup8A824421',
+            'DashboardApiServiceF9B98A69',
+            'DashboardApiServiceTaskCountTargetF843A612',
+            'DecisionApiTaskDefinition645801B5',
+            'DecisionApiLogGroupEE2EF543',
+            'DecisionApiService8390708F',
+            'DecisionApiServiceTaskCountTargetEB12B73D',
+        ]) {
+            expect(resources).toHaveProperty(logicalId);
+        }
+    });
+
     it('keeps runtime ingress, service, logging, and secret contracts explicit', () => {
         const template = Template.fromStack(synthRuntime());
 

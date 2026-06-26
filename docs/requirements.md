@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, DataStorage S3, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
 - 리전: `ap-northeast-2`
 
@@ -21,7 +21,9 @@
 - 외부 SaaS/API 연동을 위해 NAT Gateway가 있는 private subnet에서 실행한다.
 - ECR, CloudWatch Logs, SSM, ECS Interface Endpoint는 만들지 않고 NAT Gateway를 통해 public AWS API를 호출한다.
 - S3 Gateway Endpoint는 유지해서 S3/ECR layer 트래픽을 NAT data processing으로 보내지 않는다.
-- Event Collector, Ad Context Projector, Ad Decision API, Dashboard API, Recommendation을 ECS Fargate로 실행한다.
+- DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
+- DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, GenAI prefix 기준 IAM 권한을 필수 보안 조건으로 가진다.
+- Event Collector, Ad Context Projector, Ad Decision API, Dashboard API, Recommendation을 ECS 서비스로 실행한다.
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Ad Decision API와 Dashboard API는 ALB path rule에만 붙인다.

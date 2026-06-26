@@ -16,7 +16,7 @@ const testPublicHostedZone = {
 };
 
 describe('loop-ad CDK stacks', () => {
-    it('dev stack keeps the permanent VPC, ECR repositories, and five ECS services', () => {
+    it('dev stack keeps the permanent VPC, DataStorage bucket, ECR repositories, and five ECS services', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
 
@@ -29,7 +29,7 @@ describe('loop-ad CDK stacks', () => {
             VpcEndpointType: 'Gateway',
         }, 1);
         template.resourceCountIs('AWS::Budgets::Budget', 1);
-        template.resourceCountIs('AWS::S3::Bucket', 0);
+        template.resourceCountIs('AWS::S3::Bucket', 1);
         template.resourceCountIs('AWS::ECR::Repository', 5);
         template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::Budgets::Budget', {
@@ -47,6 +47,60 @@ describe('loop-ad CDK stacks', () => {
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/dashboard-api',
+        });
+        template.hasResourceProperties('AWS::S3::Bucket', {
+            PublicAccessBlockConfiguration: {
+                BlockPublicAcls: true,
+                BlockPublicPolicy: true,
+                IgnorePublicAcls: true,
+                RestrictPublicBuckets: true,
+            },
+            BucketEncryption: {
+                ServerSideEncryptionConfiguration: Match.arrayWith([
+                    Match.objectLike({
+                        ServerSideEncryptionByDefault: {
+                            SSEAlgorithm: 'AES256',
+                        },
+                    }),
+                ]),
+            },
+            OwnershipControls: {
+                Rules: Match.arrayWith([
+                    Match.objectLike({
+                        ObjectOwnership: 'BucketOwnerEnforced',
+                    }),
+                ]),
+            },
+            VersioningConfiguration: {
+                Status: 'Enabled',
+            },
+            LifecycleConfiguration: {
+                Rules: Match.arrayWith([
+                    Match.objectLike({
+                        Id: 'AbortIncompleteGenAiGeneratedUploads',
+                        Prefix: 'genai/generated/',
+                        Status: 'Enabled',
+                        AbortIncompleteMultipartUpload: {
+                            DaysAfterInitiation: 7,
+                        },
+                    }),
+                ]),
+            },
+        });
+        template.hasResourceProperties('AWS::S3::BucketPolicy', {
+            PolicyDocument: {
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Effect: 'Deny',
+                        Action: 's3:*',
+                        Condition: {
+                            Bool: {
+                                'aws:SecureTransport': 'false',
+                            },
+                        },
+                    }),
+                ]),
+            },
         });
         template.hasResourceProperties('AWS::ECS::Service', {
             ServiceName: 'dev-event-collector',
@@ -114,7 +168,7 @@ describe('loop-ad CDK stacks', () => {
         ]));
     });
 
-    it('dev stack creates the cost-capped datasource shape', () => {
+    it('dev stack creates the cost-capped data storage shape', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
 
@@ -178,6 +232,43 @@ describe('loop-ad CDK stacks', () => {
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint')).toBe('pending://dev/redis');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/clickhouse/endpoint'))).toContain('PrivateDnsName');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            ContainerDefinitions: Match.arrayWith([
+                Match.objectLike({
+                    Name: 'dashboard-api',
+                    Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_DATA_STORAGE_BUCKET',
+                            Value: Match.anyValue(),
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
+                            Value: 'genai/generated/',
+                        }),
+                    ]),
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            ContainerDefinitions: Match.arrayWith([
+                Match.objectLike({
+                    Name: 'recommendation',
+                    Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_DATA_STORAGE_BUCKET',
+                            Value: Match.anyValue(),
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
+                            Value: 'genai/generated/',
+                        }),
+                    ]),
+                }),
+            ]),
+        });
+        expect(JSON.stringify(template.toJSON())).toContain('genai/generated/*');
     });
 });
 

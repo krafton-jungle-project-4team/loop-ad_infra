@@ -11,6 +11,7 @@ import * as msk from 'aws-cdk-lib/aws-msk';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
@@ -28,6 +29,7 @@ const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 const DEV_CLICKHOUSE_VOLUME_GIB = 50;
 const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
+const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -112,32 +114,32 @@ export class LoopAdDevStack extends Stack {
             allowAllOutbound: false,
             description: 'Dev ECS server SG shared by app services.',
         });
-        const dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
+        const dataStorageSecurityGroup = new ec2.SecurityGroup(this, 'DataStorageSecurityGroup', {
             vpc,
             allowAllOutbound: false,
-            description: 'Dev datasource SG shared by internal data endpoints.',
+            description: 'Dev data storage SG shared by internal data endpoints.',
         });
 
         // 인터넷 트래픽은 public load balancer만 받습니다.
         albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
         nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
 
-        // VPC 내부에서는 SG 경계를 기준으로 server와 datasource가 서로 신뢰합니다.
+        // VPC 내부에서는 SG 경계를 기준으로 server와 DataStorage가 서로 신뢰합니다.
         albSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
         nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
         serverSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
         serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter dev servers.');
         serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
         serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
-        serverSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal datasources.');
-        dataSourceSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal datasources.');
-        dataSourceSecurityGroup.addIngressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev datasources may call each other.');
-        dataSourceSecurityGroup.addEgressRule(dataSourceSecurityGroup, ec2.Port.allTraffic(), 'Dev datasources may call each other.');
+        serverSecurityGroup.addEgressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal data storage.');
+        dataStorageSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal data storage.');
+        dataStorageSecurityGroup.addIngressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
+        dataStorageSecurityGroup.addEgressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
 
         // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
         serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        // ClickHouse bootstrap과 datasource 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
-        dataSourceSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev datasources may use external HTTPS through NAT.');
+        // ClickHouse bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
+        dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
 
         // ECR repository는 Dev 애플리케이션 이미지 storage를 소유합니다.
         const [
@@ -159,7 +161,24 @@ export class LoopAdDevStack extends Stack {
             removalPolicy: RemovalPolicy.RETAIN,
         }));
 
-        // 비용을 낮게 유지하는 개발용 datasource입니다.
+        // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
+        const dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            versioned: true,
+            objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+            removalPolicy: RemovalPolicy.RETAIN,
+            lifecycleRules: [
+                {
+                    id: 'AbortIncompleteGenAiGeneratedUploads',
+                    prefix: GENAI_GENERATED_ASSETS_PREFIX,
+                    abortIncompleteMultipartUploadAfter: Duration.days(7),
+                },
+            ],
+        });
+
+        // 비용을 낮게 유지하는 개발용 data storage입니다.
         const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
             clusterIdentifier: 'dev-loop-ad-aurora-postgres',
             engine: rds.DatabaseClusterEngine.auroraPostgres({
@@ -172,7 +191,7 @@ export class LoopAdDevStack extends Stack {
             defaultDatabaseName: 'loopad',
             vpc,
             vpcSubnets: privateSubnets,
-            securityGroups: [dataSourceSecurityGroup],
+            securityGroups: [dataStorageSecurityGroup],
             backup: {
                 retention: Duration.days(1),
             },
@@ -183,7 +202,7 @@ export class LoopAdDevStack extends Stack {
         const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
             vpcSubnets: privateSubnets,
-            securityGroup: dataSourceSecurityGroup,
+            securityGroup: dataStorageSecurityGroup,
             instanceName: 'dev-loop-ad-clickhouse',
             instanceType: new ec2.InstanceType('t4g.small'),
             machineImage: ec2.MachineImage.latestAmazonLinux2023({
@@ -216,7 +235,7 @@ export class LoopAdDevStack extends Stack {
             brokerNodeGroupInfo: {
                 clientSubnets: privateSubnets.subnetIds,
                 instanceType: 'kafka.t3.small',
-                securityGroups: [dataSourceSecurityGroup.securityGroupId],
+                securityGroups: [dataStorageSecurityGroup.securityGroupId],
                 storageInfo: {
                     ebsStorageInfo: {
                         volumeSize: DEV_MSK_STORAGE_GIB_PER_BROKER,
@@ -262,8 +281,15 @@ export class LoopAdDevStack extends Stack {
         });
 
         // endpoint contract는 SSM에 둡니다. Task definition은 SSM parameter 이름만 알고,
-        // 실제 datasource endpoint는 여기에서 교체할 수 있습니다.
-        const [auroraEndpoint, redisEndpoint, clickhouseEndpoint, mskEndpoint] = [
+        // 실제 DataStorage endpoint는 여기에서 교체할 수 있습니다.
+        const [
+            auroraEndpoint,
+            redisEndpoint,
+            clickhouseEndpoint,
+            mskEndpoint,
+            dataStorageBucketName,
+            genAiGeneratedAssetsPrefix,
+        ] = [
             {
                 id: 'AuroraEndpointParameter',
                 parameterName: '/loop-ad/dev/aurora/endpoint',
@@ -287,6 +313,18 @@ export class LoopAdDevStack extends Stack {
                 parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
                 stringValue: mskBootstrapBrokers.getResponseField('BootstrapBrokerString'),
                 description: 'Dev MSK bootstrap broker contract.',
+            },
+            {
+                id: 'DataStorageBucketNameParameter',
+                parameterName: '/loop-ad/dev/data-storage/bucket-name',
+                stringValue: dataStorageBucket.bucketName,
+                description: 'Dev DataStorage S3 bucket name contract.',
+            },
+            {
+                id: 'GenAiGeneratedAssetsPrefixParameter',
+                parameterName: '/loop-ad/dev/data-storage/genai-generated-prefix',
+                stringValue: GENAI_GENERATED_ASSETS_PREFIX,
+                description: 'Dev DataStorage GenAI generated assets prefix contract.',
             },
         ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
             parameterName: parameter.parameterName,
@@ -527,6 +565,7 @@ export class LoopAdDevStack extends Stack {
         });
         auroraEndpoint.grantRead(dashboardTask.taskRole);
         clickhouseEndpoint.grantRead(dashboardTask.taskRole);
+        dataStorageBucket.grantRead(dashboardTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
         const dashboardLogGroup = new logs.LogGroup(this, 'DashboardApiLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
@@ -545,6 +584,8 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
                 LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
                 LOOPAD_RECOMMENDATION_URL: 'http://recommendation.dev.loop-ad.local:80',
+                LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
+                LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
                 LOOPAD_N8N_SECRET_PARAMETER: '/loop-ad/dev/external/n8n/webhook',
                 LOOPAD_DISCORD_SECRET_PARAMETER: '/loop-ad/dev/external/discord/webhook',
             },
@@ -591,6 +632,7 @@ export class LoopAdDevStack extends Stack {
         });
         auroraEndpoint.grantRead(recommendationTask.taskRole);
         clickhouseEndpoint.grantRead(recommendationTask.taskRole);
+        dataStorageBucket.grantReadWrite(recommendationTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
         const recommendationLogGroup = new logs.LogGroup(this, 'RecommendationLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
@@ -608,6 +650,8 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_COMPUTE_TARGET: 'fargate',
                 LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
                 LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
+                LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
+                LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
                 LOOPAD_OPENAI_SECRET_PARAMETER: '/loop-ad/dev/external/openai/api-key',
             },
         });

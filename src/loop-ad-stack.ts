@@ -1,6 +1,5 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cr from 'aws-cdk-lib/custom-resources';
@@ -20,7 +19,6 @@ import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 
 export const LOOP_AD_REGION = 'ap-northeast-2';
-export const LOOP_AD_MONTHLY_COST_TARGET_USD = 300;
 
 const DEV_SERVICE_DESIRED_TASKS = 1;
 const DEV_SERVICE_MIN_TASKS = 1;
@@ -40,25 +38,74 @@ const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
-const N8N_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/n8n/webhook';
-const DISCORD_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/discord/webhook';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
     readonly domainName: string;
 }
 
-export interface LoopAdDevStackProps extends StackProps {
+export interface LoopAdDevCertificateStackProps extends StackProps {
     readonly publicHostedZone: PublicHostedZoneConfig;
 }
 
-// 상시 개발 스택입니다. 공유 VPC와 항상 떠 있는 개발 서버를 소유합니다.
-export class LoopAdDevStack extends Stack {
-    public constructor(scope: Construct, id: string, props: LoopAdDevStackProps) {
+// Certificate stack의 출력값입니다.
+// 서로 다른 region stack을 직접 참조하지 않고 ARN만 넘겨 app stack synth를 단순하게 유지합니다.
+export interface LoopAdDevCertificateArns {
+    readonly frontendSitesCertificateArn: string;
+    readonly genAiGeneratedAssetsCertificateArn: string;
+}
+
+// CloudFront custom domain에 연결하는 ACM certificate는 us-east-1에 있어야 합니다.
+// 인증서는 자주 바뀌지 않으므로 dev app stack과 분리해 먼저 배포합니다.
+export class LoopAdDevCertificateStack extends Stack {
+    public readonly frontendSitesCertificate: acm.ICertificate;
+    public readonly genAiGeneratedAssetsCertificate: acm.ICertificate;
+
+    public constructor(scope: Construct, id: string, props: LoopAdDevCertificateStackProps) {
         super(scope, id, props);
 
-        // Dev가 유일한 VPC를 만듭니다. Dev server는 NAT가 있는 private subnet을 씁니다.
-        const vpc = new ec2.Vpc(this, 'Vpc', {
+        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
+            hostedZoneId: props.publicHostedZone.hostedZoneId,
+            zoneName: props.publicHostedZone.domainName,
+        });
+        const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        this.frontendSitesCertificate = new acm.Certificate(this, 'FrontendSitesCertificate', {
+            domainName: dashboardWebDomainName,
+            subjectAlternativeNames: [demoShoppingmallWebDomainName],
+            validation: acm.CertificateValidation.fromDns(publicHostedZone),
+        });
+        new cdk.CfnOutput(this, 'FrontendSitesCertificateArn', {
+            value: this.frontendSitesCertificate.certificateArn,
+        });
+
+        const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        this.genAiGeneratedAssetsCertificate = new acm.Certificate(this, 'GenAiGeneratedAssetsCertificate', {
+            domainName: genAiPublicAssetsDomainName,
+            validation: acm.CertificateValidation.fromDns(publicHostedZone),
+        });
+        new cdk.CfnOutput(this, 'GenAiGeneratedAssetsCertificateArn', {
+            value: this.genAiGeneratedAssetsCertificate.certificateArn,
+        });
+    }
+}
+
+// VPC, subnet, endpoint, security group은 애플리케이션보다 변경 주기가 깁니다.
+// 최초 배포 전에 network stack으로 분리해 두면 이후 app stack 변경의 영향 범위를 줄일 수 있습니다.
+export class LoopAdDevNetworkStack extends Stack {
+    public readonly vpc: ec2.Vpc;
+    public readonly privateSubnetSelection: ec2.SubnetSelection;
+    public readonly privateSubnets: ec2.SelectedSubnets;
+    public readonly albSecurityGroup: ec2.SecurityGroup;
+    public readonly nlbSecurityGroup: ec2.SecurityGroup;
+    public readonly serverSecurityGroup: ec2.SecurityGroup;
+    public readonly dataStorageSecurityGroup: ec2.SecurityGroup;
+
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        // Dev server는 NAT가 있는 private subnet을 씁니다.
+        this.vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             maxAzs: 2,
             natGateways: 1,
@@ -77,29 +124,89 @@ export class LoopAdDevStack extends Stack {
         });
 
         // 모든 ECS 서비스는 private subnet 그룹에서 실행됩니다.
-        const privateSubnets = vpc.selectSubnets({ subnetGroupName: 'private' });
-
-        // 비용 guardrail입니다. AWS Budget은 지출을 차단하지는 않지만 월간 목표를 계정에 명시합니다.
-        new budgets.CfnBudget(this, 'MonthlyCostBudget', {
-            budget: {
-                budgetName: 'loop-ad-monthly-cost-target',
-                budgetLimit: {
-                    amount: LOOP_AD_MONTHLY_COST_TARGET_USD,
-                    unit: 'USD',
-                },
-                budgetType: 'COST',
-                timeUnit: 'MONTHLY',
-            },
-        });
+        this.privateSubnetSelection = { subnetGroupName: 'private' };
+        this.privateSubnets = this.vpc.selectSubnets(this.privateSubnetSelection);
 
         // S3 Gateway Endpoint는 hourly 비용 없이 route table에 붙습니다.
         // ECR layer 다운로드와 S3 접근 비용을 NAT data processing으로 보내지 않기 위해 유지합니다.
-        vpc.addGatewayEndpoint('S3GatewayEndpoint', {
+        this.vpc.addGatewayEndpoint('S3GatewayEndpoint', {
             service: ec2.GatewayVpcEndpointAwsService.S3,
-            subnets: [privateSubnets],
+            subnets: [this.privateSubnets],
         });
 
+        // public ingress는 load balancer 종류별로 나누고, private 서비스는
+        // stack을 읽기 쉽게 유지하기 위해 넓은 내부 SG를 공유합니다.
+        this.albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: false,
+            description: 'Dev ALB public HTTP ingress only.',
+        });
+        this.nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: false,
+            description: 'Dev NLB event ingestion ingress only.',
+        });
+        this.serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: false,
+            description: 'Dev ECS server SG shared by app services.',
+        });
+        this.dataStorageSecurityGroup = new ec2.SecurityGroup(this, 'DataStorageSecurityGroup', {
+            vpc: this.vpc,
+            allowAllOutbound: false,
+            description: 'Dev data storage SG shared by internal data endpoints.',
+        });
+
+        // 인터넷 트래픽은 public load balancer만 받습니다.
+        this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
+        this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
+
+        // VPC 내부에서는 SG 경계를 기준으로 server와 DataStorage가 서로 신뢰합니다.
+        this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
+        this.nlbSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
+        this.serverSecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
+        this.serverSecurityGroup.addIngressRule(this.nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter dev servers.');
+        this.serverSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
+        this.serverSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
+        this.serverSecurityGroup.addEgressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal data storage.');
+        this.dataStorageSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal data storage.');
+        this.dataStorageSecurityGroup.addIngressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
+        this.dataStorageSecurityGroup.addEgressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
+
+        // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
+        this.serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
+        // ClickHouse bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
+        this.dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
+    }
+}
+
+export interface LoopAdDevStackProps extends StackProps {
+    readonly publicHostedZone: PublicHostedZoneConfig;
+    readonly certificateArns: LoopAdDevCertificateArns;
+    readonly network: LoopAdDevNetworkStack;
+}
+
+// 상시 개발 스택입니다.
+// 변경이 잦은 애플리케이션 런타임, 데이터 저장소, public endpoint, 배포 산출물 저장소를 소유합니다.
+// VPC와 certificate는 별도 stack에서 받고, 이 stack은 애플리케이션 배포 주기에 맞춰 자주 수정합니다.
+export class LoopAdDevStack extends Stack {
+    public constructor(scope: Construct, id: string, props: LoopAdDevStackProps) {
+        super(scope, id, props);
+
+        // Network stack에서 만든 기반 리소스를 재사용합니다.
+        // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
+        const {
+            vpc,
+            privateSubnetSelection,
+            privateSubnets,
+            albSecurityGroup,
+            nlbSecurityGroup,
+            serverSecurityGroup,
+            dataStorageSecurityGroup,
+        } = props.network;
+
         // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
+        // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
             clusterName: 'dev-loop-ad-cluster',
@@ -109,51 +216,8 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // public ingress는 load balancer 종류별로 나누고, private 서비스는
-        // stack을 읽기 쉽게 유지하기 위해 넓은 내부 SG를 공유합니다.
-        const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Dev ALB public HTTP ingress only.',
-        });
-        const nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Dev NLB event ingestion ingress only.',
-        });
-        const serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Dev ECS server SG shared by app services.',
-        });
-        const dataStorageSecurityGroup = new ec2.SecurityGroup(this, 'DataStorageSecurityGroup', {
-            vpc,
-            allowAllOutbound: false,
-            description: 'Dev data storage SG shared by internal data endpoints.',
-        });
-
-        // 인터넷 트래픽은 public load balancer만 받습니다.
-        albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
-        nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
-
-        // VPC 내부에서는 SG 경계를 기준으로 server와 DataStorage가 서로 신뢰합니다.
-        albSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
-        nlbSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
-        serverSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
-        serverSecurityGroup.addIngressRule(nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter dev servers.');
-        serverSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
-        serverSecurityGroup.addEgressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
-        serverSecurityGroup.addEgressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal data storage.');
-        dataStorageSecurityGroup.addIngressRule(serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal data storage.');
-        dataStorageSecurityGroup.addIngressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
-        dataStorageSecurityGroup.addEgressRule(dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
-
-        // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
-        serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        // ClickHouse bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
-        dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
-
         // ECR repository는 Dev 애플리케이션 이미지 storage를 소유합니다.
+        // 앱 repository가 아직 분리되어 있어도 같은 infra repo에서 이름과 보관 정책을 일관되게 관리합니다.
         const repositories = [
             { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
             { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
@@ -175,6 +239,7 @@ export class LoopAdDevStack extends Stack {
         ] = repositories;
 
         // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
+        // bucket은 직접 public으로 열지 않고 CloudFront OAC를 통해 필요한 prefix만 읽히게 합니다.
         const dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             encryption: s3.BucketEncryption.S3_MANAGED,
@@ -199,14 +264,13 @@ export class LoopAdDevStack extends Stack {
         });
         const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        // CloudFront custom domain certificates must live in us-east-1. Keep this
-        // construct until the certificate lifecycle is split into a separate stack.
-        const frontendSitesCertificate = new acm.DnsValidatedCertificate(this, 'FrontendSitesCertificate', {
-            domainName: dashboardWebDomainName,
-            subjectAlternativeNames: [demoShoppingmallWebDomainName],
-            hostedZone: publicHostedZone,
-            region: 'us-east-1',
-        });
+        // Certificate stack에서 만든 ACM ARN을 명시적으로 import합니다.
+        // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
+        const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
+            this,
+            'FrontendSitesCertificate',
+            props.certificateArns.frontendSitesCertificateArn,
+        );
         createStaticFrontendSite(this, {
             idPrefix: 'DashboardWeb',
             siteName: 'dashboard-web',
@@ -227,19 +291,21 @@ export class LoopAdDevStack extends Stack {
         });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
-        // CloudFront custom domain certificates must live in us-east-1. Keep this
-        // construct until the certificate lifecycle is split into a separate stack.
-        const genAiGeneratedAssetsCertificate = new acm.DnsValidatedCertificate(this, 'GenAiGeneratedAssetsCertificate', {
-            domainName: genAiPublicAssetsDomainName,
-            hostedZone: publicHostedZone,
-            region: 'us-east-1',
-        });
+        // GenAI asset용 certificate도 별도 ARN으로 받습니다.
+        // domain 범위를 분리해 두면 나중에 frontend certificate를 바꿔도 asset 배포 경로 영향이 작습니다.
+        const genAiGeneratedAssetsCertificate = acm.Certificate.fromCertificateArn(
+            this,
+            'GenAiGeneratedAssetsCertificate',
+            props.certificateArns.genAiGeneratedAssetsCertificateArn,
+        );
         const genAiGeneratedAssetsDistribution = new cloudfront.Distribution(this, 'GenAiGeneratedAssetsDistribution', {
             domainNames: [genAiPublicAssetsDomainName],
             certificate: genAiGeneratedAssetsCertificate,
             comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
             priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
             defaultBehavior: {
+                // originPath로 generated prefix만 공개합니다.
+                // bucket 전체를 static hosting으로 쓰지 않아도 asset URL contract를 안정적으로 제공합니다.
                 origin: origins.S3BucketOrigin.withOriginAccessControl(dataStorageBucket, {
                     originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
                 }),
@@ -252,6 +318,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // 비용을 낮게 유지하는 개발용 data storage입니다.
+        // Aurora는 serverless v2 auto pause를 사용하고, 삭제 시에는 snapshot을 남겨 실수 복구 여지를 둡니다.
         const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
             clusterIdentifier: 'dev-loop-ad-aurora-postgres',
             engine: rds.DatabaseClusterEngine.auroraPostgres({
@@ -273,6 +340,8 @@ export class LoopAdDevStack extends Stack {
             removalPolicy: RemovalPolicy.SNAPSHOT,
         });
 
+        // ClickHouse는 dev 분석/집계용 단일 EC2 인스턴스로 시작합니다.
+        // managed cluster보다 단순하고 저렴하지만, prod 수준의 고가용성은 목표로 하지 않습니다.
         const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
             vpcSubnets: privateSubnets,
@@ -299,9 +368,11 @@ export class LoopAdDevStack extends Stack {
             'dnf install -y docker',
             'systemctl enable --now docker',
             'mkdir -p /var/lib/clickhouse',
-            'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:latest',
+            'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:26.3.13.31',
         );
 
+        // MSK는 raw event stream의 중심입니다.
+        // dev 비용을 위해 broker/storage 수를 작게 두고, 내부 서비스에서만 접근하도록 private subnet에 배치합니다.
         const mskCluster = new msk.CfnCluster(this, 'MskCluster', {
             clusterName: 'dev-loop-ad-msk',
             kafkaVersion: '3.6.0',
@@ -330,6 +401,8 @@ export class LoopAdDevStack extends Stack {
             enhancedMonitoring: 'DEFAULT',
         });
 
+        // CDK의 L1 MSK construct는 bootstrap broker string을 바로 속성으로 주지 않습니다.
+        // Custom Resource로 배포 시점에 조회해 ECS task env와 SSM endpoint contract에 재사용합니다.
         const mskBootstrapBrokers = new cr.AwsCustomResource(this, 'MskBootstrapBrokers', {
             resourceType: 'Custom::LoopAdMskBootstrapBrokers',
             onUpdate: {
@@ -363,17 +436,14 @@ export class LoopAdDevStack extends Stack {
             throw new Error('Aurora generated credentials secret is required.');
         }
 
+        // 외부 SaaS credential은 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
+        // 실제 secret 값은 배포 전 AWS 계정에 별도로 만들어 둡니다.
         const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
             parameterName: OPENAI_API_KEY_PARAMETER_NAME,
         });
-        const n8nWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'N8nWebhookParameter', {
-            parameterName: N8N_WEBHOOK_PARAMETER_NAME,
-        });
-        const discordWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'DiscordWebhookParameter', {
-            parameterName: DISCORD_WEBHOOK_PARAMETER_NAME,
-        });
 
         // endpoint contract는 SSM에도 남깁니다. 앱 task에는 아래 값을 env로 직접 주입합니다.
+        // 다른 repository의 CI/CD나 운영 스크립트가 같은 endpoint 이름을 보고 연결값을 찾을 수 있게 하기 위함입니다.
         for (const parameter of [
             {
                 id: 'AuroraEndpointParameter',
@@ -426,6 +496,7 @@ export class LoopAdDevStack extends Stack {
         }
 
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
+        // HTTP API와 ingestion traffic의 성격이 달라 listener/target group을 분리해 장애 범위를 줄입니다.
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
             vpc,
             internetFacing: true,
@@ -448,6 +519,8 @@ export class LoopAdDevStack extends Stack {
             vpcSubnets: { subnetGroupName: 'public' },
         });
 
+        // 외부에서 접근해야 하는 주소만 Route 53 record로 노출합니다.
+        // 내부 서비스 간 호출은 Cloud Map 이름을 쓰므로 public DNS record를 추가하지 않습니다.
         for (const dnsRecord of [
             {
                 id: 'DevApiDnsRecord',
@@ -473,6 +546,7 @@ export class LoopAdDevStack extends Stack {
         }
 
         // Event Collector는 NLB 트래픽을 받고 event를 MSK로 발행합니다.
+        // public ingestion 진입점이지만 task 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
         const eventCollectorTask = new ecs.FargateTaskDefinition(this, 'EventCollectorTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -535,6 +609,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Projector는 MSK를 consume하고 가공된 context를 Redis/ClickHouse에 씁니다.
+        // 아직 Redis가 확정되지 않았기 때문에 placeholder endpoint를 contract로 남겨 앱 코드의 env shape를 먼저 고정합니다.
         const projectorTask = new ecs.FargateTaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -584,6 +659,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Advertisement API는 ALB를 통해 public 광고 조회 경로를 제공합니다.
+        // Aurora credential은 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Redis contract로 연결합니다.
         const advertisementTask = new ecs.FargateTaskDefinition(this, 'AdvertisementApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -649,6 +725,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision을 호출합니다.
+        // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage bucket의 generated prefix 읽기 권한만 부여합니다.
         const dashboardTask = new ecs.FargateTaskDefinition(this, 'DashboardApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -684,8 +761,6 @@ export class LoopAdDevStack extends Stack {
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
-                LOOPAD_N8N_WEBHOOK_URL: ecs.Secret.fromSsmParameter(n8nWebhookParameter),
-                LOOPAD_DISCORD_WEBHOOK_URL: ecs.Secret.fromSsmParameter(discordWebhookParameter),
             },
         });
         dashboardContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
@@ -720,6 +795,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Decision은 private 전용이며 public ALB에 연결하지 않습니다.
+        // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 task에만 줍니다.
         const decisionTask = new ecs.FargateTaskDefinition(this, 'DecisionTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,

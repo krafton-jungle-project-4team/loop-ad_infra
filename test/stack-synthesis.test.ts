@@ -1,8 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import {
-    LOOP_AD_MONTHLY_COST_TARGET_USD,
     LOOP_AD_REGION,
+    LoopAdDevCertificateStack,
+    LoopAdDevNetworkStack,
     LoopAdDevStack,
 } from '../src/loop-ad-stack';
 
@@ -14,10 +15,48 @@ const testPublicHostedZone = {
     hostedZoneId: 'ZTESTHOSTEDZONEID',
     domainName: 'example.test',
 };
+const testCertificateArns = {
+    frontendSitesCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites',
+    genAiGeneratedAssetsCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets',
+};
 
 describe('loop-ad CDK stacks', () => {
-    it('dev stack keeps the permanent VPC, DataStorage bucket, ECR repositories, and five ECS services', () => {
-        const stack = synthDev();
+    it('dev certificate stack creates the CloudFront ACM certificates in us-east-1', () => {
+        const stack = synthDevCertificate();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::CertificateManager::Certificate', 2);
+        template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+            DomainName: `dashboard.dev.${testPublicHostedZone.domainName}`,
+            SubjectAlternativeNames: [`demo-shoppingmall.dev.${testPublicHostedZone.domainName}`],
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: Match.arrayWith([
+                Match.objectLike({
+                    DomainName: `dashboard.dev.${testPublicHostedZone.domainName}`,
+                    HostedZoneId: testPublicHostedZone.hostedZoneId,
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+            DomainName: `gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: Match.arrayWith([
+                Match.objectLike({
+                    DomainName: `gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
+                    HostedZoneId: testPublicHostedZone.hostedZoneId,
+                }),
+            ]),
+        });
+        template.hasOutput('FrontendSitesCertificateArn', {
+            Value: Match.anyValue(),
+        });
+        template.hasOutput('GenAiGeneratedAssetsCertificateArn', {
+            Value: Match.anyValue(),
+        });
+    });
+
+    it('dev network stack owns the permanent VPC and network guardrails', () => {
+        const stack = synthDevNetwork();
         const template = Template.fromStack(stack);
 
         template.resourceCountIs('AWS::EC2::VPC', 1);
@@ -28,22 +67,18 @@ describe('loop-ad CDK stacks', () => {
         template.resourcePropertiesCountIs('AWS::EC2::VPCEndpoint', {
             VpcEndpointType: 'Gateway',
         }, 1);
-        template.resourceCountIs('AWS::Budgets::Budget', 1);
+        template.resourceCountIs('AWS::EC2::SecurityGroup', 4);
+    });
+
+    it('dev app stack keeps DataStorage bucket, ECR repositories, and five ECS services', () => {
+        const stack = synthDev();
+        const template = Template.fromStack(stack);
+
         template.resourceCountIs('AWS::S3::Bucket', 3);
         template.resourceCountIs('AWS::CloudFront::Distribution', 3);
         template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
         template.resourceCountIs('AWS::ECR::Repository', 5);
         template.resourceCountIs('AWS::ECS::Service', 5);
-        template.hasResourceProperties('AWS::Budgets::Budget', {
-            Budget: {
-                BudgetLimit: {
-                    Amount: LOOP_AD_MONTHLY_COST_TARGET_USD,
-                    Unit: 'USD',
-                },
-                BudgetType: 'COST',
-                TimeUnit: 'MONTHLY',
-            },
-        });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/event-collector',
         });
@@ -140,7 +175,7 @@ describe('loop-ad CDK stacks', () => {
                     CachedMethods: ['GET', 'HEAD'],
                 }),
                 ViewerCertificate: Match.objectLike({
-                    AcmCertificateArn: Match.anyValue(),
+                    AcmCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
                     SslSupportMethod: 'sni-only',
                     MinimumProtocolVersion: 'TLSv1.2_2021',
                 }),
@@ -389,8 +424,6 @@ describe('loop-ad CDK stacks', () => {
                     Secrets: Match.arrayWith([
                         Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
                         Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
-                        Match.objectLike({ Name: 'LOOPAD_N8N_WEBHOOK_URL' }),
-                        Match.objectLike({ Name: 'LOOPAD_DISCORD_WEBHOOK_URL' }),
                     ]),
                 }),
             ]),
@@ -462,8 +495,31 @@ function ssmParameterValueFrom(template: Template, parameterName: string): unkno
 
 function synthDev(): LoopAdDevStack {
     const app = new cdk.App();
+    const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+    });
     return new LoopAdDevStack(app, 'LoopAdDevStack', {
         env: testEnv,
         publicHostedZone: testPublicHostedZone,
+        certificateArns: testCertificateArns,
+        network,
+    });
+}
+
+function synthDevCertificate(): LoopAdDevCertificateStack {
+    const app = new cdk.App();
+    return new LoopAdDevCertificateStack(app, 'LoopAdDevCertificateStack', {
+        env: {
+            account: testEnv.account,
+            region: 'us-east-1',
+        },
+        publicHostedZone: testPublicHostedZone,
+    });
+}
+
+function synthDevNetwork(): LoopAdDevNetworkStack {
+    const app = new cdk.App();
+    return new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
     });
 }

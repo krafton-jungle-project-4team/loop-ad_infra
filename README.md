@@ -15,7 +15,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
    - 현재 dev public endpoint 목록은 [docs/service-endpoints.md](docs/service-endpoints.md)를 봅니다.
 
 3. AWS CDK
-   - dev 환경의 VPC, ECS, ECR, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, MSK, SSM contract를 관리합니다.
+   - dev 환경의 ACM certificate, VPC/network, ECS, ECR, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, MSK, SSM contract를 관리합니다.
    - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)입니다.
 
 4. CI/CD용 GitHub Actions 템플릿
@@ -29,11 +29,15 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 ```bash
 npm run build
 npm test
+npm run synth:dev-certificate
 npm run synth:dev
+npm run deploy:dev-certificate
 npm run deploy:dev
 ```
 
-`npm run deploy`와 `npm run destroy`는 실수 방지를 위해 막혀 있습니다. 실제 배포는 명시적으로 `npm run deploy:dev`를 사용합니다.
+처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 먼저 만들고, 출력된 ARN을 `.env`에 넣은 뒤 `npm run deploy:dev`를 실행합니다.
+
+`npm run deploy`와 `npm run destroy`는 실수 방지를 위해 막혀 있습니다.
 
 ## 환경 변수
 
@@ -42,6 +46,8 @@ CDK 실행 전 `.env` 또는 process env에 아래 값을 설정해야 합니다
 ```bash
 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=Z...
 LOOP_AD_PUBLIC_DOMAIN_NAME=loop-ad.org
+LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:...
+LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:...
 ```
 
 `CDK_DEFAULT_ACCOUNT`도 CDK 실행 환경에서 제공되어야 합니다.

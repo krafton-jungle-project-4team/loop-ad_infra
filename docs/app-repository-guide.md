@@ -125,8 +125,6 @@ External secret env:
 | Env | 사용하는 서비스 | 설명 |
 |---|---|---|
 | `LOOPAD_OPENAI_API_KEY` | Decision | OpenAI API key입니다. |
-| `LOOPAD_N8N_WEBHOOK_URL` | Dashboard API | n8n webhook URL입니다. |
-| `LOOPAD_DISCORD_WEBHOOK_URL` | Dashboard API | Discord webhook URL입니다. |
 
 서비스별 필수 env:
 
@@ -135,7 +133,7 @@ External secret env:
 | Event Collector | 공통 서버 env, `LOOPAD_MSK_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC` |
 | Ad Context Projector | 공통 서버 env, `LOOPAD_MSK_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC`, `LOOPAD_REDIS_URL`, `LOOPAD_CLICKHOUSE_URL`, `LOOPAD_CLICKHOUSE_USERNAME` |
 | Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
-| Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_N8N_WEBHOOK_URL`, `LOOPAD_DISCORD_WEBHOOK_URL` |
+| Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
 | Decision | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
 
 내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision을 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
@@ -177,7 +175,6 @@ VITE_API_BASE_URL=https://api.dev.loop-ad.org
 VITE_INGEST_BASE_URL=https://ingest.dev.loop-ad.org
 VITE_OPENAI_API_KEY=...
 VITE_AURORA_PASSWORD=...
-VITE_DISCORD_WEBHOOK_URL=...
 ```
 
 Frontend deploy workflow 규칙:

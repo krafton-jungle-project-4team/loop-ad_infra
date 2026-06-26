@@ -60,6 +60,9 @@ describe('GitHub Actions reusable workflows', () => {
         expect(workflow).toContain('npm test');
         expect(workflow).toContain('npm run synth:${{ inputs.environment }}');
         expect(workflow).toContain('Validate required inputs');
+        expect(workflow).toContain('cdk_default_account:');
+        expect(workflow).toContain('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN');
+        expect(workflow).toContain('LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN');
         expect(workflow).not.toContain('cdk deploy');
         expect(workflow).not.toContain('default:');
     });
@@ -68,6 +71,8 @@ describe('GitHub Actions reusable workflows', () => {
         const cdkApp = readFileSync(join(ROOT, 'bin/loop-ad_aws_cdk.ts'), 'utf8');
 
         expect(cdkApp).toContain("readRequiredEnv('CDK_DEFAULT_ACCOUNT')");
+        expect(cdkApp).toContain("readRequiredEnv('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN')");
+        expect(cdkApp).toContain("readRequiredEnv('LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN')");
         expect(cdkApp).toContain('Missing required CDK context "environment"');
         expect(cdkApp).not.toContain("?? 'dev'");
         expect(cdkApp).not.toContain('process.env.CDK_DEFAULT_ACCOUNT');

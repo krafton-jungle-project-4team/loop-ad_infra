@@ -292,6 +292,7 @@ describe('loop-ad CDK stacks', () => {
 
         template.resourceCountIs('AWS::RDS::DBCluster', 1);
         template.resourceCountIs('AWS::RDS::DBInstance', 1);
+        template.resourceCountIs('AWS::ElastiCache::ServerlessCache', 1);
         template.resourceCountIs('AWS::MSK::Cluster', 1);
         template.resourceCountIs('Custom::LoopAdMskBootstrapBrokers', 1);
         template.hasResourceProperties('AWS::RDS::DBCluster', {
@@ -309,6 +310,19 @@ describe('loop-ad CDK stacks', () => {
             DBInstanceClass: 'db.serverless',
             Engine: 'aurora-postgresql',
             PubliclyAccessible: false,
+        });
+        template.hasResourceProperties('AWS::ElastiCache::ServerlessCache', {
+            Engine: 'valkey',
+            ServerlessCacheName: 'dev-loop-ad-valkey',
+            CacheUsageLimits: {
+                DataStorage: {
+                    Maximum: 1,
+                    Unit: 'GB',
+                },
+                ECPUPerSecond: {
+                    Maximum: 1000,
+                },
+            },
         });
         template.hasResourceProperties('AWS::EC2::Instance', {
             InstanceType: 't4g.small',
@@ -331,7 +345,7 @@ describe('loop-ad CDK stacks', () => {
         });
         template.hasResourceProperties('AWS::MSK::Cluster', {
             ClusterName: 'dev-loop-ad-msk',
-            KafkaVersion: '3.6.0',
+            KafkaVersion: '3.9.x',
             NumberOfBrokerNodes: 2,
             BrokerNodeGroupInfo: Match.objectLike({
                 InstanceType: 'kafka.t3.small',
@@ -347,7 +361,7 @@ describe('loop-ad CDK stacks', () => {
         });
 
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/aurora/endpoint'))).toContain('Endpoint.Address');
-        expect(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint')).toBe('pending://dev/redis');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint'))).toContain('Endpoint.Address');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/clickhouse/endpoint'))).toContain('PrivateDnsName');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
@@ -385,7 +399,7 @@ describe('loop-ad CDK stacks', () => {
                     Environment: Match.arrayWith([
                         Match.objectLike({
                             Name: 'LOOPAD_REDIS_URL',
-                            Value: 'pending://dev/redis',
+                            Value: Match.anyValue(),
                         }),
                         Match.objectLike({
                             Name: 'LOOPAD_AURORA_HOST',
@@ -451,6 +465,8 @@ describe('loop-ad CDK stacks', () => {
             ]),
         });
         const synthesizedTemplate = JSON.stringify(template.toJSON());
+        expect(synthesizedTemplate).toContain('clickhouse/clickhouse-server:26.3.13.31');
+        expect(synthesizedTemplate).toContain('rediss://');
         expect(synthesizedTemplate).toContain('genai/generated/*');
         expect(synthesizedTemplate).not.toContain('ENDPOINT_PARAMETER');
         expect(synthesizedTemplate).not.toContain('SECRET_PARAMETER');

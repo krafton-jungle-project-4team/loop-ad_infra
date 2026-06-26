@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: CloudFront용 ACM certificate, VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: CloudFront용 ACM certificate, VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
 - 리전: `ap-northeast-2`
 
@@ -31,12 +31,12 @@
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Advertisement API와 Dashboard API는 ALB path rule에만 붙인다.
-- Aurora, Redis, ClickHouse, MSK는 SSM endpoint contract로 연결한다.
-- Aurora PostgreSQL은 Serverless v2 `16.13`, `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
-- ClickHouse는 EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
-- MSK는 provisioned `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
+- Aurora, Redis 호환 Valkey, ClickHouse, MSK는 SSM endpoint contract로 연결한다.
+- Aurora PostgreSQL은 안정 기준 버전 `16.13`, Serverless v2 `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
+- Redis 호환 cache는 ElastiCache Serverless for Valkey로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
+- ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
+- MSK는 AWS recommended Kafka `3.9.x`, provisioned `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
 - MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
-- Redis provision 방식은 별도 결정 전까지 endpoint contract만 유지한다.
 - `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
 - Dev app stack 실행 시 CloudFront certificate ARN 두 개를 필수로 요구한다.
 

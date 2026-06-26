@@ -109,7 +109,7 @@ Data env:
 | `LOOPAD_AURORA_PASSWORD` | Secret | secret 주입 | Aurora password입니다. |
 | `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. |
 | `LOOPAD_CLICKHOUSE_USERNAME` | Plain | `default` | ClickHouse username입니다. |
-| `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis endpoint입니다. Redis 확정 전 값은 `pending://dev/redis`입니다. |
+| `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis 호환 Valkey endpoint입니다. TLS 연결을 위해 `rediss://...:6379` 형식을 사용합니다. |
 | `LOOPAD_MSK_BOOTSTRAP_BROKERS` | Plain | 인프라 주입 | MSK bootstrap broker 목록입니다. |
 | `LOOPAD_EVENT_TOPIC` | Plain | `loop-ad.events.raw` | raw event topic 이름입니다. |
 
@@ -138,7 +138,7 @@ External secret env:
 
 내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision을 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
 
-Redis가 필요한 서비스는 `LOOPAD_REDIS_URL` 값이 `pending://...`이면 시작 시점에 명확히 실패해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
+Redis client를 사용하는 서비스는 `LOOPAD_REDIS_URL`의 `rediss://` endpoint에 TLS로 연결해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
 
 ## Frontend Static Site Repo
 

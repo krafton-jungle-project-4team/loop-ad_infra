@@ -7,6 +7,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as msk from 'aws-cdk-lib/aws-msk';
@@ -30,9 +31,12 @@ const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 const DEV_CLICKHOUSE_VOLUME_GIB = 50;
 const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
+const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
+const DEV_MSK_KAFKA_VERSION = '3.9.x';
+const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
+const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
 const AURORA_DATABASE_NAME = 'loopad';
 const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
-const REDIS_URL_PLACEHOLDER = 'pending://dev/redis';
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
 const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
@@ -340,7 +344,29 @@ export class LoopAdDevStack extends Stack {
             removalPolicy: RemovalPolicy.SNAPSHOT,
         });
 
+        // Redis 호환 cache는 ElastiCache Serverless for Valkey로 둡니다.
+        // Valkey는 Redis OSS보다 최소 저장 과금이 낮아 dev의 idle 비용을 줄이기 좋습니다.
+        // 앱 contract는 기존 Redis client 호환성을 위해 LOOPAD_REDIS_URL 이름을 유지합니다.
+        const valkeyCache = new elasticache.CfnServerlessCache(this, 'ValkeyServerlessCache', {
+            engine: 'valkey',
+            serverlessCacheName: 'dev-loop-ad-valkey',
+            description: 'Dev Redis-compatible Valkey serverless cache for loop-ad.',
+            subnetIds: privateSubnets.subnetIds,
+            securityGroupIds: [dataStorageSecurityGroup.securityGroupId],
+            cacheUsageLimits: {
+                dataStorage: {
+                    maximum: DEV_VALKEY_MAX_DATA_STORAGE_GB,
+                    unit: 'GB',
+                },
+                ecpuPerSecond: {
+                    maximum: DEV_VALKEY_MAX_ECPU_PER_SECOND,
+                },
+            },
+        });
+        const redisUrl = cdk.Fn.join('', ['rediss://', valkeyCache.attrEndpointAddress, ':', valkeyCache.attrEndpointPort]);
+
         // ClickHouse는 dev 분석/집계용 단일 EC2 인스턴스로 시작합니다.
+        // 버전은 LTS patch tag로 고정해 재부팅/재배포 시에도 같은 바이너리를 사용하게 합니다.
         // managed cluster보다 단순하고 저렴하지만, prod 수준의 고가용성은 목표로 하지 않습니다.
         const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
@@ -368,14 +394,15 @@ export class LoopAdDevStack extends Stack {
             'dnf install -y docker',
             'systemctl enable --now docker',
             'mkdir -p /var/lib/clickhouse',
-            'docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse clickhouse/clickhouse-server:26.3.13.31',
+            `docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse ${DEV_CLICKHOUSE_IMAGE}`,
         );
 
         // MSK는 raw event stream의 중심입니다.
+        // Kafka version은 AWS MSK의 recommended 라인을 사용합니다.
         // dev 비용을 위해 broker/storage 수를 작게 두고, 내부 서비스에서만 접근하도록 private subnet에 배치합니다.
         const mskCluster = new msk.CfnCluster(this, 'MskCluster', {
             clusterName: 'dev-loop-ad-msk',
-            kafkaVersion: '3.6.0',
+            kafkaVersion: DEV_MSK_KAFKA_VERSION,
             numberOfBrokerNodes: DEV_MSK_BROKER_COUNT,
             brokerNodeGroupInfo: {
                 clientSubnets: privateSubnets.subnetIds,
@@ -454,8 +481,8 @@ export class LoopAdDevStack extends Stack {
             {
                 id: 'RedisEndpointParameter',
                 parameterName: '/loop-ad/dev/redis/endpoint',
-                stringValue: REDIS_URL_PLACEHOLDER,
-                description: 'Dev Redis endpoint contract.',
+                stringValue: redisUrl,
+                description: 'Dev Redis-compatible Valkey endpoint contract.',
             },
             {
                 id: 'ClickHouseEndpointParameter',
@@ -608,8 +635,8 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // Projector는 MSK를 consume하고 가공된 context를 Redis/ClickHouse에 씁니다.
-        // 아직 Redis가 확정되지 않았기 때문에 placeholder endpoint를 contract로 남겨 앱 코드의 env shape를 먼저 고정합니다.
+        // Projector는 MSK를 consume하고 가공된 context를 Valkey/ClickHouse에 씁니다.
+        // 앱에서는 Redis client를 그대로 쓸 수 있게 LOOPAD_REDIS_URL에 rediss:// Valkey endpoint를 주입합니다.
         const projectorTask = new ecs.FargateTaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -635,7 +662,7 @@ export class LoopAdDevStack extends Stack {
                 PORT: '80',
                 LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
-                LOOPAD_REDIS_URL: REDIS_URL_PLACEHOLDER,
+                LOOPAD_REDIS_URL: redisUrl,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
                 LOOPAD_CLICKHOUSE_USERNAME: 'default',
             },
@@ -659,7 +686,7 @@ export class LoopAdDevStack extends Stack {
         });
 
         // Advertisement API는 ALB를 통해 public 광고 조회 경로를 제공합니다.
-        // Aurora credential은 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Redis contract로 연결합니다.
+        // Aurora credential은 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Valkey contract로 연결합니다.
         const advertisementTask = new ecs.FargateTaskDefinition(this, 'AdvertisementApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
@@ -683,7 +710,7 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_SERVICE_ID: 'advertisement-api',
                 LOOPAD_RUNTIME: 'go',
                 PORT: '80',
-                LOOPAD_REDIS_URL: REDIS_URL_PLACEHOLDER,
+                LOOPAD_REDIS_URL: redisUrl,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,

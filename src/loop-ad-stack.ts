@@ -2,6 +2,7 @@ import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
@@ -33,6 +34,8 @@ const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
 const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
+const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
+const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -186,6 +189,32 @@ export class LoopAdDevStack extends Stack {
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
+        });
+        const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const frontendSitesCertificate = new acm.DnsValidatedCertificate(this, 'FrontendSitesCertificate', {
+            domainName: dashboardWebDomainName,
+            subjectAlternativeNames: [demoShoppingmallWebDomainName],
+            hostedZone: publicHostedZone,
+            region: 'us-east-1',
+        });
+        createStaticFrontendSite(this, {
+            idPrefix: 'DashboardWeb',
+            siteName: 'dashboard-web',
+            bucketName: 'loop-ad-dev-dashboard-web',
+            recordName: DASHBOARD_WEB_RECORD_NAME,
+            domainName: dashboardWebDomainName,
+            certificate: frontendSitesCertificate,
+            publicHostedZone,
+        });
+        createStaticFrontendSite(this, {
+            idPrefix: 'DemoShoppingmallWeb',
+            siteName: 'demo-shoppingmall-web',
+            bucketName: 'loop-ad-dev-demo-shoppingmall-web',
+            recordName: DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
+            domainName: demoShoppingmallWebDomainName,
+            certificate: frontendSitesCertificate,
+            publicHostedZone,
         });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
@@ -761,5 +790,82 @@ export class LoopAdDevStack extends Stack {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
+    }
+}
+
+interface StaticFrontendSiteConfig {
+    readonly idPrefix: string;
+    readonly siteName: string;
+    readonly bucketName: string;
+    readonly recordName: string;
+    readonly domainName: string;
+    readonly certificate: acm.ICertificate;
+    readonly publicHostedZone: route53.IHostedZone;
+}
+
+function createStaticFrontendSite(scope: Construct, config: StaticFrontendSiteConfig): void {
+    const bucket = new s3.Bucket(scope, `${config.idPrefix}Bucket`, {
+        bucketName: config.bucketName,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        enforceSSL: true,
+        versioned: true,
+        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+        removalPolicy: RemovalPolicy.RETAIN,
+    });
+    const distribution = new cloudfront.Distribution(scope, `${config.idPrefix}Distribution`, {
+        domainNames: [config.domainName],
+        certificate: config.certificate,
+        comment: `Dev ${config.siteName} frontend for ${config.domainName}`,
+        defaultRootObject: 'index.html',
+        priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+        defaultBehavior: {
+            origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
+            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+            cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+            cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            compress: true,
+        },
+        errorResponses: [
+            {
+                httpStatus: 403,
+                responseHttpStatus: 200,
+                responsePagePath: '/index.html',
+                ttl: Duration.seconds(0),
+            },
+            {
+                httpStatus: 404,
+                responseHttpStatus: 200,
+                responsePagePath: '/index.html',
+                ttl: Duration.seconds(0),
+            },
+        ],
+    });
+    new route53.ARecord(scope, `${config.idPrefix}DnsRecord`, {
+        zone: config.publicHostedZone,
+        recordName: config.recordName,
+        target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(distribution)),
+    });
+
+    for (const parameter of [
+        {
+            id: `${config.idPrefix}BucketNameParameter`,
+            name: 'bucket-name',
+            value: config.bucketName,
+            description: `Dev ${config.siteName} frontend S3 bucket name.`,
+        },
+        {
+            id: `${config.idPrefix}CloudFrontDistributionIdParameter`,
+            name: 'cloudfront-distribution-id',
+            value: distribution.distributionId,
+            description: `Dev ${config.siteName} frontend CloudFront distribution ID.`,
+        },
+    ] as const) {
+        new ssm.StringParameter(scope, parameter.id, {
+            parameterName: `/loop-ad/dev/frontend/${config.siteName}/${parameter.name}`,
+            stringValue: parameter.value,
+            description: parameter.description,
+        });
     }
 }

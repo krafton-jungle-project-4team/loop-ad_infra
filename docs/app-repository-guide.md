@@ -378,6 +378,15 @@ jobs:
 
 FE repo는 Docker image가 아니라 정적 파일을 빌드해서 S3에 업로드하고 CloudFront invalidation을 생성합니다. FE 개발자는 npm build 형식과 public env 검증 규칙을 맞춥니다.
 
+Dev에는 두 개의 FE 정적 사이트가 있습니다.
+
+| 사이트 | Public URL | SSM deploy contract prefix |
+|---|---|---|
+| Dashboard FE | `https://dashboard.dev.loop-ad.org` | `/loop-ad/dev/frontend/dashboard-web/` |
+| Demo shoppingmall FE | `https://demo-shoppingmall.dev.loop-ad.org` | `/loop-ad/dev/frontend/demo-shoppingmall-web/` |
+
+각 prefix 아래에는 FE deploy workflow input에 필요한 `bucket-name`, `cloudfront-distribution-id` parameter가 있습니다.
+
 ### 필수 파일
 
 ```text
@@ -457,7 +466,7 @@ Frontend는 ECS task가 아니므로 runtime env를 받지 않습니다. S3/Clou
 
 | 이름 | 예시 | 설명 |
 |---|---|---|
-| `VITE_API_BASE_URL` | `https://api.dev.loop-ad.org` | Dashboard API public base URL |
+| `VITE_API_BASE_URL` | `https://api.dev.loop-ad.org` | public API base URL |
 | `VITE_INGEST_BASE_URL` | `https://ingest.dev.loop-ad.org` | 필요 시 event ingest public base URL |
 
 Frontend build env에는 secret을 넣지 않습니다. 브라우저 bundle에 들어가도 되는 값만 사용합니다.
@@ -498,6 +507,14 @@ jobs:
 ```
 
 FE build env 값은 FE repo의 GitHub Environment variables로 관리할 수 있습니다. 단, FE build env는 브라우저에 노출될 수 있으므로 secret을 넣지 않습니다. secret이 필요한 기능은 FE에서 직접 처리하지 않고 backend API를 통해 호출합니다.
+
+Demo shoppingmall FE도 같은 reusable workflow를 호출하되 deploy target만 아래처럼 바꿉니다.
+
+```yaml
+with:
+    s3_bucket: loop-ad-dev-demo-shoppingmall-web
+    cloudfront_distribution_id: E0987654321XYZ
+```
 
 ## Local Development
 

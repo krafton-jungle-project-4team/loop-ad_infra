@@ -11,6 +11,7 @@
 - Dev private subnet은 NAT Gateway 1개를 통해 ECR, CloudWatch Logs, SSM, ECS public API, 외부 SaaS/API를 호출합니다.
 - ECR, CloudWatch Logs, SSM, ECS Interface Endpoint 7개는 만들지 않습니다.
 - S3 Gateway Endpoint는 유지합니다.
+- Dashboard FE와 demo-shoppingmall FE는 private S3 bucket 앞에 CloudFront Price Class 100을 둡니다.
 - GenAI 생성물은 private S3 bucket 앞에 CloudFront Price Class 100을 두고 `gen-ai.asset.dev.<public-domain>`으로 공개합니다.
 - ClickHouse는 EC2 `t4g.small` 1대와 gp3 50GB로 시작합니다.
 - Aurora PostgreSQL은 Serverless v2 Standard mode, `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작합니다.
@@ -29,6 +30,7 @@
 | ALB/NLB LCU 소량 트래픽 | 각 1 LCU 가정 | `$10.22` |
 | CloudWatch Logs | 5GB ingest 가정 | `$3.80` |
 | ECR storage | 10GB 가정 | `$1.00` |
+| FE CloudFront/S3 GET | dashboard/demo-shoppingmall 소량 테스트 트래픽 | 사용량 기반 소액 |
 | GenAI assets CloudFront/S3 GET | 소량 테스트 트래픽 | 사용량 기반 소액 |
 | 앱 인프라 소계 | Interface Endpoint 없음 | `$150.64` |
 

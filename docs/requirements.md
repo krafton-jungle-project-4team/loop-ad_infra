@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: VPC, ECS, ECR, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
 - 리전: `ap-northeast-2`
 
@@ -21,6 +21,8 @@
 - 외부 SaaS/API 연동을 위해 NAT Gateway가 있는 private subnet에서 실행한다.
 - ECR, CloudWatch Logs, SSM, ECS Interface Endpoint는 만들지 않고 NAT Gateway를 통해 public AWS API를 호출한다.
 - S3 Gateway Endpoint는 유지해서 S3/ECR layer 트래픽을 NAT data processing으로 보내지 않는다.
+- Dashboard FE는 `https://dashboard.dev.<public-domain>`, demo-shoppingmall FE는 `https://demo-shoppingmall.dev.<public-domain>`으로 공개한다.
+- 각 FE는 private S3 bucket과 CloudFront OAC를 사용하며, SPA fallback은 `/index.html`로 처리한다.
 - DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
 - GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.<public-domain>/...`로 외부 조회할 수 있게 한다.
 - DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, GenAI prefix 기준 IAM 권한을 필수 보안 조건으로 가진다.

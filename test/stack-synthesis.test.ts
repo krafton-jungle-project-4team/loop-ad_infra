@@ -29,9 +29,9 @@ describe('loop-ad CDK stacks', () => {
             VpcEndpointType: 'Gateway',
         }, 1);
         template.resourceCountIs('AWS::Budgets::Budget', 1);
-        template.resourceCountIs('AWS::S3::Bucket', 1);
-        template.resourceCountIs('AWS::CloudFront::Distribution', 1);
-        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+        template.resourceCountIs('AWS::S3::Bucket', 3);
+        template.resourceCountIs('AWS::CloudFront::Distribution', 3);
+        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
         template.resourceCountIs('AWS::ECR::Repository', 5);
         template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::Budgets::Budget', {
@@ -148,6 +148,42 @@ describe('loop-ad CDK stacks', () => {
                 }),
             }),
         });
+        template.hasResourceProperties('AWS::CloudFront::Distribution', {
+            DistributionConfig: Match.objectLike({
+                Aliases: [`dashboard.dev.${testPublicHostedZone.domainName}`],
+                DefaultRootObject: 'index.html',
+                CustomErrorResponses: Match.arrayWith([
+                    Match.objectLike({
+                        ErrorCode: 403,
+                        ResponseCode: 200,
+                        ResponsePagePath: '/index.html',
+                    }),
+                    Match.objectLike({
+                        ErrorCode: 404,
+                        ResponseCode: 200,
+                        ResponsePagePath: '/index.html',
+                    }),
+                ]),
+            }),
+        });
+        template.hasResourceProperties('AWS::CloudFront::Distribution', {
+            DistributionConfig: Match.objectLike({
+                Aliases: [`demo-shoppingmall.dev.${testPublicHostedZone.domainName}`],
+                DefaultRootObject: 'index.html',
+                CustomErrorResponses: Match.arrayWith([
+                    Match.objectLike({
+                        ErrorCode: 403,
+                        ResponseCode: 200,
+                        ResponsePagePath: '/index.html',
+                    }),
+                    Match.objectLike({
+                        ErrorCode: 404,
+                        ResponseCode: 200,
+                        ResponsePagePath: '/index.html',
+                    }),
+                ]),
+            }),
+        });
         template.hasResourceProperties('AWS::ECS::Service', {
             ServiceName: 'dev-event-collector',
             LaunchType: 'FARGATE',
@@ -195,11 +231,11 @@ describe('loop-ad CDK stacks', () => {
         });
     });
 
-    it('dev stack creates Route53 aliases for public API, ingest, and GenAI assets subdomains', () => {
+    it('dev stack creates Route53 aliases for public API, ingest, frontend, and GenAI assets subdomains', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
 
-        template.resourceCountIs('AWS::Route53::RecordSet', 3);
+        template.resourceCountIs('AWS::Route53::RecordSet', 5);
         template.hasResourceProperties('AWS::Route53::RecordSet', {
             Type: 'A',
             HostedZoneId: testPublicHostedZone.hostedZoneId,
@@ -211,6 +247,8 @@ describe('loop-ad CDK stacks', () => {
         expect(route53RecordNamesFrom(template)).toEqual(expect.arrayContaining([
             `api.dev.${testPublicHostedZone.domainName}.`,
             `ingest.dev.${testPublicHostedZone.domainName}.`,
+            `dashboard.dev.${testPublicHostedZone.domainName}.`,
+            `demo-shoppingmall.dev.${testPublicHostedZone.domainName}.`,
             `gen-ai.asset.dev.${testPublicHostedZone.domainName}.`,
         ]));
     });
@@ -282,6 +320,10 @@ describe('loop-ad CDK stacks', () => {
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url')).toBe(`https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`);
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/dashboard-web/bucket-name')).toBe('loop-ad-dev-dashboard-web');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id'))).toContain('DashboardWebDistribution');
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/demo-shoppingmall-web/bucket-name')).toBe('loop-ad-dev-demo-shoppingmall-web');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/demo-shoppingmall-web/cloudfront-distribution-id'))).toContain('DemoShoppingmallWebDistribution');
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({

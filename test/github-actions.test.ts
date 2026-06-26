@@ -49,6 +49,7 @@ describe('GitHub Actions reusable workflows', () => {
         expect(frontendExample).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/frontend-deploy.yml@v1');
         expect(frontendExample).toContain('build_output_dir: dist');
         expect(frontendExample).toContain('s3_bucket: loop-ad-dev-dashboard-web');
+        expect(frontendExample).toContain('s3_bucket: loop-ad-dev-demo-shoppingmall-web');
         expect(frontendExample).toContain('cloudfront_distribution_id: E1234567890ABC');
     });
 

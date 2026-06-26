@@ -32,10 +32,16 @@ const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 const DEV_CLICKHOUSE_VOLUME_GIB = 50;
 const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
+const AURORA_DATABASE_NAME = 'loopad';
+const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
+const REDIS_URL_PLACEHOLDER = 'pending://dev/redis';
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
 const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
+const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
+const N8N_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/n8n/webhook';
+const DISCORD_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/discord/webhook';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -223,70 +229,21 @@ export class LoopAdDevStack extends Stack {
             hostedZone: publicHostedZone,
             region: 'us-east-1',
         });
-        const genAiGeneratedAssetsOriginAccessControl = new cloudfront.CfnOriginAccessControl(this, 'GenAiGeneratedAssetsOriginAccessControl', {
-            originAccessControlConfig: {
-                name: 'dev-loop-ad-gen-ai-generated-assets',
-                description: 'CloudFront OAC for dev GenAI generated assets.',
-                originAccessControlOriginType: 's3',
-                signingBehavior: 'always',
-                signingProtocol: 'sigv4',
+        const genAiGeneratedAssetsDistribution = new cloudfront.Distribution(this, 'GenAiGeneratedAssetsDistribution', {
+            domainNames: [genAiPublicAssetsDomainName],
+            certificate: genAiGeneratedAssetsCertificate,
+            comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
+            priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+            defaultBehavior: {
+                origin: origins.S3BucketOrigin.withOriginAccessControl(dataStorageBucket, {
+                    originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
+                }),
+                viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+                cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+                cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+                compress: true,
             },
-        });
-        const genAiGeneratedAssetsDistribution = new cloudfront.CfnDistribution(this, 'GenAiGeneratedAssetsDistribution', {
-            distributionConfig: {
-                enabled: true,
-                aliases: [genAiPublicAssetsDomainName],
-                comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
-                httpVersion: 'http2',
-                ipv6Enabled: true,
-                priceClass: 'PriceClass_100',
-                origins: [
-                    {
-                        id: 'DataStorageGenAiGeneratedAssetsOrigin',
-                        domainName: dataStorageBucket.bucketRegionalDomainName,
-                        originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
-                        originAccessControlId: genAiGeneratedAssetsOriginAccessControl.attrId,
-                        s3OriginConfig: {
-                            originAccessIdentity: '',
-                        },
-                    },
-                ],
-                defaultCacheBehavior: {
-                    targetOriginId: 'DataStorageGenAiGeneratedAssetsOrigin',
-                    viewerProtocolPolicy: 'redirect-to-https',
-                    allowedMethods: ['GET', 'HEAD'],
-                    cachedMethods: ['GET', 'HEAD'],
-                    cachePolicyId: cloudfront.CachePolicy.CACHING_OPTIMIZED.cachePolicyId,
-                    compress: true,
-                },
-                viewerCertificate: {
-                    acmCertificateArn: genAiGeneratedAssetsCertificate.certificateArn,
-                    sslSupportMethod: 'sni-only',
-                    minimumProtocolVersion: 'TLSv1.2_2021',
-                },
-            },
-        });
-        dataStorageBucket.addToResourcePolicy(new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
-            actions: ['s3:GetObject'],
-            resources: [dataStorageBucket.arnForObjects(`${GENAI_GENERATED_ASSETS_PREFIX}*`)],
-            conditions: {
-                StringEquals: {
-                    'AWS:SourceArn': cdk.Fn.join('', [
-                        'arn:',
-                        cdk.Aws.PARTITION,
-                        ':cloudfront::',
-                        cdk.Aws.ACCOUNT_ID,
-                        ':distribution/',
-                        genAiGeneratedAssetsDistribution.attrId,
-                    ]),
-                },
-            },
-        }));
-        const genAiGeneratedAssetsDistributionTarget = cloudfront.Distribution.fromDistributionAttributes(this, 'GenAiGeneratedAssetsDistributionTarget', {
-            domainName: genAiGeneratedAssetsDistribution.attrDomainName,
-            distributionId: genAiGeneratedAssetsDistribution.attrId,
         });
 
         // 비용을 낮게 유지하는 개발용 data storage입니다.
@@ -296,10 +253,11 @@ export class LoopAdDevStack extends Stack {
                 version: rds.AuroraPostgresEngineVersion.VER_16_13,
             }),
             writer: rds.ClusterInstance.serverlessV2('writer'),
+            credentials: rds.Credentials.fromGeneratedSecret('loopad'),
             serverlessV2MinCapacity: DEV_AURORA_MIN_ACU,
             serverlessV2MaxCapacity: DEV_AURORA_MAX_ACU,
             serverlessV2AutoPauseDuration: Duration.minutes(DEV_AURORA_AUTO_PAUSE_MINUTES),
-            defaultDatabaseName: 'loopad',
+            defaultDatabaseName: AURORA_DATABASE_NAME,
             vpc,
             vpcSubnets: privateSubnets,
             securityGroups: [dataStorageSecurityGroup],
@@ -391,38 +349,49 @@ export class LoopAdDevStack extends Stack {
             ]),
         });
 
-        // endpoint contract는 SSM에 둡니다. Task definition은 SSM parameter 이름만 알고,
-        // 실제 DataStorage endpoint는 여기에서 교체할 수 있습니다.
-        const [
-            auroraEndpoint,
-            redisEndpoint,
-            clickhouseEndpoint,
-            mskEndpoint,
-            dataStorageBucketName,
-            genAiGeneratedAssetsPrefix,
-        ] = [
+        const auroraHost = auroraCluster.clusterEndpoint.hostname;
+        const auroraPort = '5432';
+        const clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
+        const mskBootstrapBrokerString = mskBootstrapBrokers.getResponseField('BootstrapBrokerString');
+        const auroraCredentialsSecret = auroraCluster.secret;
+        if (!auroraCredentialsSecret) {
+            throw new Error('Aurora generated credentials secret is required.');
+        }
+
+        const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
+            parameterName: OPENAI_API_KEY_PARAMETER_NAME,
+        });
+        const n8nWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'N8nWebhookParameter', {
+            parameterName: N8N_WEBHOOK_PARAMETER_NAME,
+        });
+        const discordWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'DiscordWebhookParameter', {
+            parameterName: DISCORD_WEBHOOK_PARAMETER_NAME,
+        });
+
+        // endpoint contract는 SSM에도 남깁니다. 앱 task에는 아래 값을 env로 직접 주입합니다.
+        for (const parameter of [
             {
                 id: 'AuroraEndpointParameter',
                 parameterName: '/loop-ad/dev/aurora/endpoint',
-                stringValue: auroraCluster.clusterEndpoint.hostname,
+                stringValue: auroraHost,
                 description: 'Dev Aurora PostgreSQL endpoint contract.',
             },
             {
                 id: 'RedisEndpointParameter',
                 parameterName: '/loop-ad/dev/redis/endpoint',
-                stringValue: 'pending://dev/redis',
+                stringValue: REDIS_URL_PLACEHOLDER,
                 description: 'Dev Redis endpoint contract.',
             },
             {
                 id: 'ClickHouseEndpointParameter',
                 parameterName: '/loop-ad/dev/clickhouse/endpoint',
-                stringValue: cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']),
+                stringValue: clickHouseUrl,
                 description: 'Dev ClickHouse endpoint contract.',
             },
             {
                 id: 'MskEndpointParameter',
                 parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
-                stringValue: mskBootstrapBrokers.getResponseField('BootstrapBrokerString'),
+                stringValue: mskBootstrapBrokerString,
                 description: 'Dev MSK bootstrap broker contract.',
             },
             {
@@ -443,11 +412,13 @@ export class LoopAdDevStack extends Stack {
                 stringValue: genAiGeneratedAssetsPublicBaseUrl,
                 description: 'Dev DataStorage GenAI generated assets public base URL contract.',
             },
-        ].map((parameter) => new ssm.StringParameter(this, parameter.id, {
-            parameterName: parameter.parameterName,
-            stringValue: parameter.stringValue,
-            description: parameter.description,
-        }));
+        ]) {
+            new ssm.StringParameter(this, parameter.id, {
+                parameterName: parameter.parameterName,
+                stringValue: parameter.stringValue,
+                description: parameter.description,
+            });
+        }
 
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
@@ -486,7 +457,7 @@ export class LoopAdDevStack extends Stack {
             {
                 id: 'GenAiGeneratedAssetsDnsRecord',
                 recordName: GENAI_PUBLIC_ASSETS_RECORD_NAME,
-                target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistributionTarget)),
+                target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistribution)),
             },
         ] as const) {
             new route53.ARecord(this, dnsRecord.id, {
@@ -505,7 +476,6 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        mskEndpoint.grantRead(eventCollectorTask.taskRole);
         const eventCollectorLogGroup = new logs.LogGroup(this, 'EventCollectorLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
@@ -520,8 +490,9 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
                 LOOPAD_RUNTIME: 'go',
-                LOOPAD_COMPUTE_TARGET: 'fargate',
-                LOOPAD_MSK_ENDPOINT_PARAMETER: mskEndpoint.parameterName,
+                PORT: '80',
+                LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
+                LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
             },
         });
         eventCollectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
@@ -567,9 +538,6 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        mskEndpoint.grantRead(projectorTask.taskRole);
-        redisEndpoint.grantRead(projectorTask.taskRole);
-        clickhouseEndpoint.grantRead(projectorTask.taskRole);
         const projectorLogGroup = new logs.LogGroup(this, 'AdContextProjectorLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
@@ -584,10 +552,12 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
                 LOOPAD_RUNTIME: 'go',
-                LOOPAD_COMPUTE_TARGET: 'fargate',
-                LOOPAD_MSK_ENDPOINT_PARAMETER: mskEndpoint.parameterName,
-                LOOPAD_REDIS_ENDPOINT_PARAMETER: redisEndpoint.parameterName,
-                LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
+                PORT: '80',
+                LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
+                LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
+                LOOPAD_REDIS_URL: REDIS_URL_PLACEHOLDER,
+                LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
+                LOOPAD_CLICKHOUSE_USERNAME: 'default',
             },
         });
         projectorContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
@@ -617,8 +587,6 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        redisEndpoint.grantRead(advertisementTask.taskRole);
-        auroraEndpoint.grantRead(advertisementTask.taskRole);
         const advertisementLogGroup = new logs.LogGroup(this, 'AdvertisementApiLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
         });
@@ -633,9 +601,15 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'advertisement-api',
                 LOOPAD_RUNTIME: 'go',
-                LOOPAD_COMPUTE_TARGET: 'fargate',
-                LOOPAD_REDIS_ENDPOINT_PARAMETER: redisEndpoint.parameterName,
-                LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
+                PORT: '80',
+                LOOPAD_REDIS_URL: REDIS_URL_PLACEHOLDER,
+                LOOPAD_AURORA_HOST: auroraHost,
+                LOOPAD_AURORA_PORT: auroraPort,
+                LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
+            },
+            secrets: {
+                LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
+                LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
             },
         });
         advertisementContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
@@ -678,8 +652,6 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        auroraEndpoint.grantRead(dashboardTask.taskRole);
-        clickhouseEndpoint.grantRead(dashboardTask.taskRole);
         dataStorageBucket.grantRead(dashboardTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
         const dashboardLogGroup = new logs.LogGroup(this, 'DashboardApiLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
@@ -695,15 +667,20 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
                 LOOPAD_RUNTIME: 'go',
-                LOOPAD_COMPUTE_TARGET: 'fargate',
-                LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
-                LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
-                LOOPAD_DECISION_URL: 'http://decision.dev.loop-ad.local:80',
+                PORT: '80',
+                LOOPAD_AURORA_HOST: auroraHost,
+                LOOPAD_AURORA_PORT: auroraPort,
+                LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
+                LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
+                LOOPAD_CLICKHOUSE_USERNAME: 'default',
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
-                LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL: genAiGeneratedAssetsPublicBaseUrl,
-                LOOPAD_N8N_SECRET_PARAMETER: '/loop-ad/dev/external/n8n/webhook',
-                LOOPAD_DISCORD_SECRET_PARAMETER: '/loop-ad/dev/external/discord/webhook',
+            },
+            secrets: {
+                LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
+                LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
+                LOOPAD_N8N_WEBHOOK_URL: ecs.Secret.fromSsmParameter(n8nWebhookParameter),
+                LOOPAD_DISCORD_WEBHOOK_URL: ecs.Secret.fromSsmParameter(discordWebhookParameter),
             },
         });
         dashboardContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
@@ -746,8 +723,6 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        auroraEndpoint.grantRead(decisionTask.taskRole);
-        clickhouseEndpoint.grantRead(decisionTask.taskRole);
         dataStorageBucket.grantReadWrite(decisionTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
         const decisionLogGroup = new logs.LogGroup(this, 'DecisionLogGroup', {
             retention: logs.RetentionDays.THREE_DAYS,
@@ -763,13 +738,19 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision',
                 LOOPAD_RUNTIME: 'go',
-                LOOPAD_COMPUTE_TARGET: 'fargate',
-                LOOPAD_AURORA_ENDPOINT_PARAMETER: auroraEndpoint.parameterName,
-                LOOPAD_CLICKHOUSE_ENDPOINT_PARAMETER: clickhouseEndpoint.parameterName,
+                PORT: '80',
+                LOOPAD_AURORA_HOST: auroraHost,
+                LOOPAD_AURORA_PORT: auroraPort,
+                LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
+                LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
+                LOOPAD_CLICKHOUSE_USERNAME: 'default',
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
-                LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL: genAiGeneratedAssetsPublicBaseUrl,
-                LOOPAD_OPENAI_SECRET_PARAMETER: '/loop-ad/dev/external/openai/api-key',
+            },
+            secrets: {
+                LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
+                LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
+                LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSsmParameter(openAiApiKeyParameter),
             },
         });
         decisionContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });

@@ -45,6 +45,7 @@
 - Event Collector는 NLB에만 붙인다.
 - Advertisement API와 Dashboard API는 ALB path rule에만 붙인다.
 - Aurora, Redis 호환 Valkey, ClickHouse, Kafka는 SSM endpoint contract로 연결한다.
+- Kafka/MSK, ClickHouse, cache, DB의 관리형 전환은 [managed-service-transition-plan.md](managed-service-transition-plan.md)의 performance test, 월 $1200 이하 비용 검증, rollback, migration risk, 앱 env/SSM contract 영향, CDK 변경 범위 gate를 통과해야 한다.
 - Aurora PostgreSQL은 안정 기준 버전 `16.13`, Serverless v2 `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
 - Redis 호환 cache는 ElastiCache Serverless for Valkey major version `7`로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.

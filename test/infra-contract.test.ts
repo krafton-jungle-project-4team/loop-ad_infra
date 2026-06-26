@@ -148,6 +148,19 @@ describe('loop-ad CDK guardrails', () => {
         ]));
     });
 
+    it('keeps stateful logical IDs stable across refactors', () => {
+        const networkResources = Template.fromStack(synthNetwork()).toJSON().Resources as Record<string, { Type: string }>;
+        const dataResources = Template.fromStack(synthData()).toJSON().Resources as Record<string, { Type: string }>;
+
+        expect(networkResources).toHaveProperty('Vpc8378EB38');
+        expect(dataResources).toHaveProperty('DataStorageBucket1A195487');
+        expect(dataResources).toHaveProperty('AuroraPostgresClusterFE4B644F');
+        expect(dataResources).toHaveProperty('AuroraPostgresClusterwriterE7962133');
+        expect(dataResources).toHaveProperty('ValkeyServerlessCache');
+        expect(dataResources).toHaveProperty('ClickHouseInstance6520CF63');
+        expect(dataResources).toHaveProperty('KafkaInstance5AAC3452');
+    });
+
     it('keeps runtime ingress, service, logging, and secret contracts explicit', () => {
         const template = Template.fromStack(synthRuntime());
 
@@ -279,6 +292,31 @@ describe('loop-ad local safety contracts', () => {
             'kafka-ec2',
         ]));
         expect(model.lineItems.every((item) => Number.isFinite(item.monthlyUsd) && item.monthlyUsd >= 0)).toBe(true);
+    });
+
+    it('documents managed transition gates without changing app contracts', () => {
+        const plan = readFileSync(join(ROOT, 'docs/managed-service-transition-plan.md'), 'utf8');
+
+        for (const requiredText of [
+            'Performance test',
+            'Monthly $1200 verification',
+            'Rollback',
+            'Migration risk',
+            'CDK scope',
+            '/loop-ad/dev/kafka/bootstrap-brokers',
+            '/loop-ad/dev/clickhouse/endpoint',
+            '/loop-ad/dev/redis/endpoint',
+            '/loop-ad/dev/aurora/endpoint',
+            'LOOPAD_KAFKA_BOOTSTRAP_BROKERS',
+            'LOOPAD_CLICKHOUSE_URL',
+            'LOOPAD_REDIS_URL',
+            'LOOPAD_AURORA_HOST',
+            'serverSecurityGroup',
+            'dataStorageSecurityGroup',
+            'LoopAdDevDataStack',
+        ]) {
+            expect(plan).toContain(requiredText);
+        }
     });
 });
 

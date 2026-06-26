@@ -9,6 +9,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 1. 애플리케이션 개발 가이드
    - 앱 레포 구조, Dockerfile, 환경 변수, ECS 런타임 계약은 [docs/app-repository-guide.md](docs/app-repository-guide.md)에 정리합니다.
    - 서비스 endpoint와 앱에서 env로 받아야 하는 값은 [docs/service-endpoints.md](docs/service-endpoints.md)에 정리합니다.
+   - Kafka/MSK, ClickHouse, cache, DB 관리형 전환 기준은 [docs/managed-service-transition-plan.md](docs/managed-service-transition-plan.md)에 정리합니다.
 
 2. 외부 접근 인프라 정보
    - Dashboard, demo shoppingmall, API, ingest, GenAI asset public endpoint를 문서화합니다.

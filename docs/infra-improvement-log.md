@@ -91,3 +91,46 @@ Initial priority:
 - 실제 AWS 배포 없이 budget email confirmation과 Cost Explorer actual 비용은 검증할 수 없다.
 - sustained load에서 Aurora ACU와 ECS task가 장기간 상한에 머물면 $300 budget을 초과할 수 있으므로 budget alert를 incident로 취급해야 한다.
 - 관리형 전환의 성능 테스트, 월 $1200 이하 검증, rollback, 데이터 마이그레이션 위험, CDK 변경 범위 문서가 필요하다.
+
+## Cycle 2 - Managed Transition Plan and Logical ID Guard
+
+목적:
+
+- ClickHouse, Kafka/MSK, cache, DB 관리형 전환 가능성을 contract 기준으로 문서화한다.
+- 전환이 앱 리라이트가 아니라 SSM/env/security group/stack boundary의 좁은 변경으로 가능한지 평가할 기준을 만든다.
+- stateful resource logical ID를 테스트로 고정해 이후 파일 분리/refactor의 replacement 위험을 줄인다.
+
+변경 파일:
+
+- `docs/managed-service-transition-plan.md`
+- `README.md`
+- `docs/requirements.md`
+- `test/infra-contract.test.ts`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 12 tests
+
+점수 변화:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 비용 모델과 budget guardrail은 유지된다. 관리형 전환 시 월 $1200 이하 검증 gate를 추가했다. |
+| 보안/안전성 | 89 | 90 | 전환 중 SSM/env contract와 SG boundary 유지 조건을 명시했다. broad internal SG 자체는 아직 남아 있지만 dev-only 의도와 전환 gate가 명확해졌다. |
+| 운영 안정성 | 88 | 91 | performance test, rollback, migration risk, 7일 observation, Cost Explorer 검증 절차가 추가되어 운영 전환 판단 기준이 생겼다. |
+| CDK 모범사례/유지보수성 | 87 | 92 | stateful logical ID 테스트와 stack boundary/contract 기반 전환 기준이 추가되었다. 단일 대형 파일과 반복 runtime service 정의는 아직 95점 기준에 부족하다. |
+| 테스트/문서화 | 90 | 94 | 관리형 전환 필수 gate와 logical ID guard가 테스트로 검증된다. |
+
+관리형 전환 가능성 평가:
+
+- Kafka/MSK: SSM `/loop-ad/dev/kafka/bootstrap-brokers`와 `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`를 유지하면 data stack 내부 construct/config 교체로 전환 가능하다. offset/topic migration은 주요 risk다.
+- ClickHouse: `/loop-ad/dev/clickhouse/endpoint`와 `LOOPAD_CLICKHOUSE_URL` 유지 시 runtime 변경 없이 전환 가능하다. SQL dialect/schema compatibility가 risk다.
+- Cache: `LOOPAD_REDIS_URL`과 `/loop-ad/dev/redis/endpoint` 유지 시 Redis-compatible cache 교체가 좁은 변경으로 가능하다.
+- DB: Aurora endpoint/secret contract 유지 시 scaling/replacement가 data stack 중심 변경으로 가능하다.
+
+남은 리스크:
+
+- 단일 `src/loop-ad-stack.ts`가 여전히 크고, runtime service 생성 중복이 많아 CDK 유지보수성 95 기준에는 미달한다.
+- service-specific SG로 좁히는 보안 개선은 blast radius가 있어 별도 diff 승인 전에는 적용하지 않았다.

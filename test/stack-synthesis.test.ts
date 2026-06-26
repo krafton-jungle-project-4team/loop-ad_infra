@@ -125,7 +125,6 @@ describe('loop-ad CDK stacks', () => {
                 },
             }),
         ]));
-        expect(JSON.stringify(bucketPolicyStatements)).toContain('genai/generated/*');
         template.hasResourceProperties('AWS::CloudFront::Distribution', {
             DistributionConfig: Match.objectLike({
                 Aliases: [`gen-ai.asset.dev.${testPublicHostedZone.domainName}`],
@@ -136,7 +135,6 @@ describe('loop-ad CDK stacks', () => {
                     }),
                 ]),
                 DefaultCacheBehavior: Match.objectLike({
-                    TargetOriginId: 'DataStorageGenAiGeneratedAssetsOrigin',
                     ViewerProtocolPolicy: 'redirect-to-https',
                     AllowedMethods: ['GET', 'HEAD'],
                     CachedMethods: ['GET', 'HEAD'],
@@ -327,8 +325,58 @@ describe('loop-ad CDK stacks', () => {
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({
+                    Name: 'event-collector',
+                    Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'PORT',
+                            Value: '80',
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_MSK_BOOTSTRAP_BROKERS',
+                            Value: Match.anyValue(),
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_EVENT_TOPIC',
+                            Value: 'loop-ad.events.raw',
+                        }),
+                    ]),
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            ContainerDefinitions: Match.arrayWith([
+                Match.objectLike({
+                    Name: 'advertisement-api',
+                    Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_REDIS_URL',
+                            Value: 'pending://dev/redis',
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_AURORA_HOST',
+                            Value: Match.anyValue(),
+                        }),
+                        Match.objectLike({
+                            Name: 'LOOPAD_AURORA_DATABASE',
+                            Value: 'loopad',
+                        }),
+                    ]),
+                    Secrets: Match.arrayWith([
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
+                    ]),
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            ContainerDefinitions: Match.arrayWith([
+                Match.objectLike({
                     Name: 'dashboard-api',
                     Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_CLICKHOUSE_URL',
+                            Value: Match.anyValue(),
+                        }),
                         Match.objectLike({
                             Name: 'LOOPAD_DATA_STORAGE_BUCKET',
                             Value: Match.anyValue(),
@@ -337,10 +385,12 @@ describe('loop-ad CDK stacks', () => {
                             Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
                             Value: 'genai/generated/',
                         }),
-                        Match.objectLike({
-                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL',
-                            Value: `https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
-                        }),
+                    ]),
+                    Secrets: Match.arrayWith([
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
+                        Match.objectLike({ Name: 'LOOPAD_N8N_WEBHOOK_URL' }),
+                        Match.objectLike({ Name: 'LOOPAD_DISCORD_WEBHOOK_URL' }),
                     ]),
                 }),
             ]),
@@ -358,15 +408,22 @@ describe('loop-ad CDK stacks', () => {
                             Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PREFIX',
                             Value: 'genai/generated/',
                         }),
-                        Match.objectLike({
-                            Name: 'LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL',
-                            Value: `https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
-                        }),
+                    ]),
+                    Secrets: Match.arrayWith([
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
+                        Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
+                        Match.objectLike({ Name: 'LOOPAD_OPENAI_API_KEY' }),
                     ]),
                 }),
             ]),
         });
-        expect(JSON.stringify(template.toJSON())).toContain('genai/generated/*');
+        const synthesizedTemplate = JSON.stringify(template.toJSON());
+        expect(synthesizedTemplate).toContain('genai/generated/*');
+        expect(synthesizedTemplate).not.toContain('ENDPOINT_PARAMETER');
+        expect(synthesizedTemplate).not.toContain('SECRET_PARAMETER');
+        expect(synthesizedTemplate).not.toContain('LOOPAD_COMPUTE_TARGET');
+        expect(synthesizedTemplate).not.toContain('LOOPAD_DECISION_URL');
+        expect(synthesizedTemplate).not.toContain('LOOPAD_GENAI_GENERATED_ASSETS_PUBLIC_BASE_URL');
     });
 });
 

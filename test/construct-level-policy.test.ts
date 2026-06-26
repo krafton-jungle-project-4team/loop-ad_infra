@@ -4,8 +4,6 @@ import { join } from 'node:path';
 const SRC_DIR = join(__dirname, '..', 'src');
 const ALLOWED_L1_CONSTRUCTS = new Set<string>([
     'budgets.CfnBudget',
-    'cloudfront.CfnDistribution',
-    'cloudfront.CfnOriginAccessControl',
     'msk.CfnCluster',
 ]);
 

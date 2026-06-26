@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import {
     LOOP_AD_REGION,
     LoopAdDevCertificateStack,
+    LoopAdDevCostGuardrailStack,
     LoopAdDevDataStack,
     LoopAdDevNetworkStack,
     LoopAdDevRepositoryStack,
@@ -43,6 +44,16 @@ if (environmentName === 'dev-certificate') {
     // 각 앱 repo가 image를 push한 뒤 runtime stack을 올리면 초기 배포의 image not found 위험을 줄일 수 있습니다.
     new LoopAdDevRepositoryStack(app, 'LoopAdDevRepositoryStack', {
         env,
+    });
+} else if (environmentName === 'dev-cost-guardrails') {
+    // Budgets API는 billing guardrail 성격이므로 us-east-1 stack으로 분리합니다.
+    // 비용 알림 구독 email confirmation은 배포 후 수신자가 완료해야 합니다.
+    new LoopAdDevCostGuardrailStack(app, 'LoopAdDevCostGuardrailStack', {
+        env: {
+            account: env.account,
+            region: 'us-east-1',
+        },
+        budgetAlertEmail: readRequiredEnv('LOOP_AD_BUDGET_ALERT_EMAIL'),
     });
 } else if (environmentName === 'dev-network') {
     // VPC/network는 변경 주기가 길어 data/runtime stack보다 먼저 독립적으로 배포할 수 있습니다.
@@ -111,16 +122,16 @@ if (environmentName === 'dev-certificate') {
 
 cdk.Tags.of(app).add('Project', 'loop-ad');
 cdk.Tags.of(app).add('CdkProject', 'loop-ad_aws_cdk');
-cdk.Tags.of(app).add('Environment', environmentName === 'dev-repositories' || environmentName === 'dev-network' || environmentName === 'dev-data' || environmentName === 'dev-runtime' ? 'dev' : environmentName);
+cdk.Tags.of(app).add('Environment', environmentName === 'dev-repositories' || environmentName === 'dev-cost-guardrails' || environmentName === 'dev-network' || environmentName === 'dev-data' || environmentName === 'dev-runtime' ? 'dev' : environmentName);
 
-function readEnvironmentName(app: cdk.App): 'dev' | 'dev-certificate' | 'dev-repositories' | 'dev-network' | 'dev-data' | 'dev-runtime' {
+function readEnvironmentName(app: cdk.App): 'dev' | 'dev-certificate' | 'dev-repositories' | 'dev-cost-guardrails' | 'dev-network' | 'dev-data' | 'dev-runtime' {
     const value = app.node.tryGetContext('environment');
     if (!value) {
-        throw new Error('Missing required CDK context "environment". Pass -c environment=dev, dev-certificate, dev-repositories, dev-network, dev-data, or dev-runtime.');
+        throw new Error('Missing required CDK context "environment". Pass -c environment=dev, dev-certificate, dev-repositories, dev-cost-guardrails, dev-network, dev-data, or dev-runtime.');
     }
 
-    if (value !== 'dev' && value !== 'dev-certificate' && value !== 'dev-repositories' && value !== 'dev-network' && value !== 'dev-data' && value !== 'dev-runtime') {
-        throw new Error(`environment context must be "dev", "dev-certificate", "dev-repositories", "dev-network", "dev-data", or "dev-runtime". Received: ${value}`);
+    if (value !== 'dev' && value !== 'dev-certificate' && value !== 'dev-repositories' && value !== 'dev-cost-guardrails' && value !== 'dev-network' && value !== 'dev-data' && value !== 'dev-runtime') {
+        throw new Error(`environment context must be "dev", "dev-certificate", "dev-repositories", "dev-cost-guardrails", "dev-network", "dev-data", or "dev-runtime". Received: ${value}`);
     }
 
     return value;

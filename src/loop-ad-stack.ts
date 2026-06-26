@@ -1,5 +1,6 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
@@ -46,6 +47,9 @@ const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
+const DEV_MONTHLY_BUDGET_LIMIT_USD = 300;
+const DEV_MONTHLY_BUDGET_WARNING_PERCENT = 80;
+const DEV_MONTHLY_BUDGET_CRITICAL_PERCENT = 100;
 const DEV_APPLICATION_REPOSITORIES = [
     { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector', outputId: 'EventCollectorRepositoryUri' },
     { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector', outputId: 'AdContextProjectorRepositoryUri' },
@@ -125,6 +129,87 @@ export class LoopAdDevRepositoryStack extends Stack {
                 value: repository.repositoryUri,
             });
         }
+    }
+}
+
+export interface LoopAdDevCostGuardrailStackProps extends StackProps {
+    readonly budgetAlertEmail: string;
+}
+
+// Budgets는 billing plane guardrail이므로 dev resource stack과 분리합니다.
+// 실제 비용 알림 수신 확인은 배포 후 AWS Budgets email confirmation까지 완료되어야 합니다.
+export class LoopAdDevCostGuardrailStack extends Stack {
+    public constructor(scope: Construct, id: string, props: LoopAdDevCostGuardrailStackProps) {
+        super(scope, id, props);
+
+        const budget = new budgets.CfnBudget(this, 'MonthlyDevBudget', {
+            budget: {
+                budgetName: 'loop-ad-dev-monthly-budget',
+                budgetType: 'COST',
+                timeUnit: 'MONTHLY',
+                budgetLimit: {
+                    amount: DEV_MONTHLY_BUDGET_LIMIT_USD,
+                    unit: 'USD',
+                },
+                costTypes: {
+                    includeCredit: false,
+                    includeRefund: false,
+                    useBlended: false,
+                },
+            },
+            notificationsWithSubscribers: [
+                {
+                    notification: {
+                        notificationType: 'ACTUAL',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: DEV_MONTHLY_BUDGET_WARNING_PERCENT,
+                        thresholdType: 'PERCENTAGE',
+                    },
+                    subscribers: [
+                        {
+                            subscriptionType: 'EMAIL',
+                            address: props.budgetAlertEmail,
+                        },
+                    ],
+                },
+                {
+                    notification: {
+                        notificationType: 'ACTUAL',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
+                        thresholdType: 'PERCENTAGE',
+                    },
+                    subscribers: [
+                        {
+                            subscriptionType: 'EMAIL',
+                            address: props.budgetAlertEmail,
+                        },
+                    ],
+                },
+                {
+                    notification: {
+                        notificationType: 'FORECASTED',
+                        comparisonOperator: 'GREATER_THAN',
+                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
+                        thresholdType: 'PERCENTAGE',
+                    },
+                    subscribers: [
+                        {
+                            subscriptionType: 'EMAIL',
+                            address: props.budgetAlertEmail,
+                        },
+                    ],
+                },
+            ],
+            resourceTags: [
+                { key: 'Project', value: 'loop-ad' },
+                { key: 'Environment', value: 'dev' },
+            ],
+        });
+
+        new cdk.CfnOutput(this, 'MonthlyDevBudgetName', {
+            value: budget.ref,
+        });
     }
 }
 

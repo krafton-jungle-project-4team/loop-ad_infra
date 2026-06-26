@@ -3,7 +3,9 @@ import { join } from 'node:path';
 
 const SRC_DIR = join(__dirname, '..', 'src');
 const ALLOWED_L1_CONSTRUCTS = new Set<string>([
-    'budgets.CfnBudget',
+    'cdk.CfnOutput',
+    // ElastiCache Serverless는 현재 CDK L2 construct가 없어 L1으로만 정의합니다.
+    'elasticache.CfnServerlessCache',
     'msk.CfnCluster',
 ]);
 
@@ -14,9 +16,14 @@ describe('CDK construct level policy', () => {
             const matches = [...source.matchAll(/new\s+([a-zA-Z0-9_]+\.Cfn[A-Za-z0-9_]+)/g)];
 
             return matches
-                .map((match) => match[1])
-                .filter((constructName) => !ALLOWED_L1_CONSTRUCTS.has(constructName))
-                .map((constructName) => `${file}: ${constructName}`);
+                .flatMap((match) => {
+                    const constructName = match[1];
+                    if (!constructName || ALLOWED_L1_CONSTRUCTS.has(constructName)) {
+                        return [];
+                    }
+
+                    return [`${file}: ${constructName}`];
+                });
         });
 
         expect(violations).toEqual([]);

@@ -1,9 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import {
-    LOOP_AD_MONTHLY_COST_TARGET_USD,
     LOOP_AD_REGION,
-    LoopAdDevStack,
+    LoopAdDevCertificateStack,
+    LoopAdDevDataStack,
+    LoopAdDevNetworkStack,
+    LoopAdDevRepositoryStack,
+    LoopAdDevRuntimeStack,
 } from '../src/loop-ad-stack';
 
 const testEnv = {
@@ -14,10 +17,48 @@ const testPublicHostedZone = {
     hostedZoneId: 'ZTESTHOSTEDZONEID',
     domainName: 'example.test',
 };
+const testCertificateArns = {
+    frontendSitesCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites',
+    genAiGeneratedAssetsCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets',
+};
 
 describe('loop-ad CDK stacks', () => {
-    it('dev stack keeps the permanent VPC, DataStorage bucket, ECR repositories, and five ECS services', () => {
-        const stack = synthDev();
+    it('dev certificate stack creates the CloudFront ACM certificates in us-east-1', () => {
+        const stack = synthDevCertificate();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::CertificateManager::Certificate', 2);
+        template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+            DomainName: `dashboard.dev.${testPublicHostedZone.domainName}`,
+            SubjectAlternativeNames: [`demo-shoppingmall.dev.${testPublicHostedZone.domainName}`],
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: Match.arrayWith([
+                Match.objectLike({
+                    DomainName: `dashboard.dev.${testPublicHostedZone.domainName}`,
+                    HostedZoneId: testPublicHostedZone.hostedZoneId,
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+            DomainName: `gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: Match.arrayWith([
+                Match.objectLike({
+                    DomainName: `gen-ai.asset.dev.${testPublicHostedZone.domainName}`,
+                    HostedZoneId: testPublicHostedZone.hostedZoneId,
+                }),
+            ]),
+        });
+        template.hasOutput('FrontendSitesCertificateArn', {
+            Value: Match.anyValue(),
+        });
+        template.hasOutput('GenAiGeneratedAssetsCertificateArn', {
+            Value: Match.anyValue(),
+        });
+    });
+
+    it('dev network stack owns the permanent VPC and network guardrails', () => {
+        const stack = synthDevNetwork();
         const template = Template.fromStack(stack);
 
         template.resourceCountIs('AWS::EC2::VPC', 1);
@@ -28,24 +69,22 @@ describe('loop-ad CDK stacks', () => {
         template.resourcePropertiesCountIs('AWS::EC2::VPCEndpoint', {
             VpcEndpointType: 'Gateway',
         }, 1);
-        template.resourceCountIs('AWS::Budgets::Budget', 1);
-        template.resourceCountIs('AWS::S3::Bucket', 3);
-        template.resourceCountIs('AWS::CloudFront::Distribution', 3);
-        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
+        template.resourceCountIs('AWS::EC2::SecurityGroup', 4);
+    });
+
+    it('dev repository stack owns application image repositories', () => {
+        const stack = synthDevRepositories();
+        const template = Template.fromStack(stack);
+
         template.resourceCountIs('AWS::ECR::Repository', 5);
-        template.resourceCountIs('AWS::ECS::Service', 5);
-        template.hasResourceProperties('AWS::Budgets::Budget', {
-            Budget: {
-                BudgetLimit: {
-                    Amount: LOOP_AD_MONTHLY_COST_TARGET_USD,
-                    Unit: 'USD',
-                },
-                BudgetType: 'COST',
-                TimeUnit: 'MONTHLY',
-            },
-        });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/event-collector',
+            ImageScanningConfiguration: {
+                ScanOnPush: true,
+            },
+            LifecyclePolicy: Match.objectLike({
+                LifecyclePolicyText: Match.anyValue(),
+            }),
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/dashboard-api',
@@ -54,8 +93,27 @@ describe('loop-ad CDK stacks', () => {
             RepositoryName: 'loop-ad/advertisement-api',
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
-            RepositoryName: 'loop-ad/decision',
+            RepositoryName: 'loop-ad/decision-api',
         });
+        template.hasOutput('EventCollectorRepositoryUri', {
+            Value: Match.anyValue(),
+        });
+        template.hasOutput('DashboardApiRepositoryUri', {
+            Value: Match.anyValue(),
+        });
+    });
+
+    it('dev data stack keeps DataStorage bucket and generated asset distribution', () => {
+        const stack = synthDevData();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::S3::Bucket', 1);
+        template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+        template.resourceCountIs('AWS::ECR::Repository', 0);
+        template.resourceCountIs('AWS::ECS::Service', 0);
+        template.resourceCountIs('AWS::Logs::LogGroup', 1);
+        template.resourceCountIs('AWS::Route53::RecordSet', 1);
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -140,12 +198,27 @@ describe('loop-ad CDK stacks', () => {
                     CachedMethods: ['GET', 'HEAD'],
                 }),
                 ViewerCertificate: Match.objectLike({
-                    AcmCertificateArn: Match.anyValue(),
+                    AcmCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
                     SslSupportMethod: 'sni-only',
                     MinimumProtocolVersion: 'TLSv1.2_2021',
                 }),
             }),
         });
+        expect(route53RecordNamesFrom(template)).toEqual(expect.arrayContaining([
+            `gen-ai.asset.dev.${testPublicHostedZone.domainName}.`,
+        ]));
+    });
+
+    it('dev runtime stack keeps frontend sites and five ECS services', () => {
+        const stack = synthDevRuntime();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::S3::Bucket', 2);
+        template.resourceCountIs('AWS::CloudFront::Distribution', 2);
+        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 2);
+        template.resourceCountIs('AWS::ECR::Repository', 0);
+        template.resourceCountIs('AWS::ECS::Service', 5);
+        template.resourceCountIs('AWS::Logs::LogGroup', 5);
         template.hasResourceProperties('AWS::CloudFront::Distribution', {
             DistributionConfig: Match.objectLike({
                 Aliases: [`dashboard.dev.${testPublicHostedZone.domainName}`],
@@ -187,17 +260,29 @@ describe('loop-ad CDK stacks', () => {
             LaunchType: 'FARGATE',
         });
         template.hasResourceProperties('AWS::ECS::Service', {
-            ServiceName: 'dev-decision',
+            ServiceName: 'dev-decision-api',
             LaunchType: 'FARGATE',
         });
+        for (const serviceId of [
+            'event-collector',
+            'ad-context-projector',
+            'advertisement-api',
+            'dashboard-api',
+            'decision-api',
+        ]) {
+            template.hasResourceProperties('AWS::Logs::LogGroup', {
+                LogGroupName: `/loop-ad/dev/ecs/${serviceId}`,
+                RetentionInDays: 3,
+            });
+        }
         template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
             MinCapacity: 1,
             MaxCapacity: 2,
         }, 5);
     });
 
-    it('dev stack exposes only collector through NLB and API services through ALB path rules', () => {
-        const stack = synthDev();
+    it('dev stack exposes collector through NLB and public API routes through ALB path rules', () => {
+        const stack = synthDevRuntime();
         const template = Template.fromStack(stack);
 
         template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
@@ -229,11 +314,11 @@ describe('loop-ad CDK stacks', () => {
         });
     });
 
-    it('dev stack creates Route53 aliases for public API, ingest, frontend, and GenAI assets subdomains', () => {
-        const stack = synthDev();
+    it('dev runtime stack creates Route53 aliases for public API, ingest, and frontend subdomains', () => {
+        const stack = synthDevRuntime();
         const template = Template.fromStack(stack);
 
-        template.resourceCountIs('AWS::Route53::RecordSet', 5);
+        template.resourceCountIs('AWS::Route53::RecordSet', 4);
         template.hasResourceProperties('AWS::Route53::RecordSet', {
             Type: 'A',
             HostedZoneId: testPublicHostedZone.hostedZoneId,
@@ -247,77 +332,13 @@ describe('loop-ad CDK stacks', () => {
             `ingest.dev.${testPublicHostedZone.domainName}.`,
             `dashboard.dev.${testPublicHostedZone.domainName}.`,
             `demo-shoppingmall.dev.${testPublicHostedZone.domainName}.`,
-            `gen-ai.asset.dev.${testPublicHostedZone.domainName}.`,
         ]));
     });
 
-    it('dev stack creates the cost-capped data storage shape', () => {
-        const stack = synthDev();
+    it('dev runtime stack injects data env and secrets into ECS task definitions', () => {
+        const stack = synthDevRuntime();
         const template = Template.fromStack(stack);
 
-        template.resourceCountIs('AWS::RDS::DBCluster', 1);
-        template.resourceCountIs('AWS::RDS::DBInstance', 1);
-        template.resourceCountIs('AWS::MSK::Cluster', 1);
-        template.resourceCountIs('Custom::LoopAdMskBootstrapBrokers', 1);
-        template.hasResourceProperties('AWS::RDS::DBCluster', {
-            DBClusterIdentifier: 'dev-loop-ad-aurora-postgres',
-            DatabaseName: 'loopad',
-            Engine: 'aurora-postgresql',
-            EngineVersion: '16.13',
-            ServerlessV2ScalingConfiguration: {
-                MinCapacity: 0,
-                MaxCapacity: 2,
-                SecondsUntilAutoPause: 600,
-            },
-        });
-        template.hasResourceProperties('AWS::RDS::DBInstance', {
-            DBInstanceClass: 'db.serverless',
-            Engine: 'aurora-postgresql',
-            PubliclyAccessible: false,
-        });
-        template.hasResourceProperties('AWS::EC2::Instance', {
-            InstanceType: 't4g.small',
-            BlockDeviceMappings: Match.arrayWith([
-                Match.objectLike({
-                    DeviceName: '/dev/xvda',
-                    Ebs: {
-                        Encrypted: true,
-                        VolumeSize: 50,
-                        VolumeType: 'gp3',
-                    },
-                }),
-            ]),
-            Tags: Match.arrayWith([
-                Match.objectLike({
-                    Key: 'Name',
-                    Value: 'dev-loop-ad-clickhouse',
-                }),
-            ]),
-        });
-        template.hasResourceProperties('AWS::MSK::Cluster', {
-            ClusterName: 'dev-loop-ad-msk',
-            KafkaVersion: '3.6.0',
-            NumberOfBrokerNodes: 2,
-            BrokerNodeGroupInfo: Match.objectLike({
-                InstanceType: 'kafka.t3.small',
-                StorageInfo: {
-                    EBSStorageInfo: {
-                        VolumeSize: 20,
-                    },
-                },
-            }),
-        });
-        template.hasResourceProperties('Custom::LoopAdMskBootstrapBrokers', {
-            InstallLatestAwsSdk: false,
-        });
-
-        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/aurora/endpoint'))).toContain('Endpoint.Address');
-        expect(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint')).toBe('pending://dev/redis');
-        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/clickhouse/endpoint'))).toContain('PrivateDnsName');
-        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
-        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
-        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
-        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url')).toBe(`https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`);
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/dashboard-web/bucket-name')).toBe('loop-ad-dev-dashboard-web');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id'))).toContain('DashboardWebDistribution');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/frontend/demo-shoppingmall-web/bucket-name')).toBe('loop-ad-dev-demo-shoppingmall-web');
@@ -350,7 +371,7 @@ describe('loop-ad CDK stacks', () => {
                     Environment: Match.arrayWith([
                         Match.objectLike({
                             Name: 'LOOPAD_REDIS_URL',
-                            Value: 'pending://dev/redis',
+                            Value: Match.anyValue(),
                         }),
                         Match.objectLike({
                             Name: 'LOOPAD_AURORA_HOST',
@@ -389,8 +410,6 @@ describe('loop-ad CDK stacks', () => {
                     Secrets: Match.arrayWith([
                         Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
                         Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
-                        Match.objectLike({ Name: 'LOOPAD_N8N_WEBHOOK_URL' }),
-                        Match.objectLike({ Name: 'LOOPAD_DISCORD_WEBHOOK_URL' }),
                     ]),
                 }),
             ]),
@@ -398,8 +417,12 @@ describe('loop-ad CDK stacks', () => {
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({
-                    Name: 'decision',
+                    Name: 'decision-api',
                     Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_SERVICE_ID',
+                            Value: 'decision-api',
+                        }),
                         Match.objectLike({
                             Name: 'LOOPAD_DATA_STORAGE_BUCKET',
                             Value: Match.anyValue(),
@@ -419,6 +442,93 @@ describe('loop-ad CDK stacks', () => {
         });
         const synthesizedTemplate = JSON.stringify(template.toJSON());
         expect(synthesizedTemplate).toContain('genai/generated/*');
+    });
+
+    it('dev stack creates the cost-capped data storage shape', () => {
+        const stack = synthDevData();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::RDS::DBCluster', 1);
+        template.resourceCountIs('AWS::RDS::DBInstance', 1);
+        template.resourceCountIs('AWS::ElastiCache::ServerlessCache', 1);
+        template.resourceCountIs('AWS::MSK::Cluster', 1);
+        template.resourceCountIs('Custom::LoopAdMskBootstrapBrokers', 1);
+        template.hasResourceProperties('AWS::RDS::DBCluster', {
+            DBClusterIdentifier: 'dev-loop-ad-aurora-postgres',
+            DatabaseName: 'loopad',
+            Engine: 'aurora-postgresql',
+            EngineVersion: '16.13',
+            ServerlessV2ScalingConfiguration: {
+                MinCapacity: 0,
+                MaxCapacity: 2,
+                SecondsUntilAutoPause: 600,
+            },
+        });
+        template.hasResourceProperties('AWS::RDS::DBInstance', {
+            DBInstanceClass: 'db.serverless',
+            Engine: 'aurora-postgresql',
+            PubliclyAccessible: false,
+        });
+        template.hasResourceProperties('AWS::ElastiCache::ServerlessCache', {
+            Engine: 'valkey',
+            MajorEngineVersion: '7',
+            ServerlessCacheName: 'dev-loop-ad-valkey',
+            CacheUsageLimits: {
+                DataStorage: {
+                    Maximum: 1,
+                    Unit: 'GB',
+                },
+                ECPUPerSecond: {
+                    Maximum: 1000,
+                },
+            },
+        });
+        template.hasResourceProperties('AWS::EC2::Instance', {
+            InstanceType: 't4g.small',
+            BlockDeviceMappings: Match.arrayWith([
+                Match.objectLike({
+                    DeviceName: '/dev/xvda',
+                    Ebs: {
+                        Encrypted: true,
+                        VolumeSize: 50,
+                        VolumeType: 'gp3',
+                    },
+                }),
+            ]),
+            Tags: Match.arrayWith([
+                Match.objectLike({
+                    Key: 'Name',
+                    Value: 'dev-loop-ad-clickhouse',
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::MSK::Cluster', {
+            ClusterName: 'dev-loop-ad-msk',
+            KafkaVersion: '3.9.x',
+            NumberOfBrokerNodes: 2,
+            BrokerNodeGroupInfo: Match.objectLike({
+                InstanceType: 'kafka.t3.small',
+                StorageInfo: {
+                    EBSStorageInfo: {
+                        VolumeSize: 20,
+                    },
+                },
+            }),
+        });
+        template.hasResourceProperties('Custom::LoopAdMskBootstrapBrokers', {
+            InstallLatestAwsSdk: false,
+        });
+
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/aurora/endpoint'))).toContain('Endpoint.Address');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint'))).toContain('Endpoint.Address');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/clickhouse/endpoint'))).toContain('PrivateDnsName');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
+        expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url')).toBe(`https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`);
+        const synthesizedTemplate = JSON.stringify(template.toJSON());
+        expect(synthesizedTemplate).toContain('clickhouse/clickhouse-server:26.3.13.31');
+        expect(synthesizedTemplate).toContain('rediss://');
         expect(synthesizedTemplate).not.toContain('ENDPOINT_PARAMETER');
         expect(synthesizedTemplate).not.toContain('SECRET_PARAMETER');
         expect(synthesizedTemplate).not.toContain('LOOPAD_COMPUTE_TARGET');
@@ -460,10 +570,60 @@ function ssmParameterValueFrom(template: Template, parameterName: string): unkno
     return parameter?.Properties?.Value;
 }
 
-function synthDev(): LoopAdDevStack {
+function synthDevData(): LoopAdDevDataStack {
     const app = new cdk.App();
-    return new LoopAdDevStack(app, 'LoopAdDevStack', {
+    const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+    });
+    return new LoopAdDevDataStack(app, 'LoopAdDevDataStack', {
         env: testEnv,
         publicHostedZone: testPublicHostedZone,
+        network,
+        genAiGeneratedAssetsCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
+    });
+}
+
+function synthDevRuntime(): LoopAdDevRuntimeStack {
+    const app = new cdk.App();
+    const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+    });
+    const data = new LoopAdDevDataStack(app, 'LoopAdDevDataStack', {
+        env: testEnv,
+        publicHostedZone: testPublicHostedZone,
+        network,
+        genAiGeneratedAssetsCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
+    });
+    return new LoopAdDevRuntimeStack(app, 'LoopAdDevRuntimeStack', {
+        env: testEnv,
+        publicHostedZone: testPublicHostedZone,
+        certificateArns: testCertificateArns,
+        network,
+        data,
+    });
+}
+
+function synthDevRepositories(): LoopAdDevRepositoryStack {
+    const app = new cdk.App();
+    return new LoopAdDevRepositoryStack(app, 'LoopAdDevRepositoryStack', {
+        env: testEnv,
+    });
+}
+
+function synthDevCertificate(): LoopAdDevCertificateStack {
+    const app = new cdk.App();
+    return new LoopAdDevCertificateStack(app, 'LoopAdDevCertificateStack', {
+        env: {
+            account: testEnv.account,
+            region: 'us-east-1',
+        },
+        publicHostedZone: testPublicHostedZone,
+    });
+}
+
+function synthDevNetwork(): LoopAdDevNetworkStack {
+    const app = new cdk.App();
+    return new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
     });
 }

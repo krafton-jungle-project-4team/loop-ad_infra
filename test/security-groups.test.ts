@@ -1,13 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { LOOP_AD_REGION, LoopAdDevStack } from '../src/loop-ad-stack';
+import { LOOP_AD_REGION, LoopAdDevNetworkStack } from '../src/loop-ad-stack';
 
 const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
-const testPublicHostedZone = {
-    hostedZoneId: 'ZTESTHOSTEDZONEID',
-    domainName: 'example.test',
-};
-
 describe('security group policy', () => {
     it('dev public ingress is only ALB/NLB port 80', () => {
         const template = Template.fromStack(synthDev());
@@ -74,13 +69,12 @@ function dataPortSecurityGroupRulesFrom(template: Template): Record<string, unkn
     }).filter((rule) => DATA_PORTS.has(Number(rule.FromPort)) || DATA_PORTS.has(Number(rule.ToPort)));
 }
 
-function synthDev(): LoopAdDevStack {
+function synthDev(): LoopAdDevNetworkStack {
     const app = new cdk.App();
-    return new LoopAdDevStack(app, 'LoopAdDevStack', {
+    return new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
         env: {
             account: '123456789012',
             region: LOOP_AD_REGION,
         },
-        publicHostedZone: testPublicHostedZone,
     });
 }

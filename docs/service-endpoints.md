@@ -40,7 +40,7 @@ Private endpoint는 ECS service가 VPC 내부에서 다른 service를 호출할 
 | Ad Context Projector | `http://ad-context-projector.dev.loop-ad.local:80` | 내부 health/debug 경로가 필요할 때 |
 | Advertisement API | `http://advertisement-api.dev.loop-ad.local:80` | 내부 광고 API 호출이 필요할 때 |
 | Dashboard API | `http://dashboard-api.dev.loop-ad.local:80` | 내부 dashboard API 호출이 필요할 때 |
-| Decision | `http://decision.dev.loop-ad.local:80` | Dashboard API가 Decision을 호출할 때 |
+| Decision API | `http://decision-api.dev.loop-ad.local:80` | Dashboard API가 Decision API를 호출할 때 |
 
 `*.dev.loop-ad.local` 이름은 ECS Cloud Map private namespace입니다. VPC 내부 ECS service에서만 resolve된다고 가정합니다.
 
@@ -56,7 +56,7 @@ Env로 받지 않는 값:
 Env로 받는 값:
 
 - DB endpoint와 credential
-- Redis endpoint
+- Redis 호환 Valkey endpoint
 - MSK bootstrap broker
 - S3 bucket 이름과 object prefix
 - 외부 SaaS API key 또는 webhook URL

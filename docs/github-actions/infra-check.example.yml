@@ -14,3 +14,8 @@ jobs:
         with:
             environment: dev
             node_version: '20'
+            cdk_default_account: '123456789012'
+            public_hosted_zone_id: Z1234567890ABC
+            public_domain_name: loop-ad.org
+            frontend_sites_certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites
+            genai_generated_assets_certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets

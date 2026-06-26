@@ -10,6 +10,21 @@ on:
             node_version:
                 required: true
                 type: string
+            cdk_default_account:
+                required: true
+                type: string
+            public_hosted_zone_id:
+                required: true
+                type: string
+            public_domain_name:
+                required: true
+                type: string
+            frontend_sites_certificate_arn:
+                required: true
+                type: string
+            genai_generated_assets_certificate_arn:
+                required: true
+                type: string
 
 permissions:
     contents: read
@@ -27,10 +42,22 @@ jobs:
               env:
                   ENVIRONMENT: ${{ inputs.environment }}
                   NODE_VERSION: ${{ inputs.node_version }}
+                  CDK_DEFAULT_ACCOUNT: ${{ inputs.cdk_default_account }}
+                  LOOP_AD_PUBLIC_HOSTED_ZONE_ID: ${{ inputs.public_hosted_zone_id }}
+                  LOOP_AD_PUBLIC_DOMAIN_NAME: ${{ inputs.public_domain_name }}
+                  LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN: ${{ inputs.frontend_sites_certificate_arn }}
+                  LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN: ${{ inputs.genai_generated_assets_certificate_arn }}
               run: |
                   set -euo pipefail
 
-                  for input_name in ENVIRONMENT NODE_VERSION; do
+                  for input_name in \
+                      ENVIRONMENT \
+                      NODE_VERSION \
+                      CDK_DEFAULT_ACCOUNT \
+                      LOOP_AD_PUBLIC_HOSTED_ZONE_ID \
+                      LOOP_AD_PUBLIC_DOMAIN_NAME \
+                      LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN \
+                      LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN; do
                       if [[ -z "${!input_name}" ]]; then
                           echo "${input_name} input is required." >&2
                           exit 1
@@ -53,4 +80,10 @@ jobs:
               run: npm test
 
             - name: Synthesize
+              env:
+                  CDK_DEFAULT_ACCOUNT: ${{ inputs.cdk_default_account }}
+                  LOOP_AD_PUBLIC_HOSTED_ZONE_ID: ${{ inputs.public_hosted_zone_id }}
+                  LOOP_AD_PUBLIC_DOMAIN_NAME: ${{ inputs.public_domain_name }}
+                  LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN: ${{ inputs.frontend_sites_certificate_arn }}
+                  LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN: ${{ inputs.genai_generated_assets_certificate_arn }}
               run: npm run synth:${{ inputs.environment }} -- --quiet

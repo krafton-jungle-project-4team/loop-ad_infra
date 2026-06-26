@@ -40,8 +40,6 @@ const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
-const N8N_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/n8n/webhook';
-const DISCORD_WEBHOOK_PARAMETER_NAME = '/loop-ad/dev/external/discord/webhook';
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -361,12 +359,6 @@ export class LoopAdDevStack extends Stack {
         const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
             parameterName: OPENAI_API_KEY_PARAMETER_NAME,
         });
-        const n8nWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'N8nWebhookParameter', {
-            parameterName: N8N_WEBHOOK_PARAMETER_NAME,
-        });
-        const discordWebhookParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'DiscordWebhookParameter', {
-            parameterName: DISCORD_WEBHOOK_PARAMETER_NAME,
-        });
 
         // endpoint contract는 SSM에도 남깁니다. 앱 task에는 아래 값을 env로 직접 주입합니다.
         for (const parameter of [
@@ -679,8 +671,6 @@ export class LoopAdDevStack extends Stack {
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
-                LOOPAD_N8N_WEBHOOK_URL: ecs.Secret.fromSsmParameter(n8nWebhookParameter),
-                LOOPAD_DISCORD_WEBHOOK_URL: ecs.Secret.fromSsmParameter(discordWebhookParameter),
             },
         });
         dashboardContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });

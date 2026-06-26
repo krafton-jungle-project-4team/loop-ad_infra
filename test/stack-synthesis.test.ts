@@ -389,8 +389,6 @@ describe('loop-ad CDK stacks', () => {
                     Secrets: Match.arrayWith([
                         Match.objectLike({ Name: 'LOOPAD_AURORA_USERNAME' }),
                         Match.objectLike({ Name: 'LOOPAD_AURORA_PASSWORD' }),
-                        Match.objectLike({ Name: 'LOOPAD_N8N_WEBHOOK_URL' }),
-                        Match.objectLike({ Name: 'LOOPAD_DISCORD_WEBHOOK_URL' }),
                     ]),
                 }),
             ]),

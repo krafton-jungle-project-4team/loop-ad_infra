@@ -155,7 +155,7 @@ FE env 규칙:
 
 - FE env는 build 결과물에 포함될 수 있습니다.
 - 꼭 필요한 public 값만 사용합니다.
-- secret, DB credential, webhook URL, private endpoint를 FE env에 넣지 않습니다.
+- secret, DB credential, private endpoint를 FE env에 넣지 않습니다.
 - Vite를 쓴다면 public env는 `VITE_` prefix를 사용합니다.
 - FE도 env를 사용한다면 fallback 없이 build 시작 시점에 검증합니다.
 - loop-ad public domain은 [service-endpoints.md](service-endpoints.md)의 고정 contract를 사용하고 `VITE_API_BASE_URL` 같은 env로 다시 빼지 않습니다.

@@ -59,6 +59,6 @@ Env로 받는 값:
 - Redis endpoint
 - MSK bootstrap broker
 - S3 bucket 이름과 object prefix
-- 외부 SaaS API key 또는 webhook URL
+- 외부 SaaS API key
 
 고정 도메인은 routing contract이고, data source endpoint와 secret은 runtime dependency입니다. 그래서 도메인은 이 문서에 고정하고, data source와 secret은 앱 runtime env contract로 관리합니다.

@@ -14,9 +14,14 @@ describe('CDK construct level policy', () => {
             const matches = [...source.matchAll(/new\s+([a-zA-Z0-9_]+\.Cfn[A-Za-z0-9_]+)/g)];
 
             return matches
-                .map((match) => match[1])
-                .filter((constructName) => !ALLOWED_L1_CONSTRUCTS.has(constructName))
-                .map((constructName) => `${file}: ${constructName}`);
+                .flatMap((match) => {
+                    const constructName = match[1];
+                    if (!constructName || ALLOWED_L1_CONSTRUCTS.has(constructName)) {
+                        return [];
+                    }
+
+                    return [`${file}: ${constructName}`];
+                });
         });
 
         expect(violations).toEqual([]);

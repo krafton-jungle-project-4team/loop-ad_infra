@@ -154,13 +154,7 @@ export class LoopAdDevStack extends Stack {
         dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
 
         // ECR repository는 Dev 애플리케이션 이미지 storage를 소유합니다.
-        const [
-            eventCollectorRepository,
-            projectorRepository,
-            advertisementRepository,
-            dashboardRepository,
-            decisionRepository,
-        ] = [
+        const repositories = [
             { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
             { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
             { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api' },
@@ -171,7 +165,14 @@ export class LoopAdDevStack extends Stack {
             imageScanOnPush: true,
             lifecycleRules: [{ maxImageCount: 20 }],
             removalPolicy: RemovalPolicy.RETAIN,
-        }));
+        })) as [ecr.Repository, ecr.Repository, ecr.Repository, ecr.Repository, ecr.Repository];
+        const [
+            eventCollectorRepository,
+            projectorRepository,
+            advertisementRepository,
+            dashboardRepository,
+            decisionRepository,
+        ] = repositories;
 
         // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
         const dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {

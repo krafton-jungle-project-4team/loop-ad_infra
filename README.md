@@ -15,7 +15,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
    - 현재 dev public endpoint 목록은 [docs/service-endpoints.md](docs/service-endpoints.md)를 봅니다.
 
 3. AWS CDK
-   - dev 환경의 ACM certificate, ECR repository, VPC/network, data storage, runtime service, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, MSK, SSM contract를 관리합니다.
+   - dev 환경의 ACM certificate, ECR repository, VPC/network, data storage, runtime service, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, EC2 Kafka, SSM contract를 관리합니다.
    - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)입니다.
 
 4. CI/CD용 GitHub Actions 템플릿

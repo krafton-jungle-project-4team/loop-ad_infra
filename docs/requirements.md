@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: CloudFront용 ACM certificate, ECR repository, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: CloudFront용 ACM certificate, ECR repository, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/EC2 Kafka, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재, DB migration, Kafka topic 생성, ClickHouse schema 생성
 - 리전: `ap-northeast-2`
 - public domain: `loop-ad.org`
@@ -34,7 +34,7 @@
 - DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
 - GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.loop-ad.org/...`로 외부 조회할 수 있게 한다.
 - DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, CloudFront OAC 접근 제어를 필수 보안 조건으로 가진다.
-- Dev data stack은 Aurora/Valkey/ClickHouse/MSK/DataStorage S3와 SSM endpoint contract를 소유한다.
+- Dev data stack은 Aurora/Valkey/ClickHouse/EC2 Kafka/DataStorage S3와 SSM endpoint contract를 소유한다.
 - Dev runtime stack은 FE 정적 hosting, ALB/NLB, Route53 public runtime record, ECS cluster/service/log group을 소유한다.
 - Public HTTPS endpoint와 private service discovery name은 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
 - Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
@@ -42,13 +42,13 @@
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Advertisement API와 Dashboard API는 ALB path rule에만 붙인다.
-- Aurora, Redis 호환 Valkey, ClickHouse, MSK는 SSM endpoint contract로 연결한다.
+- Aurora, Redis 호환 Valkey, ClickHouse, Kafka는 SSM endpoint contract로 연결한다.
 - Aurora PostgreSQL은 안정 기준 버전 `16.13`, Serverless v2 `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
 - Redis 호환 cache는 ElastiCache Serverless for Valkey major version `7`로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
-- MSK는 AWS recommended Kafka `3.9.x`, 저비용 dev 기준 Standard `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
-- MSK 인증 방식은 현재 dev 비용과 구현 단순성을 우선해 unauthenticated + TLS/plaintext 허용 구성을 유지한다.
-- MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
+- Kafka는 비용 절감을 위해 Amazon Linux 2023 EC2 `t4g.small` 단일 노드, Apache Kafka `3.9.1`, KRaft mode, gp3 20GB EBS로 시작한다.
+- Kafka는 private subnet 안에서만 plain listener `9092`를 열고, production 수준의 HA나 managed broker 운영은 목표로 하지 않는다.
+- Kafka bootstrap broker 문자열은 EC2 private DNS와 `9092` port를 조합해 `/loop-ad/dev/kafka/bootstrap-brokers` SSM parameter에 넣는다.
 - OpenAI API key는 infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입한 뒤 Runtime stack에서 참조한다.
 - 앱 repo GitHub Actions OIDC role은 ECR image push와 ECS service update 권한을 가진다.
 - Infra repo GitHub Actions OIDC role은 CDK가 관리하는 dev 인프라 전반을 생성/변경할 수 있는 권한을 가진다.

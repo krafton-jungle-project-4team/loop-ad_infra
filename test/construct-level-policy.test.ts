@@ -6,7 +6,6 @@ const ALLOWED_L1_CONSTRUCTS = new Set<string>([
     'cdk.CfnOutput',
     // ElastiCache Serverless는 현재 CDK L2 construct가 없어 L1으로만 정의합니다.
     'elasticache.CfnServerlessCache',
-    'msk.CfnCluster',
 ]);
 
 describe('CDK construct level policy', () => {

@@ -2,15 +2,12 @@ import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as msk from 'aws-cdk-lib/aws-msk';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
@@ -30,10 +27,10 @@ const DEV_AURORA_MIN_ACU = 0;
 const DEV_AURORA_MAX_ACU = 2;
 const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 const DEV_CLICKHOUSE_VOLUME_GIB = 50;
-const DEV_MSK_BROKER_COUNT = 2;
-const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
+const DEV_KAFKA_VOLUME_GIB = 20;
 const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
-const DEV_MSK_KAFKA_VERSION = '3.9.x';
+const DEV_KAFKA_VERSION = '3.9.1';
+const DEV_KAFKA_SCALA_VERSION = '2.13';
 const DEV_VALKEY_MAJOR_ENGINE_VERSION = '7';
 const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
 const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
@@ -217,7 +214,7 @@ export class LoopAdDevNetworkStack extends Stack {
 
         // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
         this.serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        // ClickHouse bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
+        // ClickHouse/Kafka bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
         this.dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
     }
 }
@@ -237,7 +234,7 @@ export class LoopAdDevDataStack extends Stack {
     public readonly auroraCredentialsSecret: secretsmanager.ISecret;
     public readonly redisUrl: string;
     public readonly clickHouseUrl: string;
-    public readonly mskBootstrapBrokerString: string;
+    public readonly kafkaBootstrapBrokerString: string;
 
     public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
         super(scope, id, props);
@@ -384,67 +381,90 @@ export class LoopAdDevDataStack extends Stack {
             `docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse ${DEV_CLICKHOUSE_IMAGE}`,
         );
 
-        // MSK는 raw event stream의 중심입니다.
-        // dev 비용을 낮게 유지하기 위해 Standard t3.small broker와 작은 EBS storage로 시작합니다.
-        // Express broker는 운영 편의성은 좋지만 현재 dev 트래픽에서는 최소 구성이 훨씬 비쌉니다.
-        const mskCluster = new msk.CfnCluster(this, 'MskCluster', {
-            clusterName: 'dev-loop-ad-msk',
-            kafkaVersion: DEV_MSK_KAFKA_VERSION,
-            numberOfBrokerNodes: DEV_MSK_BROKER_COUNT,
-            brokerNodeGroupInfo: {
-                clientSubnets: privateSubnets.subnetIds,
-                instanceType: 'kafka.t3.small',
-                securityGroups: [dataStorageSecurityGroup.securityGroupId],
-                storageInfo: {
-                    ebsStorageInfo: {
-                        volumeSize: DEV_MSK_STORAGE_GIB_PER_BROKER,
-                    },
-                },
-            },
-            clientAuthentication: {
-                unauthenticated: {
-                    enabled: true,
-                },
-            },
-            encryptionInfo: {
-                encryptionInTransit: {
-                    clientBroker: 'TLS_PLAINTEXT',
-                    inCluster: true,
-                },
-            },
-            enhancedMonitoring: 'DEFAULT',
-        });
-
-        // CDK의 L1 MSK construct는 bootstrap broker string을 바로 속성으로 주지 않습니다.
-        // Custom Resource로 배포 시점에 조회해 ECS task env와 SSM endpoint contract에 재사용합니다.
-        const mskBootstrapBrokers = new cr.AwsCustomResource(this, 'MskBootstrapBrokers', {
-            resourceType: 'Custom::LoopAdMskBootstrapBrokers',
-            onUpdate: {
-                service: 'kafka',
-                action: 'GetBootstrapBrokers',
-                parameters: {
-                    ClusterArn: mskCluster.attrArn,
-                },
-                outputPaths: ['BootstrapBrokerString'],
-                physicalResourceId: cr.PhysicalResourceId.of('dev-loop-ad-msk-bootstrap-brokers'),
-            },
-            installLatestAwsSdk: false,
-            logGroup: new logs.LogGroup(this, 'MskBootstrapBrokersLogGroup', {
-                retention: DEV_LOG_RETENTION,
-                removalPolicy: RemovalPolicy.DESTROY,
+        // Kafka는 raw event stream의 중심입니다.
+        // dev 비용 절감을 위해 MSK 대신 private EC2 단일 broker로 운영합니다.
+        // 운영 안정성보다 저비용 공용 개발 환경을 우선한 선택이며, production 수준의 HA는 목표로 하지 않습니다.
+        const kafkaInstance = new ec2.Instance(this, 'KafkaInstance', {
+            vpc,
+            vpcSubnets: privateSubnets,
+            securityGroup: dataStorageSecurityGroup,
+            instanceName: 'dev-loop-ad-kafka',
+            instanceType: new ec2.InstanceType('t4g.small'),
+            machineImage: ec2.MachineImage.latestAmazonLinux2023({
+                cpuType: ec2.AmazonLinuxCpuType.ARM_64,
             }),
-            policy: cr.AwsCustomResourcePolicy.fromStatements([
-                new iam.PolicyStatement({
-                    actions: ['kafka:GetBootstrapBrokers'],
-                    resources: [mskCluster.attrArn],
-                }),
-            ]),
+            blockDevices: [
+                {
+                    deviceName: '/dev/xvda',
+                    volume: ec2.BlockDeviceVolume.ebs(DEV_KAFKA_VOLUME_GIB, {
+                        encrypted: true,
+                        volumeType: ec2.EbsDeviceVolumeType.GP3,
+                    }),
+                },
+            ],
+            requireImdsv2: true,
         });
+        kafkaInstance.userData.addCommands(
+            'set -eux',
+            'dnf update -y',
+            'dnf install -y java-17-amazon-corretto-headless tar gzip',
+            'useradd --system --home-dir /opt/kafka --shell /sbin/nologin kafka || true',
+            'mkdir -p /opt/kafka /var/lib/kafka /var/log/kafka',
+            `curl -fL https://archive.apache.org/dist/kafka/${DEV_KAFKA_VERSION}/kafka_${DEV_KAFKA_SCALA_VERSION}-${DEV_KAFKA_VERSION}.tgz -o /tmp/kafka.tgz`,
+            'tar -xzf /tmp/kafka.tgz --strip-components=1 -C /opt/kafka',
+            'TOKEN=$(curl -s -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" http://169.254.169.254/latest/api/token)',
+            'PRIVATE_DNS=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/local-hostname)',
+            'cat > /opt/kafka/config/kraft/server.properties <<EOF',
+            'process.roles=broker,controller',
+            'node.id=1',
+            'controller.quorum.voters=1@localhost:9093',
+            'listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093',
+            'advertised.listeners=PLAINTEXT://${PRIVATE_DNS}:9092',
+            'listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT',
+            'inter.broker.listener.name=PLAINTEXT',
+            'controller.listener.names=CONTROLLER',
+            'log.dirs=/var/lib/kafka',
+            'num.partitions=1',
+            'default.replication.factor=1',
+            'min.insync.replicas=1',
+            'offsets.topic.replication.factor=1',
+            'transaction.state.log.replication.factor=1',
+            'transaction.state.log.min.isr=1',
+            'group.initial.rebalance.delay.ms=0',
+            'auto.create.topics.enable=true',
+            'log.retention.hours=168',
+            'EOF',
+            'chown -R kafka:kafka /opt/kafka /var/lib/kafka /var/log/kafka',
+            'CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)',
+            'runuser -u kafka -- /opt/kafka/bin/kafka-storage.sh format -t "${CLUSTER_ID}" -c /opt/kafka/config/kraft/server.properties --ignore-formatted',
+            'cat > /etc/systemd/system/kafka.service <<EOF',
+            '[Unit]',
+            'Description=Loop Ad dev Kafka broker',
+            'After=network-online.target',
+            'Wants=network-online.target',
+            '',
+            '[Service]',
+            'Type=simple',
+            'User=kafka',
+            'Group=kafka',
+            'Environment="KAFKA_HEAP_OPTS=-Xms256m -Xmx768m"',
+            'ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties',
+            'ExecStop=/opt/kafka/bin/kafka-server-stop.sh',
+            'Restart=on-failure',
+            'RestartSec=10',
+            'LimitNOFILE=100000',
+            '',
+            '[Install]',
+            'WantedBy=multi-user.target',
+            'EOF',
+            'systemctl daemon-reload',
+            'systemctl enable --now kafka',
+        );
 
         this.auroraHost = auroraCluster.clusterEndpoint.hostname;
         this.auroraPort = '5432';
         this.clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
-        this.mskBootstrapBrokerString = mskBootstrapBrokers.getResponseField('BootstrapBrokerString');
+        this.kafkaBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':9092']);
         const auroraCredentialsSecret = auroraCluster.secret;
         if (!auroraCredentialsSecret) {
             throw new Error('Aurora generated credentials secret is required.');
@@ -473,10 +493,10 @@ export class LoopAdDevDataStack extends Stack {
                 description: 'Dev ClickHouse endpoint contract.',
             },
             {
-                id: 'MskEndpointParameter',
-                parameterName: '/loop-ad/dev/msk/bootstrap-brokers',
-                stringValue: this.mskBootstrapBrokerString,
-                description: 'Dev MSK bootstrap broker contract.',
+                id: 'KafkaEndpointParameter',
+                parameterName: '/loop-ad/dev/kafka/bootstrap-brokers',
+                stringValue: this.kafkaBootstrapBrokerString,
+                description: 'Dev Kafka bootstrap broker contract.',
             },
             {
                 id: 'DataStorageBucketNameParameter',
@@ -535,7 +555,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             auroraCredentialsSecret,
             redisUrl,
             clickHouseUrl,
-            mskBootstrapBrokerString,
+            kafkaBootstrapBrokerString,
         } = props.data;
 
         // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
@@ -657,7 +677,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             });
         }
 
-        // Event Collector는 NLB 트래픽을 받고 event를 MSK로 발행합니다.
+        // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
         // public ingestion 진입점이지만 task 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
         const eventCollectorTask = new ecs.FargateTaskDefinition(this, 'EventCollectorTaskDefinition', {
             cpu: 256,
@@ -679,7 +699,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
                 PORT: '80',
-                LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
+                LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
             },
         });
@@ -721,7 +741,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // Projector는 MSK를 consume하고 가공된 context를 Valkey/ClickHouse에 씁니다.
+        // Projector는 Kafka를 consume하고 가공된 context를 Valkey/ClickHouse에 씁니다.
         // 앱에서는 Redis client를 그대로 쓸 수 있게 LOOPAD_REDIS_URL에 rediss:// Valkey endpoint를 주입합니다.
         const projectorTask = new ecs.FargateTaskDefinition(this, 'AdContextProjectorTaskDefinition', {
             cpu: 256,
@@ -743,7 +763,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
                 PORT: '80',
-                LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
+                LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
                 LOOPAD_REDIS_URL: redisUrl,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,

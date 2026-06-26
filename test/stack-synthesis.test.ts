@@ -112,7 +112,7 @@ describe('loop-ad CDK stacks', () => {
         template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
         template.resourceCountIs('AWS::ECR::Repository', 0);
         template.resourceCountIs('AWS::ECS::Service', 0);
-        template.resourceCountIs('AWS::Logs::LogGroup', 1);
+        template.resourceCountIs('AWS::Logs::LogGroup', 0);
         template.resourceCountIs('AWS::Route53::RecordSet', 1);
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
@@ -387,7 +387,7 @@ describe('loop-ad CDK stacks', () => {
                             Value: '80',
                         }),
                         Match.objectLike({
-                            Name: 'LOOPAD_MSK_BOOTSTRAP_BROKERS',
+                            Name: 'LOOPAD_KAFKA_BOOTSTRAP_BROKERS',
                             Value: Match.anyValue(),
                         }),
                         Match.objectLike({
@@ -486,8 +486,8 @@ describe('loop-ad CDK stacks', () => {
         template.resourceCountIs('AWS::RDS::DBCluster', 1);
         template.resourceCountIs('AWS::RDS::DBInstance', 1);
         template.resourceCountIs('AWS::ElastiCache::ServerlessCache', 1);
-        template.resourceCountIs('AWS::MSK::Cluster', 1);
-        template.resourceCountIs('Custom::LoopAdMskBootstrapBrokers', 1);
+        template.resourceCountIs('AWS::MSK::Cluster', 0);
+        template.resourceCountIs('Custom::LoopAdMskBootstrapBrokers', 0);
         template.hasResourceProperties('AWS::RDS::DBCluster', {
             DBClusterIdentifier: 'dev-loop-ad-aurora-postgres',
             DatabaseName: 'loopad',
@@ -537,32 +537,38 @@ describe('loop-ad CDK stacks', () => {
                 }),
             ]),
         });
-        template.hasResourceProperties('AWS::MSK::Cluster', {
-            ClusterName: 'dev-loop-ad-msk',
-            KafkaVersion: '3.9.x',
-            NumberOfBrokerNodes: 2,
-            BrokerNodeGroupInfo: Match.objectLike({
-                InstanceType: 'kafka.t3.small',
-                StorageInfo: {
-                    EBSStorageInfo: {
+        template.hasResourceProperties('AWS::EC2::Instance', {
+            InstanceType: 't4g.small',
+            BlockDeviceMappings: Match.arrayWith([
+                Match.objectLike({
+                    DeviceName: '/dev/xvda',
+                    Ebs: {
+                        Encrypted: true,
                         VolumeSize: 20,
+                        VolumeType: 'gp3',
                     },
-                },
-            }),
-        });
-        template.hasResourceProperties('Custom::LoopAdMskBootstrapBrokers', {
-            InstallLatestAwsSdk: false,
+                }),
+            ]),
+            Tags: Match.arrayWith([
+                Match.objectLike({
+                    Key: 'Name',
+                    Value: 'dev-loop-ad-kafka',
+                }),
+            ]),
         });
 
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/aurora/endpoint'))).toContain('Endpoint.Address');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/redis/endpoint'))).toContain('Endpoint.Address');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/clickhouse/endpoint'))).toContain('PrivateDnsName');
-        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/msk/bootstrap-brokers'))).toContain('BootstrapBrokerString');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/kafka/bootstrap-brokers'))).toContain('PrivateDnsName');
+        expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/kafka/bootstrap-brokers'))).toContain(':9092');
         expect(JSON.stringify(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/bucket-name'))).toContain('DataStorageBucket');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-prefix')).toBe('genai/generated/');
         expect(ssmParameterValueFrom(template, '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url')).toBe(`https://gen-ai.asset.dev.${testPublicHostedZone.domainName}`);
         const synthesizedTemplate = JSON.stringify(template.toJSON());
         expect(synthesizedTemplate).toContain('clickhouse/clickhouse-server:26.3.13.31');
+        expect(synthesizedTemplate).toContain('kafka_2.13-3.9.1.tgz');
+        expect(synthesizedTemplate).toContain('dev-loop-ad-kafka');
         expect(synthesizedTemplate).toContain('rediss://');
         expect(synthesizedTemplate).not.toContain('ENDPOINT_PARAMETER');
         expect(synthesizedTemplate).not.toContain('SECRET_PARAMETER');

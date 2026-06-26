@@ -17,7 +17,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 
 3. AWS CDK
    - dev 환경의 ACM certificate, ECR repository, VPC/network, data storage, runtime service, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, EC2 Kafka, SSM contract를 관리합니다.
-   - 월 $300 dev 예산 guardrail과 로컬 비용 산정 모델은 [docs/cost-model.md](docs/cost-model.md)에 정리합니다.
+   - 월 $300 dev 비용 산정 모델과 외부 비용 알림 연계는 [docs/cost-model.md](docs/cost-model.md)에 정리합니다.
    - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)이고, dev config와 lifecycle/helper 모듈은 [src/dev-config.ts](src/dev-config.ts), [src/lifecycle-stacks.ts](src/lifecycle-stacks.ts), [src/runtime-helpers.ts](src/runtime-helpers.ts)에 둡니다.
 
 4. CI/CD용 GitHub Actions 템플릿
@@ -33,7 +33,6 @@ npm run build
 npm test
 npm run synth:dev-certificate
 npm run synth:dev-repositories
-npm run synth:dev-cost-guardrails
 npm run synth:dev-network
 npm run synth:dev-data
 npm run synth:dev-runtime
@@ -42,14 +41,13 @@ npm run cost:dev
 npm run put:dev-openai-api-key
 npm run deploy:dev-certificate
 npm run deploy:dev-repositories
-npm run deploy:dev-cost-guardrails
 npm run deploy:dev-network
 npm run deploy:dev-data
 npm run deploy:dev-runtime
 npm run deploy:dev
 ```
 
-처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 만들고, `npm run deploy:dev-repositories`로 ECR 저장소를 먼저 만듭니다. 월 예산 알림은 `deploy:dev-cost-guardrails`로 별도 배포하고 email confirmation을 완료합니다. 각 앱 repo에서 seed image를 ECR에 push한 뒤 `deploy:dev-network`, `deploy:dev-data`, `put:dev-openai-api-key`, `deploy:dev-runtime` 순서로 진행합니다.
+처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 만들고, `npm run deploy:dev-repositories`로 ECR 저장소를 먼저 만듭니다. 각 앱 repo에서 seed image를 ECR에 push한 뒤 `deploy:dev-network`, `deploy:dev-data`, `put:dev-openai-api-key`, `deploy:dev-runtime` 순서로 진행합니다.
 
 실제 CDK 배포 전에는 대상 계정의 `ap-northeast-2`와 CloudFront 인증서용 `us-east-1`에 CDK bootstrap이 필요합니다.
 
@@ -64,7 +62,6 @@ LOOP_AD_PUBLIC_HOSTED_ZONE_ID=Z...
 LOOP_AD_PUBLIC_DOMAIN_NAME=loop-ad.org
 LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:...
 LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:...
-LOOP_AD_BUDGET_ALERT_EMAIL=dev-alerts@example.com
 LOOP_AD_OPENAI_API_KEY=sk-...
 ```
 

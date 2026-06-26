@@ -29,9 +29,6 @@ export const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 export const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 export const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 export const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
-export const DEV_MONTHLY_BUDGET_LIMIT_USD = 300;
-export const DEV_MONTHLY_BUDGET_WARNING_PERCENT = 80;
-export const DEV_MONTHLY_BUDGET_CRITICAL_PERCENT = 100;
 
 export const DEV_APPLICATION_REPOSITORIES = [
     { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector', outputId: 'EventCollectorRepositoryUri' },

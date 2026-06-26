@@ -10,7 +10,6 @@
 - AWS CDK Developer Guide: Test AWS CDK applications
 - AWS Prescriptive Guidance: Best practices for using the AWS CDK in TypeScript to create IaC projects
 - AWS Well-Architected Framework: Cost Optimization Pillar
-- AWS CloudFormation Template Reference: `AWS::Budgets::Budget`
 
 점수는 평균으로 통과시키지 않고 각 항목을 독립적으로 평가한다.
 
@@ -186,3 +185,42 @@ Initial priority:
 - Aurora snapshot restore, EC2 Kafka/ClickHouse rollback drill
 - managed service PoC의 latency/throughput/cost actual 검증
 - 사용자 승인 전 `cdk diff`를 실행하지 않았으므로 CloudFormation replacement 검토는 unit/synth 기반으로만 수행됨
+
+## Cycle 4 - Remove CDK-Owned Budget Alert
+
+목적:
+
+- 비용 알림은 별도 정기 비용 알림 체계가 담당하므로 CDK app의 `AWS::Budgets::Budget` 리소스를 제거한다.
+- 월 $300 dev 목표는 로컬 deterministic cost model과 문서화된 운영 점검 기준으로 유지한다.
+- CDK가 billing-plane 알림 리소스까지 소유하면서 생기는 운영 책임 중복을 없앤다.
+
+변경 파일:
+
+- `src/lifecycle-stacks.ts`
+- `src/dev-config.ts`
+- `src/loop-ad-stack.ts`
+- `bin/loop-ad_aws_cdk.ts`
+- `package.json`
+- `scripts/refuse-deploy.mjs`
+- `scripts/estimate-dev-monthly-cost.mjs`
+- `test/infra-contract.test.ts`
+- `README.md`
+- `docs/requirements.md`
+- `docs/cost-model.md`
+- `docs/infra-improvement-log.md`
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | CDK Budget 알림은 제거했지만 별도 정기 비용 알림 체계가 있으므로 중복 리소스가 필요 없다. deterministic model과 Cost Explorer 대조 계획은 유지된다. |
+| 보안/안전성 | 90 | 90 | billing-plane 리소스와 email subscriber env를 제거해 secret/env surface가 줄었다. |
+| 운영 안정성 | 91 | 91 | 비용 알림 책임이 외부 정기 알림 체계로 단일화되어 운영 ownership이 더 명확하다. |
+| CDK 모범사례/유지보수성 | 95 | 95 | lifecycle stack에서 budget 전용 L1 construct와 context branch를 제거해 CDK surface가 작아졌다. |
+| 테스트/문서화 | 95 | 95 | 테스트가 CDK Budget 생성이 없고 외부 비용 알림 문서가 존재함을 검증한다. |
+
+현재 blocker:
+
+- 별도 정기 비용 알림이 실제 계정과 dev workload 범위를 포함하는지는 CDK repo 밖에서 검증해야 한다.
+- Cost Explorer 기반 7일/30일 actual cost comparison은 실제 배포 후에만 가능하다.
+- 사용자 승인 전 `cdk diff`는 실행하지 않았으므로 CloudFormation replacement 검토는 unit/synth 기반으로만 수행한다.

@@ -4,7 +4,7 @@
 
 ## 범위
 
-- 담당: CloudFront용 ACM certificate, ECR repository, 월 예산 guardrail, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/EC2 Kafka, SSM endpoint contract, GitHub Actions reusable workflow
+- 담당: CloudFront용 ACM certificate, ECR repository, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/EC2 Kafka, SSM endpoint contract, GitHub Actions reusable workflow
 - 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재, DB migration, Kafka topic 생성, ClickHouse schema 생성
 - 리전: `ap-northeast-2`
 - public domain: `loop-ad.org`
@@ -21,8 +21,8 @@
 - Dev data/runtime stack은 certificate stack output ARN을 `.env`로 받아 CloudFront distribution에 import한다.
 - ECR repository는 별도 repository stack에서 먼저 만들고, 각 앱 repo가 image를 push한 뒤 ECS runtime stack을 배포한다.
 - Dev runtime stack은 ECR repository를 생성하지 않고 고정 repository name contract로 import한다.
-- Dev monthly budget은 `us-east-1`의 cost guardrail stack에서 별도 관리하며 월 $300 한도에 actual 80%, actual 100%, forecasted 100% email 알림을 둔다.
 - 비용 산정은 `npm run cost:dev`의 명시 가정과 deterministic 계산 결과를 기준으로 검토하고, 배포 승인 전 AWS Pricing Calculator 또는 Price List API로 단가를 갱신한다.
+- 비용 알림은 이 CDK app에서 AWS Budget 리소스로 생성하지 않고, 별도 정기 비용 알림 체계에서 담당한다.
 - VPC/network, data storage, runtime service는 각각 stack을 나눈다.
 - ECS task 수와 EC2 capacity 수치로 실제 확장 상한을 둔다.
 - 외부 SaaS/API 연동을 위해 NAT Gateway가 있는 private subnet에서 실행한다.
@@ -63,7 +63,6 @@
 
 - `npm run synth:dev-certificate`
 - `npm run synth:dev-repositories`
-- `npm run synth:dev-cost-guardrails`
 - `npm run synth:dev-network`
 - `npm run synth:dev-data`
 - `npm run synth:dev-runtime`
@@ -72,15 +71,12 @@
 - `npm run put:dev-openai-api-key`
 - `npm run deploy:dev-certificate`
 - `npm run deploy:dev-repositories`
-- `npm run deploy:dev-cost-guardrails`
 - `npm run deploy:dev-network`
 - `npm run deploy:dev-data`
 - `npm run deploy:dev-runtime`
 - `npm run deploy:dev`
 
-최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> `deploy:dev-cost-guardrails` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> `put:dev-openai-api-key` -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 외부 secret이 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime secret 누락을 피할 수 있다.
-
-Budget subscriber email은 AWS Budgets confirmation을 수락해야 알림을 받는다. confirmation이 끝나기 전에는 budget resource가 있어도 운영 알림 검증이 완료된 것으로 보지 않는다.
+최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> `put:dev-openai-api-key` -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 외부 secret이 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime secret 누락을 피할 수 있다.
 
 데이터 초기화 책임은 현재 infra contract에서 제외한다. DB migration, Kafka topic 생성, ClickHouse schema 생성 주체는 앱 구현이 구체화된 뒤 별도로 정한다.
 

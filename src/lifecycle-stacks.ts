@@ -1,6 +1,5 @@
 import { RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -9,9 +8,6 @@ import {
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
     DEV_APPLICATION_REPOSITORIES,
-    DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
-    DEV_MONTHLY_BUDGET_LIMIT_USD,
-    DEV_MONTHLY_BUDGET_WARNING_PERCENT,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
     type PublicHostedZoneConfig,
 } from './dev-config';
@@ -73,86 +69,5 @@ export class LoopAdDevRepositoryStack extends Stack {
                 value: repository.repositoryUri,
             });
         }
-    }
-}
-
-export interface LoopAdDevCostGuardrailStackProps extends StackProps {
-    readonly budgetAlertEmail: string;
-}
-
-// Budgets는 billing plane guardrail이므로 dev resource stack과 분리합니다.
-// 실제 비용 알림 수신 확인은 배포 후 AWS Budgets email confirmation까지 완료되어야 합니다.
-export class LoopAdDevCostGuardrailStack extends Stack {
-    public constructor(scope: Construct, id: string, props: LoopAdDevCostGuardrailStackProps) {
-        super(scope, id, props);
-
-        const budget = new budgets.CfnBudget(this, 'MonthlyDevBudget', {
-            budget: {
-                budgetName: 'loop-ad-dev-monthly-budget',
-                budgetType: 'COST',
-                timeUnit: 'MONTHLY',
-                budgetLimit: {
-                    amount: DEV_MONTHLY_BUDGET_LIMIT_USD,
-                    unit: 'USD',
-                },
-                costTypes: {
-                    includeCredit: false,
-                    includeRefund: false,
-                    useBlended: false,
-                },
-            },
-            notificationsWithSubscribers: [
-                {
-                    notification: {
-                        notificationType: 'ACTUAL',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_WARNING_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-                {
-                    notification: {
-                        notificationType: 'ACTUAL',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-                {
-                    notification: {
-                        notificationType: 'FORECASTED',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-            ],
-            resourceTags: [
-                { key: 'Project', value: 'loop-ad' },
-                { key: 'Environment', value: 'dev' },
-            ],
-        });
-
-        new cdk.CfnOutput(this, 'MonthlyDevBudgetName', {
-            value: budget.ref,
-        });
     }
 }

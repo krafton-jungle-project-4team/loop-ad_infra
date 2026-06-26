@@ -6,7 +6,6 @@ import { spawnSync } from 'node:child_process';
 import {
     LOOP_AD_REGION,
     LoopAdDevCertificateStack,
-    LoopAdDevCostGuardrailStack,
     LoopAdDevDataStack,
     LoopAdDevNetworkStack,
     LoopAdDevRepositoryStack,
@@ -29,55 +28,6 @@ const testCertificateArns = {
 };
 
 describe('loop-ad CDK guardrails', () => {
-    it('keeps the cost guardrail as a separate monthly budget stack', () => {
-        const template = Template.fromStack(synthCostGuardrail());
-
-        template.resourceCountIs('AWS::Budgets::Budget', 1);
-        template.hasResourceProperties('AWS::Budgets::Budget', {
-            Budget: {
-                BudgetName: 'loop-ad-dev-monthly-budget',
-                BudgetType: 'COST',
-                TimeUnit: 'MONTHLY',
-                BudgetLimit: {
-                    Amount: 300,
-                    Unit: 'USD',
-                },
-                CostTypes: {
-                    IncludeCredit: false,
-                    IncludeRefund: false,
-                    UseBlended: false,
-                },
-            },
-            NotificationsWithSubscribers: Match.arrayWith([
-                Match.objectLike({
-                    Notification: {
-                        NotificationType: 'ACTUAL',
-                        ComparisonOperator: 'GREATER_THAN',
-                        Threshold: 80,
-                        ThresholdType: 'PERCENTAGE',
-                    },
-                    Subscribers: [
-                        {
-                            SubscriptionType: 'EMAIL',
-                            Address: 'alerts@example.test',
-                        },
-                    ],
-                }),
-                Match.objectLike({
-                    Notification: {
-                        NotificationType: 'FORECASTED',
-                        ComparisonOperator: 'GREATER_THAN',
-                        Threshold: 100,
-                        ThresholdType: 'PERCENTAGE',
-                    },
-                }),
-            ]),
-        });
-        template.hasOutput('MonthlyDevBudgetName', {
-            Value: Match.anyValue(),
-        });
-    });
-
     it('keeps the network low-cost and private-by-default', () => {
         const template = Template.fromStack(synthNetwork());
 
@@ -222,25 +172,24 @@ describe('loop-ad local safety contracts', () => {
 
         expect(packageJson.scripts.deploy).toBe('node scripts/refuse-deploy.mjs');
         expect(packageJson.scripts.destroy).toBe('node scripts/refuse-deploy.mjs');
-        expect(packageJson.scripts['synth:dev-cost-guardrails']).toContain('LoopAdDevCostGuardrailStack');
         expect(packageJson.scripts['cost:dev']).toBe('node scripts/estimate-dev-monthly-cost.mjs');
         expect(refusal).toContain('Generic deploy/destroy is intentionally blocked');
-        expect(refusal).toContain('deploy:dev-cost-guardrails');
+        expect(Object.keys(packageJson.scripts)).not.toContain('deploy:dev-cost-guardrails');
+        expect(Object.keys(packageJson.scripts)).not.toContain('synth:dev-cost-guardrails');
     });
 
     it('requires app context and env values without fallback defaults', () => {
         const cdkApp = readFileSync(join(ROOT, 'bin/loop-ad_aws_cdk.ts'), 'utf8');
 
-        expect(cdkApp).toContain('dev-cost-guardrails');
-        expect(cdkApp).toContain("readRequiredEnv('LOOP_AD_BUDGET_ALERT_EMAIL')");
         expect(cdkApp).toContain("readRequiredEnv('CDK_DEFAULT_ACCOUNT')");
         expect(cdkApp).toContain("readRequiredEnv('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN')");
+        expect(cdkApp).not.toContain('dev-cost-guardrails');
+        expect(cdkApp).not.toContain('LOOP_AD_BUDGET_ALERT_EMAIL');
         expect(cdkApp).not.toContain("?? 'dev'");
     });
 
     it('keeps L1 constructs limited to documented exceptions', () => {
         const allowed = new Set([
-            'budgets.CfnBudget',
             'cdk.CfnOutput',
             'elasticache.CfnServerlessCache',
         ]);
@@ -303,6 +252,17 @@ describe('loop-ad local safety contracts', () => {
         expect(model.lineItems.every((item) => Number.isFinite(item.monthlyUsd) && item.monthlyUsd >= 0)).toBe(true);
     });
 
+    it('keeps cost alerts owned outside this CDK app', () => {
+        const modelDoc = readFileSync(join(ROOT, 'docs/cost-model.md'), 'utf8');
+        const synthesizedSources = sourceFiles(SRC_DIR)
+            .map((file) => readFileSync(file, 'utf8'))
+            .join('\n');
+
+        expect(modelDoc).toContain('별도 정기 비용 알림');
+        expect(modelDoc).toContain('이 CDK app은 AWS Budget 알림 리소스를 생성하지 않는다');
+        expect(synthesizedSources).not.toContain('CfnBudget');
+    });
+
     it('documents managed transition gates without changing app contracts', () => {
         const plan = readFileSync(join(ROOT, 'docs/managed-service-transition-plan.md'), 'utf8');
 
@@ -328,17 +288,6 @@ describe('loop-ad local safety contracts', () => {
         }
     });
 });
-
-function synthCostGuardrail(): LoopAdDevCostGuardrailStack {
-    const app = new cdk.App();
-    return new LoopAdDevCostGuardrailStack(app, 'LoopAdDevCostGuardrailStack', {
-        env: {
-            account: testEnv.account,
-            region: 'us-east-1',
-        },
-        budgetAlertEmail: 'alerts@example.test',
-    });
-}
 
 function synthNetwork(): LoopAdDevNetworkStack {
     const app = new cdk.App();

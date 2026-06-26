@@ -57,7 +57,6 @@ export {
 } from './dev-config';
 export {
     LoopAdDevCertificateStack,
-    LoopAdDevCostGuardrailStack,
     LoopAdDevRepositoryStack,
 } from './lifecycle-stacks';
 

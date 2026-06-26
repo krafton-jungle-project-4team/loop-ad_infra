@@ -133,7 +133,7 @@ const result = {
     notes: [
         'This is a deterministic planning model, not a live bill.',
         'Refresh unit prices with AWS Pricing Calculator or Price List API before deployment approval.',
-        'After deployment, compare this model with Cost Explorer and AWS Budgets actual/forecasted alerts.',
+        'After deployment, compare this model with Cost Explorer and the external recurring cost alert.',
     ],
 };
 
@@ -149,9 +149,9 @@ function roundCurrency(value) {
 
 function printHumanReport(model) {
     console.log('loop-ad dev monthly cost planning model');
-    console.log(`Budget limit: $${model.budgetLimitUsd.toFixed(2)}`);
+    console.log(`Monthly target: $${model.budgetLimitUsd.toFixed(2)}`);
     console.log(`Estimated monthly total: $${model.totalMonthlyUsd.toFixed(2)}`);
-    console.log(`Budget headroom: $${model.headroomUsd.toFixed(2)} (${model.budgetUtilizationPercent.toFixed(2)}% used)`);
+    console.log(`Target headroom: $${model.headroomUsd.toFixed(2)} (${model.budgetUtilizationPercent.toFixed(2)}% used)`);
     console.log('');
     console.log('| Component | Description | Monthly USD |');
     console.log('|---|---|---:|');

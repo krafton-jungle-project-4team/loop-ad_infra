@@ -10,7 +10,7 @@ permissions:
 
 jobs:
     deploy:
-        uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/ecs-deploy.yml@v1
+        uses: krafton-jungle-project-4team/loop-ad_infra/.github/workflows/ecs-deploy.yml@main
         with:
             environment: dev
             aws_region: ap-northeast-2

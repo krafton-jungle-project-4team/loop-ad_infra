@@ -442,6 +442,7 @@ describe('loop-ad CDK stacks', () => {
         });
         const synthesizedTemplate = JSON.stringify(template.toJSON());
         expect(synthesizedTemplate).toContain('genai/generated/*');
+        expect(synthesizedTemplate).not.toContain('LOOPAD_RUNTIME');
     });
 
     it('dev stack creates the cost-capped data storage shape', () => {

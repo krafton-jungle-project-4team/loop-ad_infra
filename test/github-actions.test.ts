@@ -41,12 +41,12 @@ describe('GitHub Actions reusable workflows', () => {
         const ecsExample = readFileSync(join(ROOT, 'docs/github-actions/app-ecs-deploy.example.yml'), 'utf8');
         const frontendExample = readFileSync(join(ROOT, 'docs/github-actions/frontend-deploy.example.yml'), 'utf8');
 
-        expect(ecsExample).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/ecs-deploy.yml@v1');
+        expect(ecsExample).toContain('uses: krafton-jungle-project-4team/loop-ad_infra/.github/workflows/ecs-deploy.yml@main');
         expect(ecsExample).toContain('ecr_repository: loop-ad/event-collector');
         expect(ecsExample).toContain('ecs_service: dev-event-collector');
         expect(ecsExample).toContain('image_tag: ${{ github.sha }}');
 
-        expect(frontendExample).toContain('uses: krafton-jungle-project-4team/loop-ad_aws_cdk/.github/workflows/frontend-deploy.yml@v1');
+        expect(frontendExample).toContain('uses: krafton-jungle-project-4team/loop-ad_infra/.github/workflows/frontend-deploy.yml@main');
         expect(frontendExample).toContain('build_output_dir: dist');
         expect(frontendExample).toContain('s3_bucket: loop-ad-dev-dashboard-web');
         expect(frontendExample).toContain('s3_bucket: loop-ad-dev-demo-shoppingmall-web');
@@ -62,6 +62,8 @@ describe('GitHub Actions reusable workflows', () => {
         expect(guide).toContain('container_name');
         expect(guide).toContain('최초 seed image');
         expect(guide).toContain('latest');
+        expect(guide).toContain('loop-ad_infra/.github/workflows/ecs-deploy.yml@main');
+        expect(guide).toContain('loop-ad_infra/.github/workflows/frontend-deploy.yml@main');
         expect(guide).toContain('/loop-ad/dev/ecs/decision-api');
         expect(guide).toContain('loop-ad-dev-dashboard-web');
         expect(guide).toContain('/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id');
@@ -69,10 +71,12 @@ describe('GitHub Actions reusable workflows', () => {
 
     it('infra workflow는 deploy 없이 build/test/synth만 수행한다', () => {
         const workflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
+        const infraExample = readFileSync(join(ROOT, 'docs/github-actions/infra-check.example.yml'), 'utf8');
 
         expect(workflow).toContain('npm run build');
         expect(workflow).toContain('npm test');
         expect(workflow).toContain('npm run synth:${{ inputs.environment }}');
+        expect(infraExample).toContain('uses: krafton-jungle-project-4team/loop-ad_infra/.github/workflows/infra-check.yml@main');
         expect(workflow).toContain('Validate required inputs');
         expect(workflow).toContain('cdk_default_account:');
         expect(workflow).toContain('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN');

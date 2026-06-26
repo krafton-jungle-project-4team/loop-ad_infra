@@ -665,7 +665,6 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
-                LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
@@ -726,7 +725,6 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'ad-context-projector',
-                LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_MSK_BOOTSTRAP_BROKERS: mskBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
@@ -774,7 +772,6 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'advertisement-api',
-                LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_REDIS_URL: redisUrl,
                 LOOPAD_AURORA_HOST: auroraHost,
@@ -839,7 +836,6 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
-                LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
@@ -907,7 +903,6 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
-                LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,

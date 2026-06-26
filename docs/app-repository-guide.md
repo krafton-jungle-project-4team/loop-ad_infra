@@ -70,7 +70,9 @@ Dockerfile 규칙:
 
 Server deploy workflow 규칙:
 
-- 각 서버 repo는 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
+- 각 서버 repo의 `.github/workflows/deploy.yml`은 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
+- workflow 파일을 앱 repo로 복사하지 않고 `krafton-jungle-project-4team/loop-ad_infra/.github/workflows/ecs-deploy.yml@main`을 참조합니다.
+- 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
 - workflow는 image build/push와 ECS service image 교체만 담당합니다.
 - runtime env와 secret은 workflow에서 정의하지 않습니다.
 - ECR repository, ECS cluster, ECS service, container 이름은 아래 dev deploy target 값을 그대로 사용합니다.
@@ -98,18 +100,19 @@ Dev server deploy target:
 |---|---|---|
 | `LOOPAD_ENV` | `dev` | dev ECS에서 고정으로 주입되는 실행 환경 이름입니다. |
 | `LOOPAD_SERVICE_ID` | 서비스별 고정값 | 서비스 식별자입니다. 아래 service ID 값을 그대로 사용합니다. |
-| `LOOPAD_RUNTIME` | 앱 repo별 고정값 | 앱 런타임 구분입니다. |
 | `PORT` | `80` | dev ECS에서 고정으로 주입되는 listen 포트입니다. |
 
 서비스별 `LOOPAD_SERVICE_ID`:
 
-| Service | `LOOPAD_SERVICE_ID` | `LOOPAD_RUNTIME` |
-|---|---|---|
-| Event Collector | `event-collector` | `go` |
-| Ad Context Projector | `ad-context-projector` | `go` |
-| Advertisement API | `advertisement-api` | `go` |
-| Dashboard API | `dashboard-api` | `go` |
-| Decision API | `decision-api` | `go` |
+| Service | `LOOPAD_SERVICE_ID` |
+|---|---|
+| Event Collector | `event-collector` |
+| Ad Context Projector | `ad-context-projector` |
+| Advertisement API | `advertisement-api` |
+| Dashboard API | `dashboard-api` |
+| Decision API | `decision-api` |
+
+앱 언어와 런타임은 Dockerfile, package manifest, repo 구조가 결정합니다. 앱 코드는 `LOOPAD_RUNTIME` 같은 env를 읽어 런타임을 판단하지 않습니다.
 
 Data env:
 
@@ -214,7 +217,9 @@ VITE_AURORA_PASSWORD=...
 
 Frontend deploy workflow 규칙:
 
-- 각 FE repo는 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
+- 각 FE repo의 `.github/workflows/deploy.yml`은 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
+- workflow 파일을 FE repo로 복사하지 않고 `krafton-jungle-project-4team/loop-ad_infra/.github/workflows/frontend-deploy.yml@main`을 참조합니다.
+- 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
 - workflow는 정적 파일 업로드와 CDN invalidation만 담당합니다.
 - bucket, CDN distribution 같은 deploy target 값은 아래 dev frontend deploy target 값을 사용합니다.
 - FE build env 값은 꼭 필요할 때만 GitHub Environment variables 등으로 관리할 수 있지만, secret과 고정 loop-ad domain은 넣지 않습니다.
@@ -250,7 +255,6 @@ Dev frontend deploy target:
 ```text
 LOOPAD_ENV=local
 LOOPAD_SERVICE_ID=dashboard-api
-LOOPAD_RUNTIME=go
 PORT=8080
 LOOPAD_AURORA_HOST=localhost
 LOOPAD_AURORA_PORT=15432

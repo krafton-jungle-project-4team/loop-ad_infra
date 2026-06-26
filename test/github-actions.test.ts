@@ -107,6 +107,7 @@ describe('GitHub Actions reusable workflows', () => {
         expect(packageJson.scripts['deploy:dev-network']).toContain('LoopAdDevNetworkStack');
         expect(packageJson.scripts['deploy:dev-data']).toContain('LoopAdDevDataStack');
         expect(packageJson.scripts['deploy:dev-runtime']).toContain('LoopAdDevRuntimeStack');
+        expect(packageJson.scripts['put:dev-openai-api-key']).toBe('node scripts/put-openai-api-key.mjs');
         expect(packageJson.scripts['synth:dev']).toContain('LoopAdDevDataStack');
         expect(packageJson.scripts['synth:dev']).toContain('LoopAdDevRuntimeStack');
         expect(packageJson.scripts['deploy:dev']).toContain('LoopAdDevDataStack');

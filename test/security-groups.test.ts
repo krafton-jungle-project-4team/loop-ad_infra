@@ -4,17 +4,15 @@ import { LOOP_AD_REGION, LoopAdDevNetworkStack } from '../src/loop-ad-stack';
 
 const DATA_PORTS = new Set([5432, 6379, 8123, 9000, 9098]);
 describe('security group policy', () => {
-    it('dev public ingress is only ALB/NLB port 80', () => {
+    it('dev public ingress is only ALB/NLB port 443', () => {
         const template = Template.fromStack(synthDev());
         const publicIngressRules = publicIngressRulesFrom(template);
 
         expect(publicIngressRules).toHaveLength(2);
+        expect(publicIngressRules.map((rule) => Number(rule.FromPort)).sort((a, b) => a - b)).toEqual([443, 443]);
         for (const rule of publicIngressRules) {
-            expect(rule).toMatchObject({
-                FromPort: 80,
-                ToPort: 80,
-                IpProtocol: 'tcp',
-            });
+            expect(rule.ToPort).toBe(rule.FromPort);
+            expect(rule.IpProtocol).toBe('tcp');
         }
     });
 

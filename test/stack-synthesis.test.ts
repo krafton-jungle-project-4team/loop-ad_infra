@@ -272,7 +272,7 @@ describe('loop-ad CDK stacks', () => {
         ]) {
             template.hasResourceProperties('AWS::Logs::LogGroup', {
                 LogGroupName: `/loop-ad/dev/ecs/${serviceId}`,
-                RetentionInDays: 3,
+                RetentionInDays: 90,
             });
         }
         template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
@@ -285,11 +285,45 @@ describe('loop-ad CDK stacks', () => {
         const stack = synthDevRuntime();
         const template = Template.fromStack(stack);
 
-        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+        template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::Listener', {
             Port: 80,
-            Protocol: 'TCP',
+        }, 0);
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 443,
+            Protocol: 'HTTPS',
+            Certificates: Match.arrayWith([
+                Match.objectLike({
+                    CertificateArn: Match.anyValue(),
+                }),
+            ]),
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 443,
+            Protocol: 'TLS',
+            Certificates: Match.arrayWith([
+                Match.objectLike({
+                    CertificateArn: Match.anyValue(),
+                }),
+            ]),
         });
         template.resourceCountIs('AWS::ElasticLoadBalancingV2::ListenerRule', 2);
+        template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            HealthCheckPath: '/health',
+            Matcher: {
+                HttpCode: '200',
+            },
+        }, 3);
+        template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+            DomainName: `api.dev.${testPublicHostedZone.domainName}`,
+            SubjectAlternativeNames: [`ingest.dev.${testPublicHostedZone.domainName}`],
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: Match.arrayWith([
+                Match.objectLike({
+                    DomainName: `api.dev.${testPublicHostedZone.domainName}`,
+                    HostedZoneId: testPublicHostedZone.hostedZoneId,
+                }),
+            ]),
+        });
         template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
             Priority: 20,
             Conditions: Match.arrayWith([

@@ -4,7 +4,7 @@
 
 앱 repo는 인프라를 직접 구성하지 않습니다. 대신 앱은 이 문서의 env 이름을 정확히 읽고, 인프라 담당자는 ECS task definition 또는 FE build workflow에서 실제 값을 주입합니다.
 
-Public domain과 private service endpoint는 env로 받지 않습니다. 고정 endpoint contract는 [service-endpoints.md](service-endpoints.md)에 둡니다.
+Public HTTPS endpoint와 private service discovery name은 env로 받지 않습니다. 고정 endpoint contract는 [service-endpoints.md](service-endpoints.md)에 둡니다.
 
 ## 핵심 규칙
 
@@ -66,7 +66,7 @@ Dockerfile 규칙:
 - `linux/arm64`에서 실행 가능해야 합니다.
 - 서버는 `PORT` env를 읽고 `0.0.0.0:${PORT}`로 listen합니다.
 - DB endpoint, password, token, API key를 build arg나 image 안에 넣지 않습니다.
-- HTTP 서버는 `/health`에서 정상 상태일 때 `200-399`를 반환합니다.
+- HTTP 서버는 `/health`에서 정상 상태일 때 HTTP status `200`을 반환합니다. 인프라 health check는 `200`만 정상으로 봅니다.
 
 Server deploy workflow 규칙:
 
@@ -75,6 +75,7 @@ Server deploy workflow 규칙:
 - 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
 - workflow는 image build/push와 ECS service image 교체만 담당합니다.
 - runtime env와 secret은 workflow에서 정의하지 않습니다.
+- 앱 repo의 `aws_role_arn`은 ECR image push와 ECS service update 권한만 있으면 됩니다. CloudFormation, Route53, RDS 같은 인프라 전반 권한은 infra repo action 역할에만 둡니다.
 - ECR repository, ECS cluster, ECS service, container 이름은 아래 dev deploy target 값을 그대로 사용합니다.
 - 최초 개발 환경 구성 시에는 인프라 repo에서 ECR repository를 먼저 만든 뒤, 각 서버 repo가 image를 push합니다.
 - ECS service가 아직 없을 때는 reusable ECS deploy workflow를 사용할 수 없습니다. 이 workflow는 현재 ECS task definition을 조회한 뒤 image만 교체하기 때문입니다.
@@ -142,6 +143,8 @@ External secret env:
 |---|---|---|
 | `LOOPAD_OPENAI_API_KEY` | Decision API | OpenAI API key입니다. |
 
+OpenAI API key는 앱 repo workflow에서 다루지 않습니다. Infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입하고, ECS task에는 `LOOPAD_OPENAI_API_KEY` secret env로 전달합니다.
+
 서비스별 필수 env:
 
 | Service | 필수 env |
@@ -152,7 +155,7 @@ External secret env:
 | Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
 | Decision API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
 
-내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision API를 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
+내부 service discovery name은 env로 받지 않습니다. Dashboard API가 Decision API를 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private service discovery contract를 사용합니다.
 
 Redis client를 사용하는 서비스는 `LOOPAD_REDIS_URL`의 `rediss://` endpoint에 TLS로 연결해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
 
@@ -173,10 +176,10 @@ Dev CloudWatch LogGroup 이름:
 로그 규칙:
 
 - 로그는 JSON structured log를 권장합니다.
-- 모든 로그에는 `timestamp`, `level`, `service`, `env`, `message`를 포함합니다.
-- 요청 단위 로그에는 `requestId` 또는 `traceId`를 포함합니다.
+- 권장 필드는 `timestamp`, `level`, `service`, `message`입니다. 인프라는 로그 필드 존재 여부를 시스템적으로 검증하지 않습니다.
+- 요청 단위 로그에는 가능하면 `requestId` 또는 `traceId`를 포함합니다. trace id 전파 방식은 아직 고정하지 않습니다.
 - secret, token, password, API key, DB credential, 개인 식별 정보는 로그에 남기지 않습니다.
-- dev 로그 보존 기간은 인프라에서 3일로 관리합니다.
+- dev 로그 보존 기간은 인프라에서 3개월로 관리합니다.
 
 ## Frontend Static Site Repo
 
@@ -201,7 +204,7 @@ FE env 규칙:
 
 - FE env는 build 결과물에 포함될 수 있습니다.
 - 꼭 필요한 public 값만 사용합니다.
-- secret, DB credential, webhook URL, private endpoint를 FE env에 넣지 않습니다.
+- secret, DB credential, webhook URL, private service discovery name을 FE env에 넣지 않습니다.
 - Vite를 쓴다면 public env는 `VITE_` prefix를 사용합니다.
 - FE도 env를 사용한다면 fallback 없이 build 시작 시점에 검증합니다.
 - loop-ad public domain은 [service-endpoints.md](service-endpoints.md)의 고정 contract를 사용하고 `VITE_API_BASE_URL` 같은 env로 다시 빼지 않습니다.
@@ -283,7 +286,7 @@ LOOPAD_AURORA_DATABASE=loopad
 - 서버 repo는 Dockerfile과 deploy workflow를 갖고 있는가?
 - 최초 seed image를 `latest` tag로 ECR에 push할 수 있는가?
 - deploy workflow input이 dev server deploy target 표와 일치하는가?
-- 서버 health check가 준비되어 있는가?
+- 서버 `/health`가 정상 상태에서 정확히 `200`을 반환하는가?
 - 서버 로그가 stdout/stderr로 출력되고 secret을 포함하지 않는가?
 - FE repo는 `npm ci`, `npm run build`, `dist` 기본 규칙을 따르는가?
 - FE deploy workflow input이 dev frontend deploy target 표와 일치하는가?

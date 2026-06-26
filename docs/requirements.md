@@ -5,8 +5,9 @@
 ## 범위
 
 - 담당: CloudFront용 ACM certificate, ECR repository, VPC/network, data storage stack, runtime service stack, ECS, ALB/NLB, 보안그룹, S3 Gateway Endpoint, FE 정적 사이트용 S3/CloudFront, DataStorage S3, GenAI 생성물 공개용 CloudFront, 개발용 Aurora/Valkey/ClickHouse/MSK, SSM endpoint contract, GitHub Actions reusable workflow
-- 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재/로그 운영
+- 제외: 애플리케이션 코드, SDK, React 구현, 비즈니스 로직, 실제 데이터 적재, DB migration, Kafka topic 생성, ClickHouse schema 생성
 - 리전: `ap-northeast-2`
+- public domain: `loop-ad.org`
 
 ## 환경
 
@@ -16,6 +17,7 @@
 
 - 한 VPC를 소유한다.
 - CloudFront custom domain용 ACM certificate는 `us-east-1`의 별도 certificate stack에서 관리한다.
+- ALB/NLB public ingress용 ACM certificate는 `ap-northeast-2` runtime stack에서 관리한다.
 - Dev data/runtime stack은 certificate stack output ARN을 `.env`로 받아 CloudFront distribution에 import한다.
 - ECR repository는 별도 repository stack에서 먼저 만들고, 각 앱 repo가 image를 push한 뒤 ECS runtime stack을 배포한다.
 - Dev runtime stack은 ECR repository를 생성하지 않고 고정 repository name contract로 import한다.
@@ -25,16 +27,18 @@
 - VPC는 subnet 배치를 예측 가능하게 유지하기 위해 `ap-northeast-2a`, `ap-northeast-2c` 두 AZ를 명시해 생성한다.
 - ECR, CloudWatch Logs, SSM, ECS Interface Endpoint는 만들지 않고 NAT Gateway를 통해 public AWS API를 호출한다.
 - S3 Gateway Endpoint는 유지해서 S3/ECR layer 트래픽을 NAT data processing으로 보내지 않는다.
-- Dashboard FE는 `https://dashboard.dev.<public-domain>`, demo-shoppingmall FE는 `https://demo-shoppingmall.dev.<public-domain>`으로 공개한다.
+- Dashboard FE는 `https://dashboard.dev.loop-ad.org`, demo-shoppingmall FE는 `https://demo-shoppingmall.dev.loop-ad.org`로 공개한다.
+- Public API는 `https://api.dev.loop-ad.org`, Event ingest는 `https://ingest.dev.loop-ad.org`를 기본 외부 contract로 둔다.
+- ALB/NLB 모두 public 443 ingress만 열고, load balancer가 TLS를 종료한 뒤 private ECS container의 80 포트로 전달한다.
 - 각 FE는 private S3 bucket과 CloudFront OAC를 사용하며, SPA fallback은 `/index.html`로 처리한다.
 - DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
-- GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.<public-domain>/...`로 외부 조회할 수 있게 한다.
+- GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.loop-ad.org/...`로 외부 조회할 수 있게 한다.
 - DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, CloudFront OAC 접근 제어를 필수 보안 조건으로 가진다.
 - Dev data stack은 Aurora/Valkey/ClickHouse/MSK/DataStorage S3와 SSM endpoint contract를 소유한다.
 - Dev runtime stack은 FE 정적 hosting, ALB/NLB, Route53 public runtime record, ECS cluster/service/log group을 소유한다.
-- Public domain과 private service endpoint는 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
+- Public HTTPS endpoint와 private service discovery name은 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
 - Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
-- 각 ECS 서비스는 `/loop-ad/dev/ecs/<service-id>` 형식의 별도 CloudWatch LogGroup에 stdout/stderr 로그를 남기고 dev에서는 3일만 보관한다.
+- 각 ECS 서비스는 `/loop-ad/dev/ecs/<service-id>` 형식의 별도 CloudWatch LogGroup에 stdout/stderr 로그를 남기고 dev에서는 3개월만 보관한다.
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Advertisement API와 Dashboard API는 ALB path rule에만 붙인다.
@@ -43,7 +47,11 @@
 - Redis 호환 cache는 ElastiCache Serverless for Valkey major version `7`로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
 - MSK는 AWS recommended Kafka `3.9.x`, 저비용 dev 기준 Standard `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
+- MSK 인증 방식은 현재 dev 비용과 구현 단순성을 우선해 unauthenticated + TLS/plaintext 허용 구성을 유지한다.
 - MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
+- OpenAI API key는 infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입한 뒤 Runtime stack에서 참조한다.
+- 앱 repo GitHub Actions OIDC role은 ECR image push와 ECS service update 권한을 가진다.
+- Infra repo GitHub Actions OIDC role은 CDK가 관리하는 dev 인프라 전반을 생성/변경할 수 있는 권한을 가진다.
 - `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
 - Dev data stack 실행 시 GenAI asset용 CloudFront certificate ARN을 필수로 요구한다.
 - Dev runtime stack 실행 시 frontend site용 CloudFront certificate ARN과 data stack 참조를 필수로 요구한다.
@@ -56,6 +64,7 @@
 - `npm run synth:dev-data`
 - `npm run synth:dev-runtime`
 - `npm run synth:dev`
+- `npm run put:dev-openai-api-key`
 - `npm run deploy:dev-certificate`
 - `npm run deploy:dev-repositories`
 - `npm run deploy:dev-network`
@@ -63,7 +72,9 @@
 - `npm run deploy:dev-runtime`
 - `npm run deploy:dev`
 
-최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> DB migration/topic/schema 등 데이터 초기화 -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 data contract가 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime dependency 누락을 피할 수 있다.
+최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> `put:dev-openai-api-key` -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 외부 secret이 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime secret 누락을 피할 수 있다.
+
+데이터 초기화 책임은 현재 infra contract에서 제외한다. DB migration, Kafka topic 생성, ClickHouse schema 생성 주체는 앱 구현이 구체화된 뒤 별도로 정한다.
 
 실제 CDK 배포 전에는 `ap-northeast-2`와 CloudFront certificate용 `us-east-1`에 CDK bootstrap을 먼저 수행한다.
 

@@ -39,10 +39,12 @@ const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
 const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
 const DEV_VPC_AVAILABILITY_ZONES = ['ap-northeast-2a', 'ap-northeast-2c'];
 const DEV_ECS_LOG_GROUP_PREFIX = '/loop-ad/dev/ecs';
-const DEV_ECS_LOG_RETENTION = logs.RetentionDays.THREE_DAYS;
+const DEV_LOG_RETENTION = logs.RetentionDays.THREE_MONTHS;
 const AURORA_DATABASE_NAME = 'loopad';
 const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
+const PUBLIC_API_RECORD_NAME = 'api.dev';
+const PUBLIC_INGEST_RECORD_NAME = 'ingest.dev';
 const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
@@ -178,12 +180,12 @@ export class LoopAdDevNetworkStack extends Stack {
         this.albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
-            description: 'Dev ALB public HTTP ingress only.',
+            description: 'Dev ALB public HTTPS ingress.',
         });
         this.nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
-            description: 'Dev NLB event ingestion ingress only.',
+            description: 'Dev NLB event ingestion TLS ingress.',
         });
         this.serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
             vpc: this.vpc,
@@ -196,9 +198,10 @@ export class LoopAdDevNetworkStack extends Stack {
             description: 'Dev data storage SG shared by internal data endpoints.',
         });
 
-        // 인터넷 트래픽은 public load balancer만 받습니다.
-        this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP to dev ALB.');
-        this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public ingest to dev NLB.');
+        // 인터넷 트래픽은 public load balancer의 443만 받습니다.
+        // load balancer에서 TLS를 종료하고 private ECS container의 80 포트로 전달합니다.
+        this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public HTTPS to dev ALB.');
+        this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public TLS ingest to dev NLB.');
 
         // VPC 내부에서는 SG 경계를 기준으로 server와 DataStorage가 서로 신뢰합니다.
         this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
@@ -226,7 +229,7 @@ export interface LoopAdDevDataStackProps extends StackProps {
 }
 
 // 데이터 저장소와 endpoint contract를 소유하는 스택입니다.
-// Runtime보다 먼저 배포해 DB/schema/topic 초기화 작업을 분리할 수 있게 합니다.
+// Runtime보다 먼저 배포해 ECS task가 참조할 storage endpoint를 안정적으로 제공합니다.
 export class LoopAdDevDataStack extends Stack {
     public readonly dataStorageBucket: s3.Bucket;
     public readonly auroraHost: string;
@@ -427,7 +430,7 @@ export class LoopAdDevDataStack extends Stack {
             },
             installLatestAwsSdk: false,
             logGroup: new logs.LogGroup(this, 'MskBootstrapBrokersLogGroup', {
-                retention: logs.RetentionDays.THREE_DAYS,
+                retention: DEV_LOG_RETENTION,
                 removalPolicy: RemovalPolicy.DESTROY,
             }),
             policy: cr.AwsCustomResourcePolicy.fromStatements([
@@ -567,6 +570,8 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
         const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const publicApiDomainName = `${PUBLIC_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const publicIngestDomainName = `${PUBLIC_INGEST_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         // Certificate stack에서 만든 ACM ARN을 명시적으로 import합니다.
         // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
         const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
@@ -601,15 +606,23 @@ export class LoopAdDevRuntimeStack extends Stack {
 
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         // HTTP API와 ingestion traffic의 성격이 달라 listener/target group을 분리해 장애 범위를 줄입니다.
+        // ALB/NLB에 붙는 인증서는 같은 region(ap-northeast-2)에 있어야 하므로 runtime stack에서 별도로 만듭니다.
+        const regionalIngressCertificate = new acm.Certificate(this, 'RegionalIngressCertificate', {
+            domainName: publicApiDomainName,
+            subjectAlternativeNames: [publicIngestDomainName],
+            validation: acm.CertificateValidation.fromDns(publicHostedZone),
+        });
+        const regionalIngressListenerCertificate = elbv2.ListenerCertificate.fromCertificateManager(regionalIngressCertificate);
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
             vpc,
             internetFacing: true,
             securityGroup: albSecurityGroup,
             vpcSubnets: { subnetGroupName: 'public' },
         });
-        const albListener = alb.addListener('HttpListener', {
-            port: 80,
-            protocol: elbv2.ApplicationProtocol.HTTP,
+        const httpsAlbListener = alb.addListener('HttpsListener', {
+            port: 443,
+            protocol: elbv2.ApplicationProtocol.HTTPS,
+            certificates: [regionalIngressListenerCertificate],
             open: false,
             defaultAction: elbv2.ListenerAction.fixedResponse(404, {
                 contentType: 'text/plain',
@@ -628,12 +641,12 @@ export class LoopAdDevRuntimeStack extends Stack {
         for (const dnsRecord of [
             {
                 id: 'DevApiDnsRecord',
-                recordName: 'api.dev',
+                recordName: PUBLIC_API_RECORD_NAME,
                 target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
             },
             {
                 id: 'DevIngestDnsRecord',
-                recordName: 'ingest.dev',
+                recordName: PUBLIC_INGEST_RECORD_NAME,
                 target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
             },
         ] as const) {
@@ -689,18 +702,22 @@ export class LoopAdDevRuntimeStack extends Stack {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
-        // NLB는 TCP 80 포트를 collector service로 직접 전달합니다.
-        const nlbListener = nlb.addListener('EventCollectorListener', {
-            port: 80,
-            protocol: elbv2.Protocol.TCP,
+        // NLB는 443에서 TLS를 종료하고 collector service의 80 포트로 전달합니다.
+        const tlsNlbListener = nlb.addListener('TlsEventCollectorListener', {
+            port: 443,
+            protocol: elbv2.Protocol.TLS,
+            certificates: [regionalIngressListenerCertificate],
         });
-        nlbListener.addTargets('EventCollectorTargets', {
+        tlsNlbListener.addTargets('TlsEventCollectorTargets', {
             targets: [eventCollectorService],
             port: 80,
             protocol: elbv2.Protocol.TCP,
             healthCheck: {
                 enabled: true,
                 port: '80',
+                protocol: elbv2.Protocol.HTTP,
+                path: '/health',
+                healthyHttpCodes: '200',
             },
         });
 
@@ -801,7 +818,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         advertisementService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('AdvertisementApiCpuScaling', {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
-        albListener.addTargets('AdvertisementApiTargets', {
+        httpsAlbListener.addTargets('AdvertisementApiTargets', {
             targets: [advertisementService],
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
@@ -810,7 +827,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             healthCheck: {
                 enabled: true,
                 path: '/health',
-                healthyHttpCodes: '200-399',
+                healthyHttpCodes: '200',
             },
         });
 
@@ -868,7 +885,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         dashboardService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DashboardApiCpuScaling', {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
-        albListener.addTargets('DashboardApiTargets', {
+        httpsAlbListener.addTargets('DashboardApiTargets', {
             targets: [dashboardService],
             port: 80,
             protocol: elbv2.ApplicationProtocol.HTTP,
@@ -877,7 +894,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             healthCheck: {
                 enabled: true,
                 path: '/health',
-                healthyHttpCodes: '200-399',
+                healthyHttpCodes: '200',
             },
         });
 
@@ -942,7 +959,7 @@ export class LoopAdDevRuntimeStack extends Stack {
 function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
     return new logs.LogGroup(scope, id, {
         logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
-        retention: DEV_ECS_LOG_RETENTION,
+        retention: DEV_LOG_RETENTION,
     });
 }
 

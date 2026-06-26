@@ -72,7 +72,7 @@ if (environmentName === 'dev-certificate') {
         network: networkStack,
         genAiGeneratedAssetsCertificateArn: readRequiredEnv('LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN'),
     });
-    // Runtime stack은 앱 image와 data 초기화가 준비된 뒤 ECS/ingress를 올립니다.
+    // Runtime stack은 앱 image와 외부 secret이 준비된 뒤 ECS/ingress를 올립니다.
     new LoopAdDevRuntimeStack(app, 'LoopAdDevRuntimeStack', {
         env,
         publicHostedZone,

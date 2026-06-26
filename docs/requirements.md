@@ -30,7 +30,8 @@
 - GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.<public-domain>/...`로 외부 조회할 수 있게 한다.
 - DataStorage S3 bucket은 public access 차단, 서버 측 암호화, HTTPS 강제, bucket owner enforced object ownership, CloudFront OAC 접근 제어를 필수 보안 조건으로 가진다.
 - Public domain과 private service endpoint는 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
-- Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision을 ECS 서비스로 실행한다.
+- Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
+- 각 ECS 서비스는 `/loop-ad/dev/ecs/<service-id>` 형식의 별도 CloudWatch LogGroup에 stdout/stderr 로그를 남기고 dev에서는 3일만 보관한다.
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.
 - Advertisement API와 Dashboard API는 ALB path rule에만 붙인다.

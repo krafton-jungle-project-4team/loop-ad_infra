@@ -92,7 +92,7 @@ describe('loop-ad CDK stacks', () => {
             RepositoryName: 'loop-ad/advertisement-api',
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
-            RepositoryName: 'loop-ad/decision',
+            RepositoryName: 'loop-ad/decision-api',
         });
         template.hasOutput('EventCollectorRepositoryUri', {
             Value: Match.anyValue(),
@@ -111,6 +111,7 @@ describe('loop-ad CDK stacks', () => {
         template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
         template.resourceCountIs('AWS::ECR::Repository', 0);
         template.resourceCountIs('AWS::ECS::Service', 5);
+        template.resourceCountIs('AWS::Logs::LogGroup', 6);
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -242,16 +243,28 @@ describe('loop-ad CDK stacks', () => {
             LaunchType: 'FARGATE',
         });
         template.hasResourceProperties('AWS::ECS::Service', {
-            ServiceName: 'dev-decision',
+            ServiceName: 'dev-decision-api',
             LaunchType: 'FARGATE',
         });
+        for (const serviceId of [
+            'event-collector',
+            'ad-context-projector',
+            'advertisement-api',
+            'dashboard-api',
+            'decision-api',
+        ]) {
+            template.hasResourceProperties('AWS::Logs::LogGroup', {
+                LogGroupName: `/loop-ad/dev/ecs/${serviceId}`,
+                RetentionInDays: 3,
+            });
+        }
         template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
             MinCapacity: 1,
             MaxCapacity: 2,
         }, 5);
     });
 
-    it('dev stack exposes only collector through NLB and API services through ALB path rules', () => {
+    it('dev stack exposes collector through NLB and public API routes through ALB path rules', () => {
         const stack = synthDev();
         const template = Template.fromStack(stack);
 
@@ -466,8 +479,12 @@ describe('loop-ad CDK stacks', () => {
         template.hasResourceProperties('AWS::ECS::TaskDefinition', {
             ContainerDefinitions: Match.arrayWith([
                 Match.objectLike({
-                    Name: 'decision',
+                    Name: 'decision-api',
                     Environment: Match.arrayWith([
+                        Match.objectLike({
+                            Name: 'LOOPAD_SERVICE_ID',
+                            Value: 'decision-api',
+                        }),
                         Match.objectLike({
                             Name: 'LOOPAD_DATA_STORAGE_BUCKET',
                             Value: Match.anyValue(),

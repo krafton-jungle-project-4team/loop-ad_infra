@@ -37,6 +37,8 @@ const DEV_VALKEY_MAJOR_ENGINE_VERSION = '7';
 const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
 const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
 const DEV_VPC_AVAILABILITY_ZONES = ['ap-northeast-2a', 'ap-northeast-2c'];
+const DEV_ECS_LOG_GROUP_PREFIX = '/loop-ad/dev/ecs';
+const DEV_ECS_LOG_RETENTION = logs.RetentionDays.THREE_DAYS;
 const AURORA_DATABASE_NAME = 'loopad';
 const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
@@ -49,7 +51,7 @@ const DEV_APPLICATION_REPOSITORIES = [
     { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector', outputId: 'AdContextProjectorRepositoryUri' },
     { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api', outputId: 'AdvertisementApiRepositoryUri' },
     { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api', outputId: 'DashboardApiRepositoryUri' },
-    { id: 'DecisionRepository', repositoryName: 'loop-ad/decision', outputId: 'DecisionRepositoryUri' },
+    { id: 'DecisionApiRepository', repositoryName: 'loop-ad/decision-api', outputId: 'DecisionApiRepositoryUri' },
 ] as const;
 
 type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
@@ -262,7 +264,7 @@ export class LoopAdDevStack extends Stack {
             projectorRepository,
             advertisementRepository,
             dashboardRepository,
-            decisionRepository,
+            decisionApiRepository,
         ] = repositories;
 
         // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
@@ -606,9 +608,7 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        const eventCollectorLogGroup = new logs.LogGroup(this, 'EventCollectorLogGroup', {
-            retention: logs.RetentionDays.THREE_DAYS,
-        });
+        const eventCollectorLogGroup = createEcsServiceLogGroup(this, 'EventCollectorLogGroup', 'event-collector');
         const eventCollectorContainer = eventCollectorTask.addContainer('EventCollectorContainer', {
             containerName: 'event-collector',
             image: ecs.ContainerImage.fromEcrRepository(eventCollectorRepository, 'latest'),
@@ -669,9 +669,7 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        const projectorLogGroup = new logs.LogGroup(this, 'AdContextProjectorLogGroup', {
-            retention: logs.RetentionDays.THREE_DAYS,
-        });
+        const projectorLogGroup = createEcsServiceLogGroup(this, 'AdContextProjectorLogGroup', 'ad-context-projector');
         const projectorContainer = projectorTask.addContainer('AdContextProjectorContainer', {
             containerName: 'ad-context-projector',
             image: ecs.ContainerImage.fromEcrRepository(projectorRepository, 'latest'),
@@ -719,9 +717,7 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        const advertisementLogGroup = new logs.LogGroup(this, 'AdvertisementApiLogGroup', {
-            retention: logs.RetentionDays.THREE_DAYS,
-        });
+        const advertisementLogGroup = createEcsServiceLogGroup(this, 'AdvertisementApiLogGroup', 'advertisement-api');
         const advertisementContainer = advertisementTask.addContainer('AdvertisementApiContainer', {
             containerName: 'advertisement-api',
             image: ecs.ContainerImage.fromEcrRepository(advertisementRepository, 'latest'),
@@ -775,7 +771,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision을 호출합니다.
+        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision API를 호출합니다.
         // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage bucket의 generated prefix 읽기 권한만 부여합니다.
         const dashboardTask = new ecs.FargateTaskDefinition(this, 'DashboardApiTaskDefinition', {
             cpu: 256,
@@ -786,9 +782,7 @@ export class LoopAdDevStack extends Stack {
             },
         });
         dataStorageBucket.grantRead(dashboardTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
-        const dashboardLogGroup = new logs.LogGroup(this, 'DashboardApiLogGroup', {
-            retention: logs.RetentionDays.THREE_DAYS,
-        });
+        const dashboardLogGroup = createEcsServiceLogGroup(this, 'DashboardApiLogGroup', 'dashboard-api');
         const dashboardContainer = dashboardTask.addContainer('DashboardApiContainer', {
             containerName: 'dashboard-api',
             image: ecs.ContainerImage.fromEcrRepository(dashboardRepository, 'latest'),
@@ -845,9 +839,9 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // Decision은 private 전용이며 public ALB에 연결하지 않습니다.
+        // Decision API는 private 전용이며 public ALB에 연결하지 않습니다.
         // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 task에만 줍니다.
-        const decisionTask = new ecs.FargateTaskDefinition(this, 'DecisionTaskDefinition', {
+        const decisionApiTask = new ecs.FargateTaskDefinition(this, 'DecisionApiTaskDefinition', {
             cpu: 256,
             memoryLimitMiB: 512,
             runtimePlatform: {
@@ -855,20 +849,18 @@ export class LoopAdDevStack extends Stack {
                 operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
             },
         });
-        dataStorageBucket.grantReadWrite(decisionTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
-        const decisionLogGroup = new logs.LogGroup(this, 'DecisionLogGroup', {
-            retention: logs.RetentionDays.THREE_DAYS,
-        });
-        const decisionContainer = decisionTask.addContainer('DecisionContainer', {
-            containerName: 'decision',
-            image: ecs.ContainerImage.fromEcrRepository(decisionRepository, 'latest'),
+        dataStorageBucket.grantReadWrite(decisionApiTask.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`);
+        const decisionApiLogGroup = createEcsServiceLogGroup(this, 'DecisionApiLogGroup', 'decision-api');
+        const decisionApiContainer = decisionApiTask.addContainer('DecisionApiContainer', {
+            containerName: 'decision-api',
+            image: ecs.ContainerImage.fromEcrRepository(decisionApiRepository, 'latest'),
             logging: ecs.LogDrivers.awsLogs({
-                streamPrefix: 'decision',
-                logGroup: decisionLogGroup,
+                streamPrefix: 'decision-api',
+                logGroup: decisionApiLogGroup,
             }),
             environment: {
                 LOOPAD_ENV: 'dev',
-                LOOPAD_SERVICE_ID: 'decision',
+                LOOPAD_SERVICE_ID: 'decision-api',
                 LOOPAD_RUNTIME: 'go',
                 PORT: '80',
                 LOOPAD_AURORA_HOST: auroraHost,
@@ -885,11 +877,11 @@ export class LoopAdDevStack extends Stack {
                 LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSsmParameter(openAiApiKeyParameter),
             },
         });
-        decisionContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
-        const decisionService = new ecs.FargateService(this, 'DecisionService', {
+        decisionApiContainer.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+        const decisionApiService = new ecs.FargateService(this, 'DecisionApiService', {
             cluster,
-            taskDefinition: decisionTask,
-            serviceName: 'dev-decision',
+            taskDefinition: decisionApiTask,
+            serviceName: 'dev-decision-api',
             desiredCount: DEV_SERVICE_DESIRED_TASKS,
             assignPublicIp: false,
             securityGroups: [serverSecurityGroup],
@@ -897,13 +889,20 @@ export class LoopAdDevStack extends Stack {
             circuitBreaker: { rollback: true },
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
-            cloudMapOptions: { name: 'decision' },
+            cloudMapOptions: { name: 'decision-api' },
         });
-        decisionService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DecisionCpuScaling', {
+        decisionApiService.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization('DecisionApiCpuScaling', {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
     }
+}
+
+function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
+    return new logs.LogGroup(scope, id, {
+        logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
+        retention: DEV_ECS_LOG_RETENTION,
+    });
 }
 
 interface StaticFrontendSiteConfig {

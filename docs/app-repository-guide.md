@@ -84,7 +84,7 @@ Dev ECR repository 이름:
 | Ad Context Projector | `loop-ad/ad-context-projector` |
 | Advertisement API | `loop-ad/advertisement-api` |
 | Dashboard API | `loop-ad/dashboard-api` |
-| Decision | `loop-ad/decision` |
+| Decision API | `loop-ad/decision-api` |
 
 ## Server Env Contract
 
@@ -107,7 +107,7 @@ Dev ECR repository 이름:
 | Ad Context Projector | `ad-context-projector` |
 | Advertisement API | `advertisement-api` |
 | Dashboard API | `dashboard-api` |
-| Decision | `decision` |
+| Decision API | `decision-api` |
 
 Data env:
 
@@ -135,7 +135,7 @@ External secret env:
 
 | Env | 사용하는 서비스 | 설명 |
 |---|---|---|
-| `LOOPAD_OPENAI_API_KEY` | Decision | OpenAI API key입니다. |
+| `LOOPAD_OPENAI_API_KEY` | Decision API | OpenAI API key입니다. |
 
 서비스별 필수 env:
 
@@ -145,11 +145,33 @@ External secret env:
 | Ad Context Projector | 공통 서버 env, `LOOPAD_MSK_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC`, `LOOPAD_REDIS_URL`, `LOOPAD_CLICKHOUSE_URL`, `LOOPAD_CLICKHOUSE_USERNAME` |
 | Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
 | Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
-| Decision | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
+| Decision API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
 
-내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision을 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
+내부 service 호출 주소는 env로 받지 않습니다. Dashboard API가 Decision API를 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private endpoint contract를 사용합니다.
 
 Redis client를 사용하는 서비스는 `LOOPAD_REDIS_URL`의 `rediss://` endpoint에 TLS로 연결해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
+
+## Server Logging Contract
+
+서버는 파일 로그를 직접 관리하지 않고 stdout/stderr로만 로그를 남깁니다. 인프라는 ECS service별 CloudWatch LogGroup을 분리해 보관합니다.
+
+Dev CloudWatch LogGroup 이름:
+
+| Service | LogGroup |
+|---|---|
+| Event Collector | `/loop-ad/dev/ecs/event-collector` |
+| Ad Context Projector | `/loop-ad/dev/ecs/ad-context-projector` |
+| Advertisement API | `/loop-ad/dev/ecs/advertisement-api` |
+| Dashboard API | `/loop-ad/dev/ecs/dashboard-api` |
+| Decision API | `/loop-ad/dev/ecs/decision-api` |
+
+로그 규칙:
+
+- 로그는 JSON structured log를 권장합니다.
+- 모든 로그에는 `timestamp`, `level`, `service`, `env`, `message`를 포함합니다.
+- 요청 단위 로그에는 `requestId` 또는 `traceId`를 포함합니다.
+- secret, token, password, API key, DB credential, 개인 식별 정보는 로그에 남기지 않습니다.
+- dev 로그 보존 기간은 인프라에서 3일로 관리합니다.
 
 ## Frontend Static Site Repo
 

@@ -134,3 +134,55 @@ Initial priority:
 
 - 단일 `src/loop-ad-stack.ts`가 여전히 크고, runtime service 생성 중복이 많아 CDK 유지보수성 95 기준에는 미달한다.
 - service-specific SG로 좁히는 보안 개선은 blast radius가 있어 별도 diff 승인 전에는 적용하지 않았다.
+
+## Cycle 3 - CDK Module Split Without Logical ID Changes
+
+목적:
+
+- `src/loop-ad-stack.ts`의 config, lifecycle stack, runtime helper를 분리해 파일 단위 reviewability를 개선한다.
+- 기존 import surface는 유지하되, 작은 lifecycle stack을 별도 모듈로 분리한다.
+- stateful logical ID 테스트로 리팩터가 VPC/S3/RDS/Valkey/EC2 data node logical ID를 바꾸지 않았음을 검증한다.
+
+변경 파일:
+
+- `src/dev-config.ts`
+- `src/lifecycle-stacks.ts`
+- `src/runtime-helpers.ts`
+- `src/loop-ad-stack.ts`
+- `test/infra-contract.test.ts`
+- `README.md`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 13 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 변화:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 비용 모델, $300 budget guardrail, 관리형 전환 비용 gate가 유지된다. |
+| 보안/안전성 | 90 | 90 | secret/env/OIDC/deploy-free/L1 정책은 유지된다. broad internal SG는 dev trade-off로 문서화했으며 blast radius 때문에 이번 cycle에서 바꾸지 않았다. |
+| 운영 안정성 | 91 | 91 | synth/test 검증과 managed transition rollback gate가 유지된다. 실제 복구 drill은 배포 후 과제다. |
+| CDK 모범사례/유지보수성 | 92 | 95 | config/lifecycle/helper 모듈 분리, L2 우선 정책, logical ID guard, source module size guard, lifecycle별 stack boundary, deploy 없는 synth/test 검증을 갖췄다. |
+| 테스트/문서화 | 94 | 95 | 테스트를 새로 구성했고 cost/model/transition/logical ID/module size까지 문서와 테스트가 연결된다. |
+
+최종 독립 기준:
+
+| 항목 | 목표 | 현재 | 상태 |
+|---|---:|---:|---|
+| 비용 적합성 | 90 | 91 | pass |
+| 보안/안전성 | 90 | 90 | pass |
+| 운영 안정성 | 90 | 91 | pass |
+| CDK 모범사례/유지보수성 | 95 | 95 | pass |
+| 테스트/문서화 | 90 | 95 | pass |
+
+실제 배포 없이 검증 불가능한 blocker:
+
+- AWS Budgets email confirmation과 actual/forecasted alert delivery
+- Cost Explorer 기반 7일/30일 actual cost comparison
+- Aurora snapshot restore, EC2 Kafka/ClickHouse rollback drill
+- managed service PoC의 latency/throughput/cost actual 검증
+- 사용자 승인 전 `cdk diff`를 실행하지 않았으므로 CloudFormation replacement 검토는 unit/synth 기반으로만 수행됨

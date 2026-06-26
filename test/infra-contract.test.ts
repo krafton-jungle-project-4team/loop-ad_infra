@@ -257,6 +257,15 @@ describe('loop-ad local safety contracts', () => {
         expect(violations).toEqual([]);
     });
 
+    it('keeps CDK source modules split into reviewable files', () => {
+        const oversizedFiles = sourceFiles(SRC_DIR).flatMap((file) => {
+            const lineCount = readFileSync(file, 'utf8').split('\n').length;
+            return lineCount > 950 ? [`${file}: ${lineCount}`] : [];
+        });
+
+        expect(oversizedFiles).toEqual([]);
+    });
+
     it('keeps reusable GitHub workflows OIDC-based and infra checks deploy-free', () => {
         const ecsWorkflow = readFileSync(join(ROOT, '.github/workflows/ecs-deploy.yml'), 'utf8');
         const frontendWorkflow = readFileSync(join(ROOT, '.github/workflows/frontend-deploy.yml'), 'utf8');

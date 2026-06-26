@@ -18,7 +18,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 3. AWS CDK
    - dev 환경의 ACM certificate, ECR repository, VPC/network, data storage, runtime service, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, EC2 Kafka, SSM contract를 관리합니다.
    - 월 $300 dev 예산 guardrail과 로컬 비용 산정 모델은 [docs/cost-model.md](docs/cost-model.md)에 정리합니다.
-   - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)입니다.
+   - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)이고, dev config와 lifecycle/helper 모듈은 [src/dev-config.ts](src/dev-config.ts), [src/lifecycle-stacks.ts](src/lifecycle-stacks.ts), [src/runtime-helpers.ts](src/runtime-helpers.ts)에 둡니다.
 
 4. CI/CD용 GitHub Actions 템플릿
    - ECS 서비스 배포 reusable workflow: [.github/workflows/ecs-deploy.yml](.github/workflows/ecs-deploy.yml)

@@ -1,6 +1,5 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
@@ -8,7 +7,6 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
-import * as logs from 'aws-cdk-lib/aws-logs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
@@ -17,201 +15,53 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
+import {
+    AURORA_DATABASE_NAME,
+    DASHBOARD_WEB_RECORD_NAME,
+    DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
+    DEV_APPLICATION_REPOSITORIES,
+    DEV_AURORA_AUTO_PAUSE_MINUTES,
+    DEV_AURORA_MAX_ACU,
+    DEV_AURORA_MIN_ACU,
+    DEV_CLICKHOUSE_IMAGE,
+    DEV_CLICKHOUSE_VOLUME_GIB,
+    DEV_KAFKA_SCALA_VERSION,
+    DEV_KAFKA_VERSION,
+    DEV_KAFKA_VOLUME_GIB,
+    DEV_SERVICE_DESIRED_TASKS,
+    DEV_SERVICE_MAX_TASKS,
+    DEV_SERVICE_MIN_TASKS,
+    DEV_VALKEY_MAJOR_ENGINE_VERSION,
+    DEV_VALKEY_MAX_DATA_STORAGE_GB,
+    DEV_VALKEY_MAX_ECPU_PER_SECOND,
+    DEV_VPC_AVAILABILITY_ZONES,
+    EVENT_TOPIC_NAME,
+    GENAI_GENERATED_ASSETS_PREFIX,
+    GENAI_PUBLIC_ASSETS_RECORD_NAME,
+    OPENAI_API_KEY_PARAMETER_NAME,
+    PUBLIC_API_RECORD_NAME,
+    PUBLIC_INGEST_RECORD_NAME,
+    SERVICE_CPU_SCALE_TARGET_PERCENT,
+    type LoopAdDevCertificateArns,
+    type PublicHostedZoneConfig,
+} from './dev-config';
+import {
+    createEcsServiceLogGroup,
+    createStaticFrontendSite,
+} from './runtime-helpers';
 
-export const LOOP_AD_REGION = 'ap-northeast-2';
-
-const DEV_SERVICE_DESIRED_TASKS = 1;
-const DEV_SERVICE_MIN_TASKS = 1;
-const DEV_SERVICE_MAX_TASKS = 2;
-const SERVICE_CPU_SCALE_TARGET_PERCENT = 70;
-const DEV_AURORA_MIN_ACU = 0;
-const DEV_AURORA_MAX_ACU = 2;
-const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
-const DEV_CLICKHOUSE_VOLUME_GIB = 50;
-const DEV_KAFKA_VOLUME_GIB = 20;
-const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
-const DEV_KAFKA_VERSION = '3.9.1';
-const DEV_KAFKA_SCALA_VERSION = '2.13';
-const DEV_VALKEY_MAJOR_ENGINE_VERSION = '7';
-const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
-const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
-const DEV_VPC_AVAILABILITY_ZONES = ['ap-northeast-2a', 'ap-northeast-2c'];
-const DEV_ECS_LOG_GROUP_PREFIX = '/loop-ad/dev/ecs';
-const DEV_LOG_RETENTION = logs.RetentionDays.THREE_MONTHS;
-const AURORA_DATABASE_NAME = 'loopad';
-const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
-const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
-const PUBLIC_API_RECORD_NAME = 'api.dev';
-const PUBLIC_INGEST_RECORD_NAME = 'ingest.dev';
-const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
-const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
-const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
-const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
-const DEV_MONTHLY_BUDGET_LIMIT_USD = 300;
-const DEV_MONTHLY_BUDGET_WARNING_PERCENT = 80;
-const DEV_MONTHLY_BUDGET_CRITICAL_PERCENT = 100;
-const DEV_APPLICATION_REPOSITORIES = [
-    { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector', outputId: 'EventCollectorRepositoryUri' },
-    { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector', outputId: 'AdContextProjectorRepositoryUri' },
-    { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api', outputId: 'AdvertisementApiRepositoryUri' },
-    { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api', outputId: 'DashboardApiRepositoryUri' },
-    { id: 'DecisionApiRepository', repositoryName: 'loop-ad/decision-api', outputId: 'DecisionApiRepositoryUri' },
-] as const;
+export {
+    LOOP_AD_REGION,
+    type LoopAdDevCertificateArns,
+    type PublicHostedZoneConfig,
+} from './dev-config';
+export {
+    LoopAdDevCertificateStack,
+    LoopAdDevCostGuardrailStack,
+    LoopAdDevRepositoryStack,
+} from './lifecycle-stacks';
 
 type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
-
-export interface PublicHostedZoneConfig {
-    readonly hostedZoneId: string;
-    readonly domainName: string;
-}
-
-export interface LoopAdDevCertificateStackProps extends StackProps {
-    readonly publicHostedZone: PublicHostedZoneConfig;
-}
-
-// Certificate stack의 출력값입니다.
-// 서로 다른 region stack을 직접 참조하지 않고 ARN만 넘겨 data/runtime stack synth를 단순하게 유지합니다.
-export interface LoopAdDevCertificateArns {
-    readonly frontendSitesCertificateArn: string;
-    readonly genAiGeneratedAssetsCertificateArn: string;
-}
-
-// CloudFront custom domain에 연결하는 ACM certificate는 us-east-1에 있어야 합니다.
-// 인증서는 자주 바뀌지 않으므로 dev data/runtime stack과 분리해 먼저 배포합니다.
-export class LoopAdDevCertificateStack extends Stack {
-    public readonly frontendSitesCertificate: acm.ICertificate;
-    public readonly genAiGeneratedAssetsCertificate: acm.ICertificate;
-
-    public constructor(scope: Construct, id: string, props: LoopAdDevCertificateStackProps) {
-        super(scope, id, props);
-
-        const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
-            hostedZoneId: props.publicHostedZone.hostedZoneId,
-            zoneName: props.publicHostedZone.domainName,
-        });
-        const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        this.frontendSitesCertificate = new acm.Certificate(this, 'FrontendSitesCertificate', {
-            domainName: dashboardWebDomainName,
-            subjectAlternativeNames: [demoShoppingmallWebDomainName],
-            validation: acm.CertificateValidation.fromDns(publicHostedZone),
-        });
-        new cdk.CfnOutput(this, 'FrontendSitesCertificateArn', {
-            value: this.frontendSitesCertificate.certificateArn,
-        });
-
-        const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        this.genAiGeneratedAssetsCertificate = new acm.Certificate(this, 'GenAiGeneratedAssetsCertificate', {
-            domainName: genAiPublicAssetsDomainName,
-            validation: acm.CertificateValidation.fromDns(publicHostedZone),
-        });
-        new cdk.CfnOutput(this, 'GenAiGeneratedAssetsCertificateArn', {
-            value: this.genAiGeneratedAssetsCertificate.certificateArn,
-        });
-    }
-}
-
-// ECR repository는 ECS보다 먼저 배포해야 합니다.
-// 각 앱 repo가 image를 직접 push한 뒤 runtime stack을 배포하면, 첫 ECS 배포 시 image not found를 피할 수 있습니다.
-export class LoopAdDevRepositoryStack extends Stack {
-    public constructor(scope: Construct, id: string, props?: StackProps) {
-        super(scope, id, props);
-
-        for (const repositoryConfig of DEV_APPLICATION_REPOSITORIES) {
-            const repository = new ecr.Repository(this, repositoryConfig.id, {
-                repositoryName: repositoryConfig.repositoryName,
-                imageScanOnPush: true,
-                lifecycleRules: [{ maxImageCount: 20 }],
-                removalPolicy: RemovalPolicy.RETAIN,
-            });
-
-            new cdk.CfnOutput(this, repositoryConfig.outputId, {
-                value: repository.repositoryUri,
-            });
-        }
-    }
-}
-
-export interface LoopAdDevCostGuardrailStackProps extends StackProps {
-    readonly budgetAlertEmail: string;
-}
-
-// Budgets는 billing plane guardrail이므로 dev resource stack과 분리합니다.
-// 실제 비용 알림 수신 확인은 배포 후 AWS Budgets email confirmation까지 완료되어야 합니다.
-export class LoopAdDevCostGuardrailStack extends Stack {
-    public constructor(scope: Construct, id: string, props: LoopAdDevCostGuardrailStackProps) {
-        super(scope, id, props);
-
-        const budget = new budgets.CfnBudget(this, 'MonthlyDevBudget', {
-            budget: {
-                budgetName: 'loop-ad-dev-monthly-budget',
-                budgetType: 'COST',
-                timeUnit: 'MONTHLY',
-                budgetLimit: {
-                    amount: DEV_MONTHLY_BUDGET_LIMIT_USD,
-                    unit: 'USD',
-                },
-                costTypes: {
-                    includeCredit: false,
-                    includeRefund: false,
-                    useBlended: false,
-                },
-            },
-            notificationsWithSubscribers: [
-                {
-                    notification: {
-                        notificationType: 'ACTUAL',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_WARNING_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-                {
-                    notification: {
-                        notificationType: 'ACTUAL',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-                {
-                    notification: {
-                        notificationType: 'FORECASTED',
-                        comparisonOperator: 'GREATER_THAN',
-                        threshold: DEV_MONTHLY_BUDGET_CRITICAL_PERCENT,
-                        thresholdType: 'PERCENTAGE',
-                    },
-                    subscribers: [
-                        {
-                            subscriptionType: 'EMAIL',
-                            address: props.budgetAlertEmail,
-                        },
-                    ],
-                },
-            ],
-            resourceTags: [
-                { key: 'Project', value: 'loop-ad' },
-                { key: 'Environment', value: 'dev' },
-            ],
-        });
-
-        new cdk.CfnOutput(this, 'MonthlyDevBudgetName', {
-            value: budget.ref,
-        });
-    }
-}
 
 // VPC, subnet, endpoint, security group은 애플리케이션보다 변경 주기가 깁니다.
 // 최초 배포 전에 network stack으로 분리해 두면 이후 data/runtime 변경의 영향 범위를 줄일 수 있습니다.
@@ -1058,89 +908,5 @@ export class LoopAdDevRuntimeStack extends Stack {
             targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
         });
 
-    }
-}
-
-function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
-    return new logs.LogGroup(scope, id, {
-        logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
-        retention: DEV_LOG_RETENTION,
-    });
-}
-
-interface StaticFrontendSiteConfig {
-    readonly idPrefix: string;
-    readonly siteName: string;
-    readonly bucketName: string;
-    readonly recordName: string;
-    readonly domainName: string;
-    readonly certificate: acm.ICertificate;
-    readonly publicHostedZone: route53.IHostedZone;
-}
-
-function createStaticFrontendSite(scope: Construct, config: StaticFrontendSiteConfig): void {
-    const bucket = new s3.Bucket(scope, `${config.idPrefix}Bucket`, {
-        bucketName: config.bucketName,
-        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-        encryption: s3.BucketEncryption.S3_MANAGED,
-        enforceSSL: true,
-        versioned: true,
-        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-        removalPolicy: RemovalPolicy.RETAIN,
-    });
-    const distribution = new cloudfront.Distribution(scope, `${config.idPrefix}Distribution`, {
-        domainNames: [config.domainName],
-        certificate: config.certificate,
-        comment: `Dev ${config.siteName} frontend for ${config.domainName}`,
-        defaultRootObject: 'index.html',
-        priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
-        defaultBehavior: {
-            origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
-            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-            cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
-            cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-            compress: true,
-        },
-        errorResponses: [
-            {
-                httpStatus: 403,
-                responseHttpStatus: 200,
-                responsePagePath: '/index.html',
-                ttl: Duration.seconds(0),
-            },
-            {
-                httpStatus: 404,
-                responseHttpStatus: 200,
-                responsePagePath: '/index.html',
-                ttl: Duration.seconds(0),
-            },
-        ],
-    });
-    new route53.ARecord(scope, `${config.idPrefix}DnsRecord`, {
-        zone: config.publicHostedZone,
-        recordName: config.recordName,
-        target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(distribution)),
-    });
-
-    for (const parameter of [
-        {
-            id: `${config.idPrefix}BucketNameParameter`,
-            name: 'bucket-name',
-            value: config.bucketName,
-            description: `Dev ${config.siteName} frontend S3 bucket name.`,
-        },
-        {
-            id: `${config.idPrefix}CloudFrontDistributionIdParameter`,
-            name: 'cloudfront-distribution-id',
-            value: distribution.distributionId,
-            description: `Dev ${config.siteName} frontend CloudFront distribution ID.`,
-        },
-    ] as const) {
-        new ssm.StringParameter(scope, parameter.id, {
-            parameterName: `/loop-ad/dev/frontend/${config.siteName}/${parameter.name}`,
-            stringValue: parameter.value,
-            description: parameter.description,
-        });
     }
 }

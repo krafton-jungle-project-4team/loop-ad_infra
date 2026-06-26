@@ -382,8 +382,8 @@ export class LoopAdDevDataStack extends Stack {
         );
 
         // MSK는 raw event stream의 중심입니다.
-        // Kafka version은 AWS MSK의 recommended 라인을 사용합니다.
-        // dev 비용을 위해 broker/storage 수를 작게 두고, 내부 서비스에서만 접근하도록 private subnet에 배치합니다.
+        // dev 비용을 낮게 유지하기 위해 Standard t3.small broker와 작은 EBS storage로 시작합니다.
+        // Express broker는 운영 편의성은 좋지만 현재 dev 트래픽에서는 최소 구성이 훨씬 비쌉니다.
         const mskCluster = new msk.CfnCluster(this, 'MskCluster', {
             clusterName: 'dev-loop-ad-msk',
             kafkaVersion: DEV_MSK_KAFKA_VERSION,

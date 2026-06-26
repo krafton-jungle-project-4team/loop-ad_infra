@@ -42,7 +42,7 @@
 - Aurora PostgreSQL은 안정 기준 버전 `16.13`, Serverless v2 `min 0 ACU`, `max 2 ACU`, idle 10분 auto-pause로 시작한다.
 - Redis 호환 cache는 ElastiCache Serverless for Valkey major version `7`로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
-- MSK는 AWS recommended Kafka `3.9.x`, provisioned `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
+- MSK는 AWS recommended Kafka `3.9.x`, 저비용 dev 기준 Standard `kafka.t3.small` 2 brokers와 broker당 20GB storage로 시작한다.
 - MSK bootstrap broker 문자열은 배포 시 `GetBootstrapBrokers` custom resource로 조회해 SSM parameter에 넣는다.
 - `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
 - Dev data stack 실행 시 GenAI asset용 CloudFront certificate ARN을 필수로 요구한다.

@@ -15,7 +15,7 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
    - 현재 dev public endpoint 목록은 [docs/service-endpoints.md](docs/service-endpoints.md)를 봅니다.
 
 3. AWS CDK
-   - dev 환경의 ACM certificate, VPC/network, ECS, ECR, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, MSK, SSM contract를 관리합니다.
+   - dev 환경의 ACM certificate, ECR repository, VPC/network, ECS, ALB/NLB, Route53, S3/CloudFront, Aurora, ClickHouse, MSK, SSM contract를 관리합니다.
    - 메인 스택은 [src/loop-ad-stack.ts](src/loop-ad-stack.ts)입니다.
 
 4. CI/CD용 GitHub Actions 템플릿
@@ -30,12 +30,18 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 npm run build
 npm test
 npm run synth:dev-certificate
+npm run synth:dev-repositories
+npm run synth:dev-network
 npm run synth:dev
 npm run deploy:dev-certificate
+npm run deploy:dev-repositories
+npm run deploy:dev-network
 npm run deploy:dev
 ```
 
-처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 먼저 만들고, 출력된 ARN을 `.env`에 넣은 뒤 `npm run deploy:dev`를 실행합니다.
+처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 만들고, `npm run deploy:dev-repositories`로 ECR 저장소를 먼저 만듭니다. 각 앱 repo에서 이미지를 ECR에 push한 뒤 network/app 스택을 배포합니다.
+
+실제 CDK 배포 전에는 대상 계정의 `ap-northeast-2`와 CloudFront 인증서용 `us-east-1`에 CDK bootstrap이 필요합니다.
 
 `npm run deploy`와 `npm run destroy`는 실수 방지를 위해 막혀 있습니다.
 

@@ -4,6 +4,7 @@ import {
     LOOP_AD_REGION,
     LoopAdDevCertificateStack,
     LoopAdDevNetworkStack,
+    LoopAdDevRepositoryStack,
     LoopAdDevStack,
 } from '../src/loop-ad-stack';
 
@@ -70,17 +71,19 @@ describe('loop-ad CDK stacks', () => {
         template.resourceCountIs('AWS::EC2::SecurityGroup', 4);
     });
 
-    it('dev app stack keeps DataStorage bucket, ECR repositories, and five ECS services', () => {
-        const stack = synthDev();
+    it('dev repository stack owns application image repositories', () => {
+        const stack = synthDevRepositories();
         const template = Template.fromStack(stack);
 
-        template.resourceCountIs('AWS::S3::Bucket', 3);
-        template.resourceCountIs('AWS::CloudFront::Distribution', 3);
-        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
         template.resourceCountIs('AWS::ECR::Repository', 5);
-        template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/event-collector',
+            ImageScanningConfiguration: {
+                ScanOnPush: true,
+            },
+            LifecyclePolicy: Match.objectLike({
+                LifecyclePolicyText: Match.anyValue(),
+            }),
         });
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/dashboard-api',
@@ -91,6 +94,23 @@ describe('loop-ad CDK stacks', () => {
         template.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/decision',
         });
+        template.hasOutput('EventCollectorRepositoryUri', {
+            Value: Match.anyValue(),
+        });
+        template.hasOutput('DashboardApiRepositoryUri', {
+            Value: Match.anyValue(),
+        });
+    });
+
+    it('dev app stack keeps DataStorage bucket and five ECS services', () => {
+        const stack = synthDev();
+        const template = Template.fromStack(stack);
+
+        template.resourceCountIs('AWS::S3::Bucket', 3);
+        template.resourceCountIs('AWS::CloudFront::Distribution', 3);
+        template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 3);
+        template.resourceCountIs('AWS::ECR::Repository', 0);
+        template.resourceCountIs('AWS::ECS::Service', 5);
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -313,6 +333,7 @@ describe('loop-ad CDK stacks', () => {
         });
         template.hasResourceProperties('AWS::ElastiCache::ServerlessCache', {
             Engine: 'valkey',
+            MajorEngineVersion: '7',
             ServerlessCacheName: 'dev-loop-ad-valkey',
             CacheUsageLimits: {
                 DataStorage: {
@@ -519,6 +540,13 @@ function synthDev(): LoopAdDevStack {
         publicHostedZone: testPublicHostedZone,
         certificateArns: testCertificateArns,
         network,
+    });
+}
+
+function synthDevRepositories(): LoopAdDevRepositoryStack {
+    const app = new cdk.App();
+    return new LoopAdDevRepositoryStack(app, 'LoopAdDevRepositoryStack', {
+        env: testEnv,
     });
 }
 

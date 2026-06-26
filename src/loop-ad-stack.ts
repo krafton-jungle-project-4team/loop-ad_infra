@@ -33,8 +33,10 @@ const DEV_MSK_BROKER_COUNT = 2;
 const DEV_MSK_STORAGE_GIB_PER_BROKER = 20;
 const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
 const DEV_MSK_KAFKA_VERSION = '3.9.x';
+const DEV_VALKEY_MAJOR_ENGINE_VERSION = '7';
 const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
 const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;
+const DEV_VPC_AVAILABILITY_ZONES = ['ap-northeast-2a', 'ap-northeast-2c'];
 const AURORA_DATABASE_NAME = 'loopad';
 const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
 const GENAI_GENERATED_ASSETS_PREFIX = 'genai/generated/';
@@ -42,6 +44,15 @@ const GENAI_PUBLIC_ASSETS_RECORD_NAME = 'gen-ai.asset.dev';
 const DASHBOARD_WEB_RECORD_NAME = 'dashboard.dev';
 const DEMO_SHOPPINGMALL_WEB_RECORD_NAME = 'demo-shoppingmall.dev';
 const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-key';
+const DEV_APPLICATION_REPOSITORIES = [
+    { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector', outputId: 'EventCollectorRepositoryUri' },
+    { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector', outputId: 'AdContextProjectorRepositoryUri' },
+    { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api', outputId: 'AdvertisementApiRepositoryUri' },
+    { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api', outputId: 'DashboardApiRepositoryUri' },
+    { id: 'DecisionRepository', repositoryName: 'loop-ad/decision', outputId: 'DecisionRepositoryUri' },
+] as const;
+
+type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
 
 export interface PublicHostedZoneConfig {
     readonly hostedZoneId: string;
@@ -94,6 +105,27 @@ export class LoopAdDevCertificateStack extends Stack {
     }
 }
 
+// ECR repository는 ECS보다 먼저 배포해야 합니다.
+// 각 앱 repo가 image를 직접 push한 뒤 app stack을 배포하면, 첫 ECS 배포 시 image not found를 피할 수 있습니다.
+export class LoopAdDevRepositoryStack extends Stack {
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        for (const repositoryConfig of DEV_APPLICATION_REPOSITORIES) {
+            const repository = new ecr.Repository(this, repositoryConfig.id, {
+                repositoryName: repositoryConfig.repositoryName,
+                imageScanOnPush: true,
+                lifecycleRules: [{ maxImageCount: 20 }],
+                removalPolicy: RemovalPolicy.RETAIN,
+            });
+
+            new cdk.CfnOutput(this, repositoryConfig.outputId, {
+                value: repository.repositoryUri,
+            });
+        }
+    }
+}
+
 // VPC, subnet, endpoint, security group은 애플리케이션보다 변경 주기가 깁니다.
 // 최초 배포 전에 network stack으로 분리해 두면 이후 app stack 변경의 영향 범위를 줄일 수 있습니다.
 export class LoopAdDevNetworkStack extends Stack {
@@ -111,7 +143,7 @@ export class LoopAdDevNetworkStack extends Stack {
         // Dev server는 NAT가 있는 private subnet을 씁니다.
         this.vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
-            maxAzs: 2,
+            availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
             natGateways: 1,
             subnetConfiguration: [
                 {
@@ -220,20 +252,11 @@ export class LoopAdDevStack extends Stack {
             },
         });
 
-        // ECR repository는 Dev 애플리케이션 이미지 storage를 소유합니다.
-        // 앱 repository가 아직 분리되어 있어도 같은 infra repo에서 이름과 보관 정책을 일관되게 관리합니다.
-        const repositories = [
-            { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector' },
-            { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector' },
-            { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api' },
-            { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api' },
-            { id: 'DecisionRepository', repositoryName: 'loop-ad/decision' },
-        ].map((repository) => new ecr.Repository(this, repository.id, {
-            repositoryName: repository.repositoryName,
-            imageScanOnPush: true,
-            lifecycleRules: [{ maxImageCount: 20 }],
-            removalPolicy: RemovalPolicy.RETAIN,
-        })) as [ecr.Repository, ecr.Repository, ecr.Repository, ecr.Repository, ecr.Repository];
+        // ECR repository는 repository stack에서 먼저 만듭니다.
+        // app stack은 이름 contract만 import해서 ECS가 이미 push된 image를 참조하게 합니다.
+        const repositories = DEV_APPLICATION_REPOSITORIES.map((repository) => (
+            ecr.Repository.fromRepositoryName(this, `${repository.id}Import`, repository.repositoryName)
+        )) as DevApplicationRepositories;
         const [
             eventCollectorRepository,
             projectorRepository,
@@ -349,6 +372,7 @@ export class LoopAdDevStack extends Stack {
         // 앱 contract는 기존 Redis client 호환성을 위해 LOOPAD_REDIS_URL 이름을 유지합니다.
         const valkeyCache = new elasticache.CfnServerlessCache(this, 'ValkeyServerlessCache', {
             engine: 'valkey',
+            majorEngineVersion: DEV_VALKEY_MAJOR_ENGINE_VERSION,
             serverlessCacheName: 'dev-loop-ad-valkey',
             description: 'Dev Redis-compatible Valkey serverless cache for loop-ad.',
             subnetIds: privateSubnets.subnetIds,

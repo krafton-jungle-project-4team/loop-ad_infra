@@ -73,7 +73,18 @@ Server deploy workflow 규칙:
 - 각 서버 repo는 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
 - workflow는 image build/push와 ECS service image 교체만 담당합니다.
 - runtime env와 secret은 workflow에서 정의하지 않습니다.
-- ECR, ECS service, container 이름 같은 deploy target 값은 인프라 담당자가 제공한 값을 사용합니다.
+- ECR repository, ECS service, container 이름 같은 deploy target 값은 인프라 담당자가 제공한 값을 사용합니다.
+- 최초 개발 환경 구성 시에는 인프라 repo에서 ECR repository를 먼저 만든 뒤, 각 서버 repo가 image를 push합니다.
+
+Dev ECR repository 이름:
+
+| Service | ECR repository |
+|---|---|
+| Event Collector | `loop-ad/event-collector` |
+| Ad Context Projector | `loop-ad/ad-context-projector` |
+| Advertisement API | `loop-ad/advertisement-api` |
+| Dashboard API | `loop-ad/dashboard-api` |
+| Decision | `loop-ad/decision` |
 
 ## Server Env Contract
 

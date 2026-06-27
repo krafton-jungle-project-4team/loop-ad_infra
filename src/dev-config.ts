@@ -32,7 +32,6 @@ export const OPENAI_API_KEY_PARAMETER_NAME = '/loop-ad/dev/external/openai/api-k
 
 export const DEV_APPLICATION_REPOSITORIES = [
     { id: 'EventCollectorRepository', repositoryName: 'loop-ad/event-collector', outputId: 'EventCollectorRepositoryUri' },
-    { id: 'AdContextProjectorRepository', repositoryName: 'loop-ad/ad-context-projector', outputId: 'AdContextProjectorRepositoryUri' },
     { id: 'AdvertisementApiRepository', repositoryName: 'loop-ad/advertisement-api', outputId: 'AdvertisementApiRepositoryUri' },
     { id: 'DashboardApiRepository', repositoryName: 'loop-ad/dashboard-api', outputId: 'DashboardApiRepositoryUri' },
     { id: 'DecisionApiRepository', repositoryName: 'loop-ad/decision-api', outputId: 'DecisionApiRepositoryUri' },

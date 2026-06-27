@@ -39,7 +39,7 @@
 - Dev data stack은 Aurora/Valkey/ClickHouse/EC2 Kafka/DataStorage S3와 SSM endpoint contract를 소유한다.
 - Dev runtime stack은 FE 정적 hosting, ALB/NLB, Route53 public runtime record, ECS cluster/service/log group을 소유한다.
 - Public HTTPS endpoint와 private service discovery name은 고정 contract로 문서화하고, 앱별 env로 다시 분리하지 않는다.
-- Event Collector, Ad Context Projector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
+- Event Collector, Advertisement API, Dashboard API, Decision API를 ECS 서비스로 실행한다.
 - 각 ECS 서비스는 `/loop-ad/dev/ecs/<service-id>` 형식의 별도 CloudWatch LogGroup에 stdout/stderr 로그를 남기고 dev에서는 3개월만 보관한다.
 - 각 개발 서비스는 기본 1 task로 시작하고 CPU 부하에 따라 최대 2 task까지만 자동 확장한다.
 - Event Collector는 NLB에만 붙인다.

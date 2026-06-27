@@ -57,7 +57,7 @@ export {
     LoopAdDevRepositoryStack,
 } from './lifecycle-stacks';
 
-type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
+type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
 
 // VPC, 서브넷, 엔드포인트, 보안 그룹은 애플리케이션보다 변경 주기가 깁니다.
 // 최초 배포 전에 네트워크 스택으로 분리해 두면 이후 데이터/런타임 변경의 영향 범위를 줄일 수 있습니다.
@@ -495,7 +495,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         } = props.data;
 
         // 개발 환경은 상시 운영되므로 Fargate 클러스터를 사용합니다.
-        // 이 클러스터는 event collector, projector, API service가 배치되는 공통 실행 단위입니다.
+        // 이 클러스터는 event collector와 API service가 배치되는 공통 실행 단위입니다.
         // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
@@ -514,7 +514,6 @@ export class LoopAdDevRuntimeStack extends Stack {
         )) as DevApplicationRepositories;
         const [
             eventCollectorRepository,
-            projectorRepository,
             advertisementRepository,
             dashboardRepository,
             decisionApiRepository,
@@ -664,31 +663,6 @@ export class LoopAdDevRuntimeStack extends Stack {
                 protocol: elbv2.Protocol.HTTP,
                 path: '/health',
                 healthyHttpCodes: '200',
-            },
-        });
-
-        // Projector는 Kafka를 consume하고 가공된 context를 Valkey/ClickHouse에 씁니다.
-        // 앱에서는 Redis client를 그대로 쓸 수 있게 LOOPAD_REDIS_URL에 rediss:// Valkey endpoint를 주입합니다.
-        createFargateHttpService(this, {
-            taskDefinitionId: 'AdContextProjectorTaskDefinition',
-            logGroupId: 'AdContextProjectorLogGroup',
-            containerId: 'AdContextProjectorContainer',
-            serviceConstructId: 'AdContextProjectorService',
-            cpuScalingId: 'AdContextProjectorCpuScaling',
-            serviceId: 'ad-context-projector',
-            image: ecs.ContainerImage.fromEcrRepository(projectorRepository, 'latest'),
-            cluster,
-            securityGroup: serverSecurityGroup,
-            vpcSubnets: privateSubnets,
-            environment: {
-                LOOPAD_ENV: 'dev',
-                LOOPAD_SERVICE_ID: 'ad-context-projector',
-                PORT: '80',
-                LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
-                LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
-                LOOPAD_REDIS_URL: redisUrl,
-                LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
-                LOOPAD_CLICKHOUSE_USERNAME: 'default',
             },
         });
 

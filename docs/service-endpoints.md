@@ -37,7 +37,6 @@ Private service discovery name은 ECS service가 VPC 내부에서 다른 service
 | 서비스 | Service discovery name | Internal port | 주 사용처 |
 |---|---|---|---|
 | Event Collector | `event-collector.dev.loop-ad.local` | `80` | 내부 수집 경로가 필요할 때 |
-| Ad Context Projector | `ad-context-projector.dev.loop-ad.local` | `80` | 내부 health/debug 경로가 필요할 때 |
 | Advertisement API | `advertisement-api.dev.loop-ad.local` | `80` | 내부 광고 API 호출이 필요할 때 |
 | Dashboard API | `dashboard-api.dev.loop-ad.local` | `80` | 내부 dashboard API 호출이 필요할 때 |
 | Decision API | `decision-api.dev.loop-ad.local` | `80` | Dashboard API가 Decision API를 호출할 때 |

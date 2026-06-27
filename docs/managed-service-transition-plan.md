@@ -58,7 +58,7 @@
 성능 테스트:
 
 - Event Collector의 producer 처리량
-- Ad Context Projector의 consumer lag와 recovery
+- downstream event consumer의 lag와 recovery
 - `ingest.dev.loop-ad.org` 기준 burst ingest test
 - `loop-ad.events.raw` topic retention과 replay test
 
@@ -72,7 +72,7 @@
 
 - MSK가 7일 관찰을 통과할 때까지 data 설정 뒤에 EC2 Kafka stack code path를 남긴다.
 - `/loop-ad/dev/kafka/bootstrap-brokers`를 EC2 private DNS broker string으로 복구한다.
-- client가 자동 재연결하지 못하는 경우에만 Event Collector와 Projector를 재시작한다.
+- client가 자동 재연결하지 못하는 경우에만 Kafka client를 가진 ECS 서비스를 재시작한다.
 
 마이그레이션 위험:
 
@@ -103,7 +103,7 @@ CDK 변경 범위:
 성능 테스트:
 
 - Dashboard query p95/p99 지연 시간
-- Projector write 처리량
+- ClickHouse write/backfill 처리량
 - aggregated context data backfill test
 - idle 이후 cold-start query behavior
 

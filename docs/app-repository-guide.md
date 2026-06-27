@@ -86,7 +86,6 @@ Dev server deploy target:
 | Service | `service_name` | `ecr_repository` | `ecs_cluster` | `ecs_service` | `container_name` |
 |---|---|---|---|---|---|
 | Event Collector | `event-collector` | `loop-ad/event-collector` | `dev-loop-ad-cluster` | `dev-event-collector` | `event-collector` |
-| Ad Context Projector | `ad-context-projector` | `loop-ad/ad-context-projector` | `dev-loop-ad-cluster` | `dev-ad-context-projector` | `ad-context-projector` |
 | Advertisement API | `advertisement-api` | `loop-ad/advertisement-api` | `dev-loop-ad-cluster` | `dev-advertisement-api` | `advertisement-api` |
 | Dashboard API | `dashboard-api` | `loop-ad/dashboard-api` | `dev-loop-ad-cluster` | `dev-dashboard-api` | `dashboard-api` |
 | Decision API | `decision-api` | `loop-ad/decision-api` | `dev-loop-ad-cluster` | `dev-decision-api` | `decision-api` |
@@ -108,7 +107,6 @@ Dev server deploy target:
 | Service | `LOOPAD_SERVICE_ID` |
 |---|---|
 | Event Collector | `event-collector` |
-| Ad Context Projector | `ad-context-projector` |
 | Advertisement API | `advertisement-api` |
 | Dashboard API | `dashboard-api` |
 | Decision API | `decision-api` |
@@ -150,7 +148,6 @@ OpenAI API key는 앱 repo workflow에서 다루지 않습니다. Infra repo 배
 | Service | 필수 env |
 |---|---|
 | Event Collector | 공통 서버 env, `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC` |
-| Ad Context Projector | 공통 서버 env, `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC`, `LOOPAD_REDIS_URL`, `LOOPAD_CLICKHOUSE_URL`, `LOOPAD_CLICKHOUSE_USERNAME` |
 | Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
 | Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
 | Decision API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
@@ -168,7 +165,6 @@ Dev CloudWatch LogGroup 이름:
 | Service | LogGroup |
 |---|---|
 | Event Collector | `/loop-ad/dev/ecs/event-collector` |
-| Ad Context Projector | `/loop-ad/dev/ecs/ad-context-projector` |
 | Advertisement API | `/loop-ad/dev/ecs/advertisement-api` |
 | Dashboard API | `/loop-ad/dev/ecs/dashboard-api` |
 | Decision API | `/loop-ad/dev/ecs/decision-api` |

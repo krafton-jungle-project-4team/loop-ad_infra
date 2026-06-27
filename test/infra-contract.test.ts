@@ -124,10 +124,6 @@ describe('loop-ad CDK guardrails', () => {
             'EventCollectorLogGroup84568A76',
             'EventCollectorService1F8A822E',
             'EventCollectorServiceTaskCountTarget3C89D8FF',
-            'AdContextProjectorTaskDefinition8F2EFDF4',
-            'AdContextProjectorLogGroup8D90FFA9',
-            'AdContextProjectorService77FD757F',
-            'AdContextProjectorServiceTaskCountTarget852E32AD',
             'AdvertisementApiTaskDefinition3BE1FB97',
             'AdvertisementApiLogGroup0D4EBE76',
             'AdvertisementApiServiceE83FF4CB',
@@ -148,8 +144,8 @@ describe('loop-ad CDK guardrails', () => {
     it('keeps runtime ingress, service, logging, and secret contracts explicit', () => {
         const template = Template.fromStack(synthRuntime());
 
-        template.resourceCountIs('AWS::ECS::Service', 5);
-        template.resourceCountIs('AWS::Logs::LogGroup', 5);
+        template.resourceCountIs('AWS::ECS::Service', 4);
+        template.resourceCountIs('AWS::Logs::LogGroup', 4);
         template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::Listener', {
             Port: 80,
         }, 0);
@@ -161,7 +157,7 @@ describe('loop-ad CDK guardrails', () => {
             Port: 443,
             Protocol: 'TLS',
         });
-        for (const serviceId of ['event-collector', 'ad-context-projector', 'advertisement-api', 'dashboard-api', 'decision-api']) {
+        for (const serviceId of ['event-collector', 'advertisement-api', 'dashboard-api', 'decision-api']) {
             template.hasResourceProperties('AWS::Logs::LogGroup', {
                 LogGroupName: `/loop-ad/dev/ecs/${serviceId}`,
                 RetentionInDays: 90,
@@ -174,7 +170,7 @@ describe('loop-ad CDK guardrails', () => {
         template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
             MinCapacity: 1,
             MaxCapacity: 2,
-        }, 5);
+        }, 4);
         expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_OPENAI_API_KEY');
     });
 
@@ -182,7 +178,7 @@ describe('loop-ad CDK guardrails', () => {
         const repositoryTemplate = Template.fromStack(synthRepositories());
         const certificateTemplate = Template.fromStack(synthCertificate());
 
-        repositoryTemplate.resourceCountIs('AWS::ECR::Repository', 5);
+        repositoryTemplate.resourceCountIs('AWS::ECR::Repository', 4);
         repositoryTemplate.hasResourceProperties('AWS::ECR::Repository', {
             RepositoryName: 'loop-ad/event-collector',
             ImageScanningConfiguration: {

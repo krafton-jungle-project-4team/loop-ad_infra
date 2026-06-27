@@ -63,7 +63,7 @@ permissions:
 jobs:
     deploy:
         name: Build image and deploy ECS service
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04-arm
         environment: ${{ inputs.environment }}
         concurrency:
             group: ecs-${{ inputs.environment }}-${{ inputs.ecs_cluster }}-${{ inputs.ecs_service }}
@@ -120,6 +120,9 @@ jobs:
               id: login-ecr
               uses: aws-actions/amazon-ecr-login@v2
 
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
             - name: Build and push image
               id: image
               shell: bash
@@ -134,16 +137,15 @@ jobs:
 
                   image_tag="${REQUESTED_IMAGE_TAG}"
                   image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
+                  latest_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
 
-                  docker build \
+                  docker buildx build \
                       --platform linux/arm64 \
                       --file "${DOCKERFILE}" \
                       --tag "${image}" \
+                      --tag "${latest_image}" \
+                      --push \
                       "${BUILD_CONTEXT}"
-
-                  docker push "${image}"
-                  docker tag "${image}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-                  docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
 
                   echo "image=${image}" >> "${GITHUB_OUTPUT}"
 

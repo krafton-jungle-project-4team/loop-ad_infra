@@ -278,6 +278,9 @@ describe('loop-ad local safety contracts', () => {
         const infraWorkflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
 
         expect(ecsWorkflow).toContain('id-token: write');
+        expect(ecsWorkflow).toContain('runs-on: ubuntu-24.04-arm');
+        expect(ecsWorkflow).toContain('docker/setup-buildx-action@v3');
+        expect(ecsWorkflow).toContain('docker buildx build');
         expect(ecsWorkflow).toContain('--platform linux/arm64');
         expect(ecsWorkflow).toContain('LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN');
         expect(ecsWorkflow).not.toContain('aws_role_arn:');

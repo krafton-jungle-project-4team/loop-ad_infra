@@ -86,4 +86,4 @@ jobs:
                   LOOP_AD_PUBLIC_DOMAIN_NAME: ${{ inputs.public_domain_name }}
                   LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN: ${{ inputs.frontend_sites_certificate_arn }}
                   LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN: ${{ inputs.genai_generated_assets_certificate_arn }}
-              run: npm run synth:${{ inputs.environment }} -- --quiet
+              run: npm run cdk -- -c environment=${{ inputs.environment }} synth --quiet

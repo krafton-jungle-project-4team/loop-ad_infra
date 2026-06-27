@@ -8,14 +8,14 @@
 
 - 월 $300은 인프라 코드가 생성하는 budget resource가 아니라 dev cost target이다.
 - 정기 알림에서 NAT, Fargate, Aurora, Valkey, EC2, EBS, Load Balancer, CloudWatch Logs 비용을 우선 확인한다.
-- 알림 체계가 비용 초과를 감지하면 `npm run cost:dev`의 가정과 실제 Cost Explorer 값을 비교해 모델을 갱신한다.
+- 알림 체계가 비용 초과를 감지하면 `npm run cost`의 가정과 실제 Cost Explorer 값을 비교해 모델을 갱신한다.
 
 ## Deterministic Model
 
-로컬 추정은 `npm run cost:dev`로 실행한다.
+로컬 추정은 `npm run cost`로 실행한다.
 
 ```bash
-npm run cost:dev
+npm run cost
 node scripts/estimate-dev-monthly-cost.mjs --json
 ```
 

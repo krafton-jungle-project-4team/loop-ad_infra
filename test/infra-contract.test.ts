@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
@@ -83,7 +83,7 @@ describe('loop-ad CDK guardrails', () => {
         const kafkaRole = ec2RoleWithNameTag(dataResources, 'dev-loop-ad-kafka');
         const clickHouseRole = ec2RoleWithNameTag(dataResources, 'dev-loop-ad-clickhouse');
         expect(JSON.stringify(kafkaRole?.Properties?.ManagedPolicyArns ?? [])).toContain('AmazonSSMManagedInstanceCore');
-        expect(JSON.stringify(clickHouseRole?.Properties?.ManagedPolicyArns ?? [])).not.toContain('AmazonSSMManagedInstanceCore');
+        expect(JSON.stringify(clickHouseRole?.Properties?.ManagedPolicyArns ?? [])).toContain('AmazonSSMManagedInstanceCore');
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -216,18 +216,23 @@ describe('loop-ad CDK guardrails', () => {
 });
 
 describe('loop-ad local safety contracts', () => {
-    it('uses explicit synth/deploy lifecycle scripts and blocks generic deploy commands', () => {
+    it('keeps npm scripts concise and lets generic deployment commands run CDK', () => {
         const packageJson = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
             scripts: Record<string, string>;
         };
-        const refusal = readFileSync(join(ROOT, 'scripts/refuse-deploy.mjs'), 'utf8');
 
-        expect(packageJson.scripts.deploy).toBe('node scripts/refuse-deploy.mjs');
-        expect(packageJson.scripts.destroy).toBe('node scripts/refuse-deploy.mjs');
-        expect(packageJson.scripts['cost:dev']).toBe('node scripts/estimate-dev-monthly-cost.mjs');
-        expect(refusal).toContain('Generic deploy/destroy is intentionally blocked');
-        expect(Object.keys(packageJson.scripts)).not.toContain('deploy:dev-cost-guardrails');
-        expect(Object.keys(packageJson.scripts)).not.toContain('synth:dev-cost-guardrails');
+        expect(packageJson.scripts).toEqual({
+            build: 'tsc --noEmit',
+            test: 'jest --runInBand',
+            synth: 'cdk -c environment=dev synth',
+            deploy: 'cdk -c environment=dev deploy',
+            destroy: 'cdk -c environment=dev destroy',
+            cost: 'node scripts/estimate-dev-monthly-cost.mjs',
+            'put-openai-api-key': 'node scripts/put-openai-api-key.mjs',
+            cdk: 'cdk',
+        });
+        expect(existsSync(join(ROOT, 'scripts/refuse-deploy.mjs'))).toBe(false);
+        expect(Object.keys(packageJson.scripts).filter((script) => /^deploy:|^synth:/.test(script))).toEqual([]);
     });
 
     it('requires app context and env values without fallback defaults', () => {
@@ -281,7 +286,7 @@ describe('loop-ad local safety contracts', () => {
         expect(frontendWorkflow).not.toContain('aws_role_arn:');
         expect(infraWorkflow).toContain('npm run build');
         expect(infraWorkflow).toContain('npm test');
-        expect(infraWorkflow).toContain('npm run synth:${{ inputs.environment }}');
+        expect(infraWorkflow).toContain('npm run cdk -- -c environment=${{ inputs.environment }} synth --quiet');
         expect(infraWorkflow).not.toContain('cdk deploy');
         expect(infraWorkflow).not.toContain('cdk diff');
     });

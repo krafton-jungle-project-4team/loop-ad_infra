@@ -312,6 +312,8 @@ export class LoopAdDevDataStack extends Stack {
             'mkdir -p /var/lib/clickhouse',
             `docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse ${DEV_CLICKHOUSE_IMAGE}`,
         );
+        // ClickHouse EC2는 schema 초기화와 장애 대응을 위해 private Session Manager 대상도 겸합니다.
+        clickHouseInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
 
         // Kafka는 원본 이벤트 스트림의 중심입니다.
         // 개발 비용 절감을 위해 MSK 대신 private EC2 단일 broker로 운영합니다.

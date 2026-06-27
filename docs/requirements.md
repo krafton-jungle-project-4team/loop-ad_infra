@@ -21,7 +21,7 @@
 - Dev data/runtime stack은 certificate stack output ARN을 `.env`로 받아 CloudFront distribution에 import한다.
 - ECR repository는 별도 repository stack에서 먼저 만들고, 각 앱 repo가 image를 push한 뒤 ECS runtime stack을 배포한다.
 - Dev runtime stack은 ECR repository를 생성하지 않고 고정 repository name contract로 import한다.
-- 비용 산정은 `npm run cost:dev`의 명시 가정과 deterministic 계산 결과를 기준으로 검토하고, 배포 승인 전 AWS Pricing Calculator 또는 Price List API로 단가를 갱신한다.
+- 비용 산정은 `npm run cost`의 명시 가정과 deterministic 계산 결과를 기준으로 검토하고, 배포 승인 전 AWS Pricing Calculator 또는 Price List API로 단가를 갱신한다.
 - 비용 알림은 이 CDK app에서 AWS Budget 리소스로 생성하지 않고, 별도 정기 비용 알림 체계에서 담당한다.
 - VPC/network, data storage, runtime service는 각각 stack을 나눈다.
 - ECS task 수와 EC2 capacity 수치로 실제 확장 상한을 둔다.
@@ -51,6 +51,7 @@
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
 - Kafka는 비용 절감을 위해 Amazon Linux 2023 EC2 `t4g.small` 단일 노드, Apache Kafka `3.9.1`, KRaft mode, gp3 20GB EBS로 시작한다.
 - Kafka는 private subnet 안에서만 plain listener `9092`를 열고, production 수준의 HA나 managed broker 운영은 목표로 하지 않는다.
+- ClickHouse와 Kafka EC2는 schema/topic 초기화와 장애 대응을 위해 Session Manager 관리 대상이어야 한다.
 - Kafka bootstrap broker 문자열은 EC2 private DNS와 `9092` port를 조합해 `/loop-ad/dev/kafka/bootstrap-brokers` SSM parameter에 넣는다.
 - OpenAI API key는 infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입한 뒤 Runtime stack에서 참조한다.
 - 앱 repo GitHub Actions OIDC role은 ECR image push와 ECS service update 권한을 가진다.
@@ -62,25 +63,19 @@
 
 ## 운영 명령
 
-- `npm run synth:dev-certificate`
-- `npm run synth:dev-repositories`
-- `npm run synth:dev-network`
-- `npm run synth:dev-data`
-- `npm run synth:dev-runtime`
-- `npm run synth:dev`
-- `npm run cost:dev`
-- `npm run put:dev-openai-api-key`
-- `npm run deploy:dev-certificate`
-- `npm run deploy:dev-repositories`
-- `npm run deploy:dev-network`
-- `npm run deploy:dev-data`
-- `npm run deploy:dev-runtime`
-- `npm run deploy:dev`
+- `npm run build`
+- `npm test`
+- `npm run synth`
+- `npm run cost`
+- `npm run put-openai-api-key`
+- `npm run deploy`
+- `npm run destroy`
+- `npm run cdk -- -c environment=<name> <command> <stack>`
 
-최초 배포 순서는 `deploy:dev-certificate` -> `deploy:dev-repositories` -> 각 앱 repo의 ECR seed image push -> `deploy:dev-network` -> `deploy:dev-data` -> `put:dev-openai-api-key` -> `deploy:dev-runtime` 순서로 둔다. ECS service는 image와 외부 secret이 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime secret 누락을 피할 수 있다.
+`synth`, `deploy`, `destroy`는 기본 dev 환경을 대상으로 한다. lifecycle별 stack을 직접 실행해야 하면 `npm run cdk -- -c environment=<name> <command> <stack>` 형식으로 CDK CLI에 인자를 넘긴다.
+
+최초 배포 순서는 `dev-certificate` -> `dev-repositories` -> 각 앱 repo의 ECR seed image push -> `dev-network` -> `dev-data` -> `put-openai-api-key` -> `dev-runtime` 순서로 둔다. ECS service는 image와 외부 secret이 준비된 뒤 배포해야 초기 배포에서 image pull 실패나 runtime secret 누락을 피할 수 있다.
 
 데이터 초기화 책임은 현재 infra contract에서 제외한다. DB migration, Kafka topic 생성, ClickHouse schema 생성 주체는 앱 구현이 구체화된 뒤 별도로 정한다.
 
 실제 CDK 배포 전에는 `ap-northeast-2`와 CloudFront certificate용 `us-east-1`에 CDK bootstrap을 먼저 수행한다.
-
-`npm run deploy`와 `npm run destroy`는 실수 방지를 위해 차단한다.

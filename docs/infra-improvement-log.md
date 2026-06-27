@@ -377,3 +377,27 @@ Initial priority:
 | 운영 안정성 | 91 | 91 | 성능 테스트, 롤백, 마이그레이션 위험 기준을 한국어로 명확히 했다. |
 | CDK 모범사례/유지보수성 | 96 | 96 | CDK 변경 범위와 stack boundary 설명을 유지했다. |
 | 테스트/문서화 | 96 | 96 | 유지 문서의 언어 일관성을 높였다. |
+
+## Cycle 10 - Simplify Local Deployment Scripts
+
+목적:
+
+- generic `npm run deploy`가 더 이상 차단 스크립트를 타지 않고 기본 dev CDK deploy를 실행하게 한다.
+- lifecycle별 synth/deploy npm alias를 제거하고, 특수 실행은 `npm run cdk -- -c environment=<name> <command> <stack>`로 통일한다.
+- README, requirements, infra-check workflow, local contract test를 새 명령 체계에 맞춘다.
+
+변경 파일:
+
+- `package.json`
+- `scripts/refuse-deploy.mjs`
+- `.github/workflows/infra-check.yml`
+- `README.md`
+- `docs/requirements.md`
+- `docs/cost-model.md`
+- `test/infra-contract.test.ts`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 13 tests

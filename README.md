@@ -31,27 +31,18 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
 ```bash
 npm run build
 npm test
-npm run synth:dev-certificate
-npm run synth:dev-repositories
-npm run synth:dev-network
-npm run synth:dev-data
-npm run synth:dev-runtime
-npm run synth:dev
-npm run cost:dev
-npm run put:dev-openai-api-key
-npm run deploy:dev-certificate
-npm run deploy:dev-repositories
-npm run deploy:dev-network
-npm run deploy:dev-data
-npm run deploy:dev-runtime
-npm run deploy:dev
+npm run synth
+npm run cost
+npm run put-openai-api-key
+npm run deploy
+npm run destroy
 ```
 
-처음 배포할 때는 `npm run deploy:dev-certificate`로 CloudFront용 ACM 인증서를 만들고, `npm run deploy:dev-repositories`로 ECR 저장소를 먼저 만듭니다. 각 앱 repo에서 seed image를 ECR에 push한 뒤 `deploy:dev-network`, `deploy:dev-data`, `put:dev-openai-api-key`, `deploy:dev-runtime` 순서로 진행합니다.
+`npm run synth`, `npm run deploy`, `npm run destroy`는 기본 dev 환경(`-c environment=dev`)을 대상으로 실행합니다. lifecycle별 stack을 직접 실행해야 하면 `npm run cdk -- -c environment=<name> <command> <stack>` 형식으로 CDK CLI에 인자를 넘깁니다.
+
+처음 배포할 때는 `npm run cdk -- -c environment=dev-certificate deploy LoopAdDevCertificateStack`로 CloudFront용 ACM 인증서를 만들고, `npm run cdk -- -c environment=dev-repositories deploy LoopAdDevRepositoryStack`로 ECR 저장소를 먼저 만듭니다. 각 앱 repo에서 seed image를 ECR에 push한 뒤 `dev-network`, `dev-data`, `put-openai-api-key`, `dev-runtime` 순서로 진행합니다.
 
 실제 CDK 배포 전에는 대상 계정의 `ap-northeast-2`와 CloudFront 인증서용 `us-east-1`에 CDK bootstrap이 필요합니다.
-
-`npm run deploy`와 `npm run destroy`는 실수 방지를 위해 막혀 있습니다.
 
 ## 환경 변수
 
@@ -65,4 +56,4 @@ LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:...
 LOOP_AD_OPENAI_API_KEY=sk-...
 ```
 
-`CDK_DEFAULT_ACCOUNT`도 CDK 실행 환경에서 제공되어야 합니다. `LOOP_AD_OPENAI_API_KEY`는 CDK synth 값이 아니라, `npm run put:dev-openai-api-key`로 `/loop-ad/dev/external/openai/api-key` SSM SecureString에 주입하는 secret입니다.
+`CDK_DEFAULT_ACCOUNT`도 CDK 실행 환경에서 제공되어야 합니다. `LOOP_AD_OPENAI_API_KEY`는 CDK synth 값이 아니라, `npm run put-openai-api-key`로 `/loop-ad/dev/external/openai/api-key` SSM SecureString에 주입하는 secret입니다.

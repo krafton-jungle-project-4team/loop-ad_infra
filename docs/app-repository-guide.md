@@ -77,7 +77,7 @@ Server deploy workflow 규칙:
 - 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
 - workflow는 image build/push와 ECS service image 교체만 담당합니다.
 - runtime env와 secret은 workflow에서 정의하지 않습니다.
-- 앱 repo의 deploy workflow는 reusable workflow job에 `secrets: inherit`를 설정하고, reusable workflow는 organization Actions secret `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`을 읽습니다.
+- 앱 repo의 deploy workflow는 organization Actions variable `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`을 `role_arn` input으로 인프라 repo reusable workflow에 전달합니다.
 - 이 ECS deploy role은 ECR image push와 ECS service update 권한만 있으면 됩니다. CloudFormation, Route53, RDS 같은 인프라 전반 권한은 infra repo action 역할에만 둡니다.
 - ECR repository, ECS cluster, ECS service, container 이름은 아래 dev deploy target 값을 그대로 사용합니다.
 - 최초 개발 환경 구성 시에는 인프라 repo에서 ECR repository를 먼저 만든 뒤, 각 서버 repo가 image를 push합니다.
@@ -224,7 +224,7 @@ Frontend deploy workflow 규칙:
 - 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
 - workflow는 정적 파일 업로드와 CDN invalidation만 담당합니다.
 - bucket, CDN distribution 같은 deploy target 값은 아래 dev frontend deploy target 값을 사용합니다.
-- FE repo의 deploy workflow는 reusable workflow job에 `secrets: inherit`를 설정하고, reusable workflow는 organization Actions secret `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 읽습니다.
+- FE repo의 deploy workflow는 organization Actions variable `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 `role_arn` input으로 인프라 repo reusable workflow에 전달합니다.
 - CloudFront distribution ID는 ARN이 아니므로 secret이 아니라 GitHub Actions variable로 관리할 수 있습니다.
 - FE build env 값은 꼭 필요할 때만 GitHub Environment variables 등으로 관리할 수 있지만, secret과 고정 loop-ad domain은 넣지 않습니다.
 
@@ -240,6 +240,7 @@ Dev frontend deploy target:
 | Input | 값 |
 |---|---|
 | `aws_region` | `ap-northeast-2` |
+| `role_arn` | `${{ vars.LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN }}` |
 | `install_command` | `npm ci` |
 | `build_command` | `npm run build` |
 | `build_output_dir` | `dist` |
@@ -289,11 +290,11 @@ LOOPAD_AURORA_DATABASE=loopad
 - Dockerfile `EXPOSE`, `ENV PORT`, health check, compose/local 실행 설정의 내부 앱 포트가 `8080`인가?
 - 최초 seed image를 `latest` tag로 ECR에 push할 수 있는가?
 - deploy workflow input이 dev server deploy target 표와 일치하는가?
-- 서버 deploy workflow가 `secrets: inherit`로 organization secret `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`을 reusable workflow에 전달하는가?
+- 서버 deploy workflow가 organization variable `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`으로 OIDC assume role ARN을 참조하는가?
 - 서버 `/health`가 정상 상태에서 정확히 `200`을 반환하는가?
 - 서버 로그가 stdout/stderr로 출력되고 secret을 포함하지 않는가?
 - FE repo는 `npm ci`, `npm run build`, `dist` 기본 규칙을 따르는가?
 - FE deploy workflow input이 dev frontend deploy target 표와 일치하는가?
-- FE deploy workflow가 `secrets: inherit`로 organization secret `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 reusable workflow에 전달하는가?
+- FE deploy workflow가 organization variable `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`으로 OIDC assume role ARN을 참조하는가?
 - FE env는 public 값만 사용하는가?
 - deploy workflow가 인프라 repo reusable workflow를 `uses:`로 호출하는가?

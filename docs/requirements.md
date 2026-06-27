@@ -55,7 +55,7 @@
 - Kafka bootstrap broker 문자열은 EC2 private DNS와 `9092` port를 조합해 `/loop-ad/dev/kafka/bootstrap-brokers` SSM parameter에 넣는다.
 - OpenAI API key는 infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입한 뒤 Runtime stack에서 참조한다.
 - 앱 repo GitHub Actions OIDC role은 ECR image push와 ECS service update 권한을 가진다.
-- 앱 repo GitHub Actions OIDC role ARN은 organization Actions secret으로 관리하고, caller workflow는 `secrets: inherit`로 서버 `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`, 프론트엔드 `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 reusable workflow에 전달한다.
+- 앱 repo GitHub Actions OIDC role ARN은 organization Actions variable로 관리하고, caller workflow는 서버 `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`, 프론트엔드 `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 `role_arn` input으로 reusable workflow에 전달한다.
 - Infra repo GitHub Actions OIDC role은 CDK가 관리하는 dev 인프라 전반을 생성/변경할 수 있는 권한을 가진다.
 - `.env`, `CDK_DEFAULT_ACCOUNT`, CDK context 값은 fallback 기본값 없이 필수로 요구한다.
 - Dev data stack 실행 시 GenAI asset용 CloudFront certificate ARN을 필수로 요구한다.

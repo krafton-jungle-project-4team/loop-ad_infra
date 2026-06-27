@@ -282,10 +282,14 @@ describe('loop-ad local safety contracts', () => {
         expect(ecsWorkflow).toContain('docker/setup-buildx-action@v3');
         expect(ecsWorkflow).toContain('docker buildx build');
         expect(ecsWorkflow).toContain('--platform linux/arm64');
-        expect(ecsWorkflow).toContain('LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN');
+        expect(ecsWorkflow).toContain('role_arn:');
+        expect(ecsWorkflow).toContain('inputs.role_arn');
+        expect(ecsWorkflow).not.toContain('secrets.LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN');
         expect(ecsWorkflow).not.toContain('aws_role_arn:');
         expect(frontendWorkflow).toContain('id-token: write');
-        expect(frontendWorkflow).toContain('LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN');
+        expect(frontendWorkflow).toContain('role_arn:');
+        expect(frontendWorkflow).toContain('inputs.role_arn');
+        expect(frontendWorkflow).not.toContain('secrets.LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN');
         expect(frontendWorkflow).not.toContain('aws_role_arn:');
         expect(infraWorkflow).toContain('npm run build');
         expect(infraWorkflow).toContain('npm test');

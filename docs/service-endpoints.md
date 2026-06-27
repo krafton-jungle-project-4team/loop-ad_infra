@@ -16,7 +16,7 @@
 | Event ingest | `https://ingest.dev.loop-ad.org` | NLB public TLS listener |
 | GenAI generated assets | `https://gen-ai.asset.dev.loop-ad.org/<object-key>` | DataStorage S3 `genai/generated/` prefix 앞 CloudFront |
 
-현재 CDK contract는 ALB와 NLB 모두 public 443만 엽니다. Load balancer에서 TLS를 종료하고 private ECS container의 80 포트로 전달합니다.
+현재 CDK contract는 ALB와 NLB 모두 public 443만 엽니다. Load balancer에서 TLS를 종료하고 private ECS container의 8080 포트로 전달합니다.
 
 ## Public API Routes
 
@@ -36,10 +36,10 @@ Private service discovery name은 ECS service가 VPC 내부에서 다른 service
 
 | 서비스 | Service discovery name | Internal port | 주 사용처 |
 |---|---|---|---|
-| Event Collector | `event-collector.dev.loop-ad.local` | `80` | 내부 수집 경로가 필요할 때 |
-| Advertisement API | `advertisement-api.dev.loop-ad.local` | `80` | 내부 광고 API 호출이 필요할 때 |
-| Dashboard API | `dashboard-api.dev.loop-ad.local` | `80` | 내부 dashboard API 호출이 필요할 때 |
-| Decision API | `decision-api.dev.loop-ad.local` | `80` | Dashboard API가 Decision API를 호출할 때 |
+| Event Collector | `event-collector.dev.loop-ad.local` | `8080` | 내부 수집 경로가 필요할 때 |
+| Advertisement API | `advertisement-api.dev.loop-ad.local` | `8080` | 내부 광고 API 호출이 필요할 때 |
+| Dashboard API | `dashboard-api.dev.loop-ad.local` | `8080` | 내부 dashboard API 호출이 필요할 때 |
+| Decision API | `decision-api.dev.loop-ad.local` | `8080` | Dashboard API가 Decision API를 호출할 때 |
 
 `*.dev.loop-ad.local` 이름은 ECS Cloud Map private namespace입니다. VPC 내부 ECS service에서만 resolve된다고 가정합니다.
 

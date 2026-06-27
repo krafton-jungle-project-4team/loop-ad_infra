@@ -19,6 +19,8 @@ import {
     SERVICE_CPU_SCALE_TARGET_PERCENT,
 } from './dev-config';
 
+export const APP_CONTAINER_PORT = 8080;
+
 // ECS 서비스 로그 그룹은 서비스별 로그 이름과 보관 기간을 한곳에서 맞춥니다.
 // 로그 보관 기간은 CloudWatch Logs 비용에 직접 영향을 주므로 서비스마다 흩어 두지 않습니다.
 export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
@@ -83,9 +85,9 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         environment: config.environment,
         secrets: config.secrets,
     });
-    // 모든 내부 HTTP 서비스는 컨테이너 포트 80으로 통일합니다.
+    // 모든 내부 HTTP 서비스는 컨테이너 포트 8080으로 통일합니다.
     // TLS 종료와 외부 리스너 구성은 로드 밸런서 쪽에 두어 컨테이너 이미지를 단순하게 유지합니다.
-    container.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
+    container.addPortMappings({ containerPort: APP_CONTAINER_PORT, protocol: ecs.Protocol.TCP });
 
     // FargateService는 private subnet에 작업을 배치하고 Cloud Map 이름을 등록합니다.
     // 내부 서비스 호출은 Cloud Map을 쓰고, 외부 공개 여부는 스택에서 ALB/NLB 대상 연결로 따로 결정합니다.

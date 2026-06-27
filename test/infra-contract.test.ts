@@ -14,6 +14,7 @@ import {
 
 const ROOT = join(__dirname, '..');
 const SRC_DIR = join(ROOT, 'src');
+const EXPECTED_APP_INTERNAL_PORT = 8080;
 const testEnv = {
     account: '123456789012',
     region: LOOP_AD_REGION,
@@ -143,6 +144,7 @@ describe('loop-ad CDK guardrails', () => {
 
     it('keeps runtime ingress, service, logging, and secret contracts explicit', () => {
         const template = Template.fromStack(synthRuntime());
+        const resources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
 
         template.resourceCountIs('AWS::ECS::Service', 4);
         template.resourceCountIs('AWS::Logs::LogGroup', 4);
@@ -171,6 +173,26 @@ describe('loop-ad CDK guardrails', () => {
             MinCapacity: 1,
             MaxCapacity: 2,
         }, 4);
+        const taskDefinitions = Object.values(resources).filter((resource) => resource.Type === 'AWS::ECS::TaskDefinition');
+        expect(taskDefinitions).toHaveLength(4);
+        for (const taskDefinition of taskDefinitions) {
+            const containers = taskDefinition.Properties?.ContainerDefinitions as Array<Record<string, unknown>> | undefined;
+            expect(containers).toHaveLength(1);
+            const container = containers?.[0] as {
+                Environment?: Array<{ Name?: string; Value?: string }>;
+                PortMappings?: Array<{ ContainerPort?: number }>;
+            };
+            expect(container.PortMappings).toEqual(expect.arrayContaining([
+                expect.objectContaining({ ContainerPort: EXPECTED_APP_INTERNAL_PORT }),
+            ]));
+            expect(container.Environment).toEqual(expect.arrayContaining([
+                expect.objectContaining({ Name: 'PORT', Value: String(EXPECTED_APP_INTERNAL_PORT) }),
+            ]));
+        }
+        const targetGroups = Object.values(resources).filter((resource) => resource.Type === 'AWS::ElasticLoadBalancingV2::TargetGroup');
+        expect(targetGroups.filter((targetGroup) => targetGroup.Properties?.Port === EXPECTED_APP_INTERNAL_PORT)).toHaveLength(3);
+        expect(targetGroups.filter((targetGroup) => targetGroup.Properties?.HealthCheckPort === String(EXPECTED_APP_INTERNAL_PORT))).toHaveLength(3);
+        expect(targetGroups.filter((targetGroup) => targetGroup.Properties?.Port === 80 || targetGroup.Properties?.HealthCheckPort === '80')).toHaveLength(0);
         expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_OPENAI_API_KEY');
     });
 

@@ -31,7 +31,7 @@
 - S3 Gateway Endpoint는 유지해서 S3/ECR layer 트래픽을 NAT data processing으로 보내지 않는다.
 - Dashboard FE는 `https://dashboard.dev.loop-ad.org`, demo-shoppingmall FE는 `https://demo-shoppingmall.dev.loop-ad.org`로 공개한다.
 - Public API는 `https://api.dev.loop-ad.org`, Event ingest는 `https://ingest.dev.loop-ad.org`를 기본 외부 contract로 둔다.
-- ALB/NLB 모두 public 443 ingress만 열고, load balancer가 TLS를 종료한 뒤 private ECS container의 80 포트로 전달한다.
+- ALB/NLB 모두 public 443 ingress만 열고, load balancer가 TLS를 종료한 뒤 private ECS container의 8080 포트로 전달한다.
 - 각 FE는 private S3 bucket과 CloudFront OAC를 사용하며, SPA fallback은 `/index.html`로 처리한다.
 - DataStorage S3 bucket은 필수로 생성하며 GenAI 생성물은 `genai/generated/` prefix에 저장한다.
 - GenAI 생성물은 CloudFront OAC를 통해 `https://gen-ai.asset.dev.loop-ad.org/...`로 외부 조회할 수 있게 한다.

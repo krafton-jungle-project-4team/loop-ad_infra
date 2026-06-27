@@ -43,6 +43,7 @@ import {
     type PublicHostedZoneConfig,
 } from './dev-config';
 import {
+    APP_CONTAINER_PORT,
     createFargateHttpService,
     createStaticFrontendSite,
 } from './runtime-helpers';
@@ -127,7 +128,7 @@ export class LoopAdDevNetworkStack extends Stack {
         });
 
         // 인터넷 트래픽은 외부 로드 밸런서의 443만 받습니다.
-        // 로드 밸런서에서 TLS를 종료하고 프라이빗 ECS 컨테이너의 80 포트로 전달합니다.
+        // 로드 밸런서에서 TLS를 종료하고 프라이빗 ECS 컨테이너의 8080 포트로 전달합니다.
         this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public HTTPS to dev ALB.');
         this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public TLS ingest to dev NLB.');
 
@@ -626,6 +627,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         // 이 호출부는 어떤 이미지가 어떤 엔드포인트/시크릿/권한을 쓰며 외부 대상에 붙는지를 보여줍니다.
         // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
         // 외부 수집 진입점이지만 작업 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
+        const appContainerPortEnv = String(APP_CONTAINER_PORT);
         const eventCollector = createFargateHttpService(this, {
             taskDefinitionId: 'EventCollectorTaskDefinition',
             logGroupId: 'EventCollectorLogGroup',
@@ -641,13 +643,13 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
-                PORT: '80',
+                PORT: appContainerPortEnv,
                 LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
             },
         });
 
-        // NLB는 443에서 TLS를 종료하고 collector service의 80 포트로 전달합니다.
+        // NLB는 443에서 TLS를 종료하고 collector service의 8080 포트로 전달합니다.
         const tlsNlbListener = nlb.addListener('TlsEventCollectorListener', {
             port: 443,
             protocol: elbv2.Protocol.TLS,
@@ -655,11 +657,11 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
         tlsNlbListener.addTargets('TlsEventCollectorTargets', {
             targets: [eventCollector.service],
-            port: 80,
+            port: APP_CONTAINER_PORT,
             protocol: elbv2.Protocol.TCP,
             healthCheck: {
                 enabled: true,
-                port: '80',
+                port: appContainerPortEnv,
                 protocol: elbv2.Protocol.HTTP,
                 path: '/health',
                 healthyHttpCodes: '200',
@@ -683,7 +685,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'advertisement-api',
-                PORT: '80',
+                PORT: appContainerPortEnv,
                 LOOPAD_REDIS_URL: redisUrl,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
@@ -696,12 +698,13 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
         httpsAlbListener.addTargets('AdvertisementApiTargets', {
             targets: [advertisement.service],
-            port: 80,
+            port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 20,
             conditions: [elbv2.ListenerCondition.pathPatterns(['/api/ads/*', '/advertisements/*'])],
             healthCheck: {
                 enabled: true,
+                port: appContainerPortEnv,
                 path: '/health',
                 healthyHttpCodes: '200',
             },
@@ -725,7 +728,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
-                PORT: '80',
+                PORT: appContainerPortEnv,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
@@ -741,12 +744,13 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
         httpsAlbListener.addTargets('DashboardApiTargets', {
             targets: [dashboard.service],
-            port: 80,
+            port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 30,
             conditions: [elbv2.ListenerCondition.pathPatterns(['/api/dashboard/*', '/dashboard/*'])],
             healthCheck: {
                 enabled: true,
+                port: appContainerPortEnv,
                 path: '/health',
                 healthyHttpCodes: '200',
             },
@@ -769,7 +773,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
-                PORT: '80',
+                PORT: appContainerPortEnv,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,

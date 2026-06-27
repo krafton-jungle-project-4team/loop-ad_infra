@@ -14,6 +14,7 @@
         "synth:dev-data": "cdk -c environment=dev-data synth LoopAdDevDataStack",
         "synth:dev-runtime": "cdk -c environment=dev-runtime synth LoopAdDevRuntimeStack",
         "synth:dev": "cdk -c environment=dev synth LoopAdDevDataStack LoopAdDevRuntimeStack",
+        "cost:dev": "node scripts/estimate-dev-monthly-cost.mjs",
         "put:dev-openai-api-key": "node scripts/put-openai-api-key.mjs",
         "deploy:dev-certificate": "cdk -c environment=dev-certificate deploy LoopAdDevCertificateStack",
         "deploy:dev-repositories": "cdk -c environment=dev-repositories deploy LoopAdDevRepositoryStack",

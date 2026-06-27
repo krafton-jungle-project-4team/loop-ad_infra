@@ -57,7 +57,7 @@ Env로 받는 값:
 
 - DB endpoint와 credential
 - Redis 호환 Valkey endpoint
-- MSK bootstrap broker
+- Kafka bootstrap broker
 - S3 bucket 이름과 object prefix
 - 외부 SaaS API key 또는 webhook URL
 

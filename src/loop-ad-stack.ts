@@ -58,8 +58,8 @@ export {
 
 type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
 
-// VPC, subnet, endpoint, security group은 애플리케이션보다 변경 주기가 깁니다.
-// 최초 배포 전에 network stack으로 분리해 두면 이후 data/runtime 변경의 영향 범위를 줄일 수 있습니다.
+// VPC, 서브넷, 엔드포인트, 보안 그룹은 애플리케이션보다 변경 주기가 깁니다.
+// 최초 배포 전에 네트워크 스택으로 분리해 두면 이후 데이터/런타임 변경의 영향 범위를 줄일 수 있습니다.
 export class LoopAdDevNetworkStack extends Stack {
     public readonly vpc: ec2.Vpc;
     public readonly privateSubnetSelection: ec2.SubnetSelection;
@@ -72,7 +72,7 @@ export class LoopAdDevNetworkStack extends Stack {
     public constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
 
-        // Dev server는 NAT가 있는 private subnet을 씁니다.
+        // 개발 서버는 NAT가 있는 프라이빗 서브넷을 씁니다.
         this.vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
@@ -91,19 +91,19 @@ export class LoopAdDevNetworkStack extends Stack {
             ],
         });
 
-        // 모든 ECS 서비스는 private subnet 그룹에서 실행됩니다.
+        // 모든 ECS 서비스는 프라이빗 서브넷 그룹에서 실행됩니다.
         this.privateSubnetSelection = { subnetGroupName: 'private' };
         this.privateSubnets = this.vpc.selectSubnets(this.privateSubnetSelection);
 
-        // S3 Gateway Endpoint는 hourly 비용 없이 route table에 붙습니다.
-        // ECR layer 다운로드와 S3 접근 비용을 NAT data processing으로 보내지 않기 위해 유지합니다.
+        // S3 게이트웨이 엔드포인트는 시간당 비용 없이 라우팅 테이블에 붙습니다.
+        // ECR 레이어 다운로드와 S3 접근 비용을 NAT 데이터 처리 요금으로 보내지 않기 위해 유지합니다.
         this.vpc.addGatewayEndpoint('S3GatewayEndpoint', {
             service: ec2.GatewayVpcEndpointAwsService.S3,
             subnets: [this.privateSubnets],
         });
 
-        // public ingress는 load balancer 종류별로 나누고, private 서비스는
-        // stack을 읽기 쉽게 유지하기 위해 넓은 내부 SG를 공유합니다.
+        // 외부 진입점은 로드 밸런서 종류별로 나누고, 프라이빗 서비스는
+        // 스택을 읽기 쉽게 유지하기 위해 넓은 내부 보안 그룹을 공유합니다.
         this.albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
@@ -125,12 +125,12 @@ export class LoopAdDevNetworkStack extends Stack {
             description: 'Dev data storage SG shared by internal data endpoints.',
         });
 
-        // 인터넷 트래픽은 public load balancer의 443만 받습니다.
-        // load balancer에서 TLS를 종료하고 private ECS container의 80 포트로 전달합니다.
+        // 인터넷 트래픽은 외부 로드 밸런서의 443만 받습니다.
+        // 로드 밸런서에서 TLS를 종료하고 프라이빗 ECS 컨테이너의 80 포트로 전달합니다.
         this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public HTTPS to dev ALB.');
         this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public TLS ingest to dev NLB.');
 
-        // VPC 내부에서는 SG 경계를 기준으로 server와 DataStorage가 서로 신뢰합니다.
+        // VPC 내부에서는 보안 그룹 경계를 기준으로 서버와 DataStorage가 서로 신뢰합니다.
         this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
         this.nlbSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
         this.serverSecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
@@ -142,9 +142,9 @@ export class LoopAdDevNetworkStack extends Stack {
         this.dataStorageSecurityGroup.addIngressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
         this.dataStorageSecurityGroup.addEgressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
 
-        // Dev server는 외부 SaaS/API 및 AWS public API를 NAT로 호출합니다.
+        // 개발 서버는 외부 SaaS/API 및 AWS 공개 API를 NAT로 호출합니다.
         this.serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        // ClickHouse/Kafka bootstrap과 data storage 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
+        // ClickHouse/Kafka 초기화와 데이터 저장소 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
         this.dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
     }
 }
@@ -155,8 +155,8 @@ export interface LoopAdDevDataStackProps extends StackProps {
     readonly network: LoopAdDevNetworkStack;
 }
 
-// 데이터 저장소와 endpoint contract를 소유하는 스택입니다.
-// Runtime보다 먼저 배포해 ECS task가 참조할 storage endpoint를 안정적으로 제공합니다.
+// 데이터 저장소와 엔드포인트 계약을 소유하는 스택입니다.
+// 런타임보다 먼저 배포해 ECS 작업이 참조할 저장소 엔드포인트를 안정적으로 제공합니다.
 export class LoopAdDevDataStack extends Stack {
     public readonly dataStorageBucket: s3.Bucket;
     public readonly auroraHost: string;
@@ -169,16 +169,16 @@ export class LoopAdDevDataStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
         super(scope, id, props);
 
-        // Network stack에서 만든 기반 리소스를 재사용합니다.
-        // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
+        // 네트워크 스택에서 만든 기반 리소스를 재사용합니다.
+        // 아직 배포 전이라 스택 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
             vpc,
             privateSubnets,
             dataStorageSecurityGroup,
         } = props.network;
 
-        // GenAI 생성물은 DataStorage S3 bucket의 전용 prefix에 저장합니다.
-        // bucket은 직접 public으로 열지 않고 CloudFront OAC를 통해 필요한 prefix만 읽히게 합니다.
+        // GenAI 생성물은 DataStorage S3 버킷의 전용 prefix에 저장합니다.
+        // 버킷은 직접 공개하지 않고 CloudFront OAC를 통해 필요한 prefix만 읽히게 합니다.
         this.dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             encryption: s3.BucketEncryption.S3_MANAGED,
@@ -195,16 +195,16 @@ export class LoopAdDevDataStack extends Stack {
             ],
         });
 
-        // .env에서 받은 public hosted zone을 import합니다.
-        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
+        // .env에서 받은 공개 hosted zone을 가져옵니다.
+        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 레코드 template만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
         });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
-        // GenAI asset용 certificate도 별도 ARN으로 받습니다.
-        // domain 범위를 분리해 두면 나중에 frontend certificate를 바꿔도 asset 배포 경로 영향이 작습니다.
+        // GenAI asset용 인증서도 별도 ARN으로 받습니다.
+        // 도메인 범위를 분리해 두면 나중에 프론트엔드 인증서를 바꿔도 asset 배포 경로 영향이 작습니다.
         const genAiGeneratedAssetsCertificate = acm.Certificate.fromCertificateArn(
             this,
             'GenAiGeneratedAssetsCertificate',
@@ -217,7 +217,7 @@ export class LoopAdDevDataStack extends Stack {
             priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
             defaultBehavior: {
                 // originPath로 generated prefix만 공개합니다.
-                // bucket 전체를 static hosting으로 쓰지 않아도 asset URL contract를 안정적으로 제공합니다.
+                // 버킷 전체를 정적 호스팅으로 쓰지 않아도 asset URL 계약을 안정적으로 제공합니다.
                 origin: origins.S3BucketOrigin.withOriginAccessControl(this.dataStorageBucket, {
                     originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
                 }),
@@ -234,7 +234,7 @@ export class LoopAdDevDataStack extends Stack {
             target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistribution)),
         });
 
-        // 비용을 낮게 유지하는 개발용 data storage입니다.
+        // 비용을 낮게 유지하는 개발용 데이터 저장소입니다.
         // Aurora는 serverless v2 auto pause를 사용하고, 삭제 시에는 snapshot을 남겨 실수 복구 여지를 둡니다.
         const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
             clusterIdentifier: 'dev-loop-ad-aurora-postgres',
@@ -258,8 +258,8 @@ export class LoopAdDevDataStack extends Stack {
         });
 
         // Redis 호환 cache는 ElastiCache Serverless for Valkey로 둡니다.
-        // Valkey는 Redis OSS보다 최소 저장 과금이 낮아 dev의 idle 비용을 줄이기 좋습니다.
-        // 앱 contract는 기존 Redis client 호환성을 위해 LOOPAD_REDIS_URL 이름을 유지합니다.
+        // Valkey는 Redis OSS보다 최소 저장 과금이 낮아 개발 환경의 idle 비용을 줄이기 좋습니다.
+        // 앱 계약은 기존 Redis client 호환성을 위해 LOOPAD_REDIS_URL 이름을 유지합니다.
         const valkeyCache = new elasticache.CfnServerlessCache(this, 'ValkeyServerlessCache', {
             engine: 'valkey',
             majorEngineVersion: DEV_VALKEY_MAJOR_ENGINE_VERSION,
@@ -279,9 +279,9 @@ export class LoopAdDevDataStack extends Stack {
         });
         this.redisUrl = cdk.Fn.join('', ['rediss://', valkeyCache.attrEndpointAddress, ':', valkeyCache.attrEndpointPort]);
 
-        // ClickHouse는 dev 분석/집계용 단일 EC2 인스턴스로 시작합니다.
+        // ClickHouse는 개발 분석/집계용 단일 EC2 인스턴스로 시작합니다.
         // 버전은 LTS patch tag로 고정해 재부팅/재배포 시에도 같은 바이너리를 사용하게 합니다.
-        // managed cluster보다 단순하고 저렴하지만, prod 수준의 고가용성은 목표로 하지 않습니다.
+        // 관리형 cluster보다 단순하고 저렴하지만, production 수준의 고가용성은 목표로 하지 않습니다.
         const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
             vpcSubnets: privateSubnets,
@@ -311,8 +311,8 @@ export class LoopAdDevDataStack extends Stack {
             `docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse ${DEV_CLICKHOUSE_IMAGE}`,
         );
 
-        // Kafka는 raw event stream의 중심입니다.
-        // dev 비용 절감을 위해 MSK 대신 private EC2 단일 broker로 운영합니다.
+        // Kafka는 원본 이벤트 스트림의 중심입니다.
+        // 개발 비용 절감을 위해 MSK 대신 private EC2 단일 broker로 운영합니다.
         // 운영 안정성보다 저비용 공용 개발 환경을 우선한 선택이며, production 수준의 HA는 목표로 하지 않습니다.
         const kafkaInstance = new ec2.Instance(this, 'KafkaInstance', {
             vpc,
@@ -401,8 +401,8 @@ export class LoopAdDevDataStack extends Stack {
         }
         this.auroraCredentialsSecret = auroraCredentialsSecret;
 
-        // endpoint contract는 SSM에도 남깁니다. 앱 task에는 아래 값을 env로 직접 주입합니다.
-        // 다른 repository의 CI/CD나 운영 스크립트가 같은 endpoint 이름을 보고 연결값을 찾을 수 있게 하기 위함입니다.
+        // 엔드포인트 계약은 SSM에도 남깁니다. 앱 작업에는 아래 값을 환경 변수로 직접 주입합니다.
+        // 다른 repository의 CI/CD나 운영 스크립트가 같은 엔드포인트 이름을 보고 연결값을 찾을 수 있게 하기 위함입니다.
         for (const parameter of [
             {
                 id: 'AuroraEndpointParameter',
@@ -464,14 +464,16 @@ export interface LoopAdDevRuntimeStackProps extends StackProps {
 }
 
 // 상시 개발 런타임 스택입니다.
-// FE static hosting, public ingress, ECS cluster/service를 소유하고 데이터 저장소는 DataStack에서 받습니다.
+// 프론트엔드 정적 호스팅, 외부 진입점, ECS 클러스터/서비스를 소유하고 데이터 저장소는 DataStack에서 받습니다.
 export class LoopAdDevRuntimeStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdDevRuntimeStackProps) {
         super(scope, id, props);
 
-        // Section 1: runtime stack이 참조하는 network/data contract를 연결합니다.
-        // Network/Data stack에서 만든 기반 리소스를 재사용합니다.
-        // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
+        // 1단계: 런타임 스택이 참조하는 네트워크/데이터 계약을 연결합니다.
+        // 이 스택은 VPC, 보안 그룹, Aurora, Valkey, ClickHouse, Kafka를 새로 만들지 않습니다.
+        // 이미 분리된 스택에서 받은 endpoint와 권한 경계만 사용해 런타임 변경의 영향 범위를 줄입니다.
+        // 네트워크/데이터 스택에서 만든 기반 리소스를 재사용합니다.
+        // 아직 배포 전이라 스택 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
             vpc,
             privateSubnets,
@@ -489,7 +491,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             kafkaBootstrapBrokerString,
         } = props.data;
 
-        // Dev는 상시 운영 환경이므로 Fargate cluster를 사용합니다.
+        // 개발 환경은 상시 운영되므로 Fargate 클러스터를 사용합니다.
+        // 이 클러스터는 event collector, projector, API service가 배치되는 공통 실행 단위입니다.
         // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
@@ -501,7 +504,8 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
 
         // ECR repository는 repository stack에서 먼저 만듭니다.
-        // runtime stack은 이름 contract만 import해서 ECS가 이미 push된 image를 참조하게 합니다.
+        // 런타임 스택은 repository 이름 계약만 가져와 ECS가 이미 push된 image를 참조하게 합니다.
+        // 이렇게 두면 image lifecycle과 service 배치 변경을 분리해 배포 순서와 권한 범위를 단순하게 유지할 수 있습니다.
         const repositories = DEV_APPLICATION_REPOSITORIES.map((repository) => (
             ecr.Repository.fromRepositoryName(this, `${repository.id}Import`, repository.repositoryName)
         )) as DevApplicationRepositories;
@@ -513,9 +517,11 @@ export class LoopAdDevRuntimeStack extends Stack {
             decisionApiRepository,
         ] = repositories;
 
-        // Section 2: static frontend hosting과 public DNS contract를 만듭니다.
-        // .env에서 받은 public hosted zone을 import합니다.
-        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
+        // 2단계: 정적 프론트엔드 호스팅과 외부 DNS 계약을 만듭니다.
+        // dashboard와 demo-shoppingmall은 S3 원본, CloudFront 배포, Route 53 레코드, SSM 출력값을 같은 패턴으로 가집니다.
+        // 앱별 차이는 레코드/버킷/도메인 이름뿐이라 헬퍼로 묶어 보안 기본값과 배포 계약을 맞춥니다.
+        // .env에서 받은 공개 hosted zone을 가져옵니다.
+        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 레코드 template만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
@@ -524,7 +530,8 @@ export class LoopAdDevRuntimeStack extends Stack {
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const publicApiDomainName = `${PUBLIC_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const publicIngestDomainName = `${PUBLIC_INGEST_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        // Certificate stack에서 만든 ACM ARN을 명시적으로 import합니다.
+
+        // 인증서 스택에서 만든 ACM ARN을 명시적으로 가져옵니다.
         // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
         const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
             this,
@@ -550,16 +557,18 @@ export class LoopAdDevRuntimeStack extends Stack {
             publicHostedZone,
         });
 
-        // 외부 SaaS credential은 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
+        // 외부 SaaS 인증 정보는 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
         // 실제 secret 값은 배포 전 AWS 계정에 별도로 만들어 둡니다.
         const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
             parameterName: OPENAI_API_KEY_PARAMETER_NAME,
         });
 
-        // Section 3: 외부 ingress는 public load balancer로 제한하고 내부 service discovery와 분리합니다.
-        // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
-        // HTTP API와 ingestion traffic의 성격이 달라 listener/target group을 분리해 장애 범위를 줄입니다.
-        // ALB/NLB에 붙는 인증서는 같은 region(ap-northeast-2)에 있어야 하므로 runtime stack에서 별도로 만듭니다.
+        // 3단계: 외부 진입점은 외부 로드 밸런서로 제한하고 내부 서비스 검색과 분리합니다.
+        // 외부 API는 ALB의 경로 규칙으로 분기하고, 이벤트 수집은 NLB의 TCP/TLS 경로로 받습니다.
+        // 두 트래픽의 상태 검사와 대상 그룹을 분리해 광고 조회 장애가 이벤트 수집 경로까지 번지지 않게 합니다.
+        // ALB는 API 경로를 열고, NLB는 원본 이벤트 수집 경로를 엽니다.
+        // HTTP API와 수집 트래픽의 성격이 달라 리스너/대상 그룹을 분리해 장애 범위를 줄입니다.
+        // ALB/NLB에 붙는 인증서는 같은 region(ap-northeast-2)에 있어야 하므로 런타임 스택에서 별도로 만듭니다.
         const regionalIngressCertificate = new acm.Certificate(this, 'RegionalIngressCertificate', {
             domainName: publicApiDomainName,
             subjectAlternativeNames: [publicIngestDomainName],
@@ -589,8 +598,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: { subnetGroupName: 'public' },
         });
 
-        // 외부에서 접근해야 하는 주소만 Route 53 record로 노출합니다.
-        // 내부 서비스 간 호출은 Cloud Map 이름을 쓰므로 public DNS record를 추가하지 않습니다.
+        // 외부에서 접근해야 하는 주소만 Route 53 레코드로 노출합니다.
+        // 내부 서비스 간 호출은 Cloud Map 이름을 쓰므로 외부 DNS 레코드를 추가하지 않습니다.
         for (const dnsRecord of [
             {
                 id: 'DevApiDnsRecord',
@@ -610,9 +619,11 @@ export class LoopAdDevRuntimeStack extends Stack {
             });
         }
 
-        // Section 4: ECS service별 env/secret/grant contract는 호출부에 남기고 공통 task shape만 helper에 위임합니다.
+        // 4단계: ECS 서비스별 환경 변수/시크릿/권한 계약을 명시하고 공통 작업 크기만 헬퍼에 위임합니다.
+        // 헬퍼는 작업 정의, 로그 그룹, 컨테이너, Fargate 서비스, 자동 스케일링을 만들고,
+        // 이 호출부는 어떤 이미지가 어떤 엔드포인트/시크릿/권한을 쓰며 외부 대상에 붙는지를 보여줍니다.
         // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
-        // public ingestion 진입점이지만 task 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
+        // 외부 수집 진입점이지만 작업 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
         const eventCollector = createFargateHttpService(this, {
             taskDefinitionId: 'EventCollectorTaskDefinition',
             logGroupId: 'EventCollectorLogGroup',
@@ -678,8 +689,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // Advertisement API는 ALB를 통해 public 광고 조회 경로를 제공합니다.
-        // Aurora credential은 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Valkey contract로 연결합니다.
+        // Advertisement API는 ALB를 통해 외부 광고 조회 경로를 제공합니다.
+        // Aurora 인증 정보는 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Valkey 연결 계약으로 연결합니다.
         const advertisement = createFargateHttpService(this, {
             taskDefinitionId: 'AdvertisementApiTaskDefinition',
             logGroupId: 'AdvertisementApiLogGroup',
@@ -720,7 +731,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
 
         // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision API를 호출합니다.
-        // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage bucket의 generated prefix 읽기 권한만 부여합니다.
+        // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage 버킷의 generated prefix 읽기 권한만 부여합니다.
         const dashboard = createFargateHttpService(this, {
             taskDefinitionId: 'DashboardApiTaskDefinition',
             logGroupId: 'DashboardApiLogGroup',
@@ -764,8 +775,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // Decision API는 private 전용이며 public ALB에 연결하지 않습니다.
-        // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 task에만 줍니다.
+        // Decision API는 private 전용이며 외부 ALB에 연결하지 않습니다.
+        // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 작업에만 줍니다.
         createFargateHttpService(this, {
             taskDefinitionId: 'DecisionApiTaskDefinition',
             logGroupId: 'DecisionApiLogGroup',

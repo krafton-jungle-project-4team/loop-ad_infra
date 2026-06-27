@@ -285,3 +285,33 @@ Initial priority:
 | 운영 안정성 | 91 | 91 | Cloud Map/public ingress 경계를 코드 안에서 더 쉽게 검토할 수 있다. |
 | CDK 모범사례/유지보수성 | 96 | 96 | logical ID 안정성과 helper 책임 경계가 코드 주석으로 드러난다. |
 | 테스트/문서화 | 96 | 96 | 동작 검증은 기존 테스트로 유지하고 코드 내부 설명을 보강했다. |
+
+## Cycle 7 - Localize and Expand CDK Comments
+
+목적:
+
+- 코드 주석을 한국어 설명으로 통일한다.
+- ECS helper가 생성하는 log group, task definition, container, Fargate service, autoscaling, static frontend 리소스의 목적과 생성 이유를 더 자세히 남긴다.
+- RuntimeStack의 network/data 계약, ECR import, static frontend/DNS, public ingress, ECS service wiring 구간 설명을 더 명확히 한다.
+
+변경 파일:
+
+- `src/runtime-helpers.ts`
+- `src/loop-ad-stack.ts`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 14 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 리소스 shape 변경 없이 비용 관련 생성 이유를 코드 주석으로 명확히 했다. |
+| 보안/안전성 | 90 | 90 | 시크릿, 권한, private/public 경계를 주석으로 더 분명히 설명했다. |
+| 운영 안정성 | 91 | 91 | 로드 밸런서, Cloud Map, autoscaling 경계를 읽기 쉽게 정리했다. |
+| CDK 모범사례/유지보수성 | 96 | 96 | helper가 만드는 리소스와 호출부에 남긴 계약의 이유가 코드 안에서 드러난다. |
+| 테스트/문서화 | 96 | 96 | 한국어 코드 주석과 개선 로그를 보강했다. |

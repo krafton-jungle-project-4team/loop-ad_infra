@@ -19,7 +19,8 @@ import {
     SERVICE_CPU_SCALE_TARGET_PERCENT,
 } from './dev-config';
 
-// ECS log group naming/retention is centralized so cost and retention reviews stay consistent.
+// ECS 서비스 로그 그룹은 서비스별 로그 이름과 보관 기간을 한곳에서 맞춥니다.
+// 로그 보관 기간은 CloudWatch Logs 비용에 직접 영향을 주므로 서비스마다 흩어 두지 않습니다.
 export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
     return new logs.LogGroup(scope, id, {
         logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
@@ -27,7 +28,9 @@ export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId
     });
 }
 
-// Construct IDs are caller-supplied to keep CloudFormation logical IDs stable when this helper changes.
+// 이 설정은 하나의 HTTP 기반 Fargate 서비스를 만들기 위한 입력입니다.
+// 작업 정의, 컨테이너, 서비스, 스케일링 construct ID는 호출부에서 직접 넘겨 CloudFormation logical ID를 고정합니다.
+// 헬퍼 내부 이름을 바꾸거나 책임을 조금 나누더라도 이미 배포된 ECS 리소스가 교체되지 않게 하기 위함입니다.
 export interface FargateHttpServiceConfig {
     readonly taskDefinitionId: string;
     readonly logGroupId: string;
@@ -52,7 +55,8 @@ export interface FargateHttpService {
 }
 
 export function createFargateHttpService(scope: Construct, config: FargateHttpServiceConfig): FargateHttpService {
-    // Dev runtime services share the same small ARM64 task shape to stay inside the monthly cost model.
+    // 작업 정의는 컨테이너가 사용할 CPU, 메모리, 런타임 아키텍처의 비용 단위입니다.
+    // 개발 환경의 모든 서비스는 작은 ARM64 작업 크기를 공유해 월 비용 모델의 Fargate 상한을 예측 가능하게 둡니다.
     const taskDefinition = new ecs.FargateTaskDefinition(scope, config.taskDefinitionId, {
         cpu: 256,
         memoryLimitMiB: 512,
@@ -62,9 +66,12 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         },
     });
 
-    // Service-specific grants stay as a callback so storage ownership remains in the stack that wires the service.
+    // 서비스별 IAM 권한은 작업 정의를 만든 뒤 호출부가 grant 메서드로 부여합니다.
+    // 어떤 서비스가 어떤 S3 prefix나 시크릿을 쓰는지는 공통 헬퍼보다 스택의 서비스 연결부에서 보는 편이 안전합니다.
     config.grantTaskRole?.(taskDefinition);
 
+    // 컨테이너는 ECR 이미지, 환경 변수, 시크릿, CloudWatch Logs 연결을 묶습니다.
+    // 환경 변수/시크릿 계약은 애플리케이션 배포와 관리형 전환 때 영향 범위가 크므로 서비스별 호출부에서 명시합니다.
     const logGroup = createEcsServiceLogGroup(scope, config.logGroupId, config.serviceId);
     const container = taskDefinition.addContainer(config.containerId, {
         containerName: config.serviceId,
@@ -76,9 +83,12 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         environment: config.environment,
         secrets: config.secrets,
     });
+    // 모든 내부 HTTP 서비스는 컨테이너 포트 80으로 통일합니다.
+    // TLS 종료와 외부 리스너 구성은 로드 밸런서 쪽에 두어 컨테이너 이미지를 단순하게 유지합니다.
     container.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
 
-    // Cloud Map is the private service contract; ALB/NLB public exposure is attached explicitly in the stack.
+    // FargateService는 private subnet에 작업을 배치하고 Cloud Map 이름을 등록합니다.
+    // 내부 서비스 호출은 Cloud Map을 쓰고, 외부 공개 여부는 스택에서 ALB/NLB 대상 연결로 따로 결정합니다.
     const service = new ecs.FargateService(scope, config.serviceConstructId, {
         cluster: config.cluster,
         taskDefinition,
@@ -94,7 +104,8 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         healthCheckGracePeriod: config.healthCheckGracePeriod,
     });
 
-    // Scaling bounds are centralized because they directly cap the dev Fargate spend.
+    // Auto Scaling 대상은 최소 1개, 최대 2개 작업으로 고정해 개발 환경의 가용성과 비용 상한을 함께 관리합니다.
+    // CPU 목표치만 공통으로 걸어 두고, 더 복잡한 스케일링 정책은 실제 트래픽 검증 뒤 서비스별로 분리합니다.
     service.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization(config.cpuScalingId, {
         targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
     });
@@ -116,8 +127,11 @@ export interface StaticFrontendSiteConfig {
     readonly publicHostedZone: route53.IHostedZone;
 }
 
-// Static frontend sites share the same secure S3, CloudFront, DNS, and SSM output contract.
+// 정적 프론트엔드 사이트는 S3 버킷, CloudFront 배포, Route 53 레코드, SSM 파라미터를 함께 만듭니다.
+// dashboard와 demo-shoppingmall이 같은 보안 기본값을 쓰도록 공통화하고, 배포 파이프라인은 SSM 계약으로 산출물을 찾습니다.
 export function createStaticFrontendSite(scope: Construct, config: StaticFrontendSiteConfig): void {
+    // S3 버킷은 원본 저장소입니다. 직접 공개 호스팅을 켜지 않고 CloudFront OAC로만 읽게 합니다.
+    // 버전 관리와 RETAIN은 잘못된 삭제나 배포 실수에서 정적 파일을 복구할 시간을 주기 위한 개발 안전장치입니다.
     const bucket = new s3.Bucket(scope, `${config.idPrefix}Bucket`, {
         bucketName: config.bucketName,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -127,6 +141,8 @@ export function createStaticFrontendSite(scope: Construct, config: StaticFronten
         objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
         removalPolicy: RemovalPolicy.RETAIN,
     });
+    // CloudFront 배포는 HTTPS, 캐시, SPA fallback을 담당합니다.
+    // PRICE_CLASS_100은 전 세계 edge를 모두 쓰지 않아 개발 환경의 전송 비용을 낮추기 위한 선택입니다.
     const distribution = new cloudfront.Distribution(scope, `${config.idPrefix}Distribution`, {
         domainNames: [config.domainName],
         certificate: config.certificate,
@@ -156,12 +172,16 @@ export function createStaticFrontendSite(scope: Construct, config: StaticFronten
             },
         ],
     });
+    // Route 53 레코드는 사용자가 접근할 고정 도메인을 CloudFront에 연결합니다.
+    // 버킷 이름이나 배포 도메인이 바뀌어도 외부 URL 계약은 레코드 이름으로 유지됩니다.
     new route53.ARecord(scope, `${config.idPrefix}DnsRecord`, {
         zone: config.publicHostedZone,
         recordName: config.recordName,
         target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(distribution)),
     });
 
+    // SSM 파라미터는 프론트엔드 배포 작업이 버킷과 배포 ID를 찾는 읽기 전용 계약입니다.
+    // 다른 repository나 CI가 CDK construct 내부를 몰라도 같은 경로로 배포 대상을 찾을 수 있게 둡니다.
     for (const parameter of [
         {
             id: `${config.idPrefix}BucketNameParameter`,

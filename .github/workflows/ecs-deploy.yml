@@ -136,6 +136,7 @@ jobs:
                   image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
 
                   docker build \
+                      --platform linux/arm64 \
                       --file "${DOCKERFILE}" \
                       --tag "${image}" \
                       "${BUILD_CONTEXT}"

@@ -251,6 +251,7 @@ describe('loop-ad local safety contracts', () => {
         const infraWorkflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
 
         expect(ecsWorkflow).toContain('id-token: write');
+        expect(ecsWorkflow).toContain('--platform linux/arm64');
         expect(frontendWorkflow).toContain('id-token: write');
         expect(infraWorkflow).toContain('npm run build');
         expect(infraWorkflow).toContain('npm test');

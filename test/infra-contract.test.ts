@@ -78,6 +78,11 @@ describe('loop-ad CDK guardrails', () => {
         template.resourcePropertiesCountIs('AWS::EC2::Instance', {
             InstanceType: 't4g.small',
         }, 2);
+        const dataResources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
+        const kafkaRole = ec2RoleWithNameTag(dataResources, 'dev-loop-ad-kafka');
+        const clickHouseRole = ec2RoleWithNameTag(dataResources, 'dev-loop-ad-clickhouse');
+        expect(JSON.stringify(kafkaRole?.Properties?.ManagedPolicyArns ?? [])).toContain('AmazonSSMManagedInstanceCore');
+        expect(JSON.stringify(clickHouseRole?.Properties?.ManagedPolicyArns ?? [])).not.toContain('AmazonSSMManagedInstanceCore');
         template.hasResourceProperties('AWS::S3::Bucket', {
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -367,6 +372,16 @@ function ssmParameterNamesFrom(template: Template): string[] {
     const resources = template.toJSON().Resources as Record<string, { Type: string; Properties?: Record<string, unknown> }>;
     return Object.values(resources).flatMap((resource) => (
         resource.Type === 'AWS::SSM::Parameter' ? [String(resource.Properties?.Name ?? '')] : []
+    ));
+}
+
+function ec2RoleWithNameTag(
+    resources: Record<string, { Type: string; Properties?: Record<string, unknown> }>,
+    name: string,
+): { Type: string; Properties?: Record<string, unknown> } | undefined {
+    return Object.values(resources).find((resource) => (
+        resource.Type === 'AWS::IAM::Role' &&
+        JSON.stringify(resource.Properties?.Tags ?? []).includes(name)
     ));
 }
 

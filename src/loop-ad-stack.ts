@@ -7,6 +7,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
@@ -334,6 +335,8 @@ export class LoopAdDevDataStack extends Stack {
             ],
             requireImdsv2: true,
         });
+        // Kafka EC2는 개발 DB 포트 포워딩용 private Session Manager 대상도 겸합니다.
+        kafkaInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
         kafkaInstance.userData.addCommands(
             'set -eux',
             'dnf update -y',

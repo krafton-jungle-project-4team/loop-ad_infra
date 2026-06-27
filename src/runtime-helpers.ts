@@ -19,6 +19,7 @@ import {
     SERVICE_CPU_SCALE_TARGET_PERCENT,
 } from './dev-config';
 
+// ECS log group naming/retention is centralized so cost and retention reviews stay consistent.
 export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId: string): logs.LogGroup {
     return new logs.LogGroup(scope, id, {
         logGroupName: `${DEV_ECS_LOG_GROUP_PREFIX}/${serviceId}`,
@@ -26,6 +27,7 @@ export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId
     });
 }
 
+// Construct IDs are caller-supplied to keep CloudFormation logical IDs stable when this helper changes.
 export interface FargateHttpServiceConfig {
     readonly taskDefinitionId: string;
     readonly logGroupId: string;
@@ -50,6 +52,7 @@ export interface FargateHttpService {
 }
 
 export function createFargateHttpService(scope: Construct, config: FargateHttpServiceConfig): FargateHttpService {
+    // Dev runtime services share the same small ARM64 task shape to stay inside the monthly cost model.
     const taskDefinition = new ecs.FargateTaskDefinition(scope, config.taskDefinitionId, {
         cpu: 256,
         memoryLimitMiB: 512,
@@ -58,6 +61,8 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
             operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
         },
     });
+
+    // Service-specific grants stay as a callback so storage ownership remains in the stack that wires the service.
     config.grantTaskRole?.(taskDefinition);
 
     const logGroup = createEcsServiceLogGroup(scope, config.logGroupId, config.serviceId);
@@ -73,6 +78,7 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
     });
     container.addPortMappings({ containerPort: 80, protocol: ecs.Protocol.TCP });
 
+    // Cloud Map is the private service contract; ALB/NLB public exposure is attached explicitly in the stack.
     const service = new ecs.FargateService(scope, config.serviceConstructId, {
         cluster: config.cluster,
         taskDefinition,
@@ -87,6 +93,8 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         cloudMapOptions: { name: config.serviceId },
         healthCheckGracePeriod: config.healthCheckGracePeriod,
     });
+
+    // Scaling bounds are centralized because they directly cap the dev Fargate spend.
     service.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization(config.cpuScalingId, {
         targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
     });
@@ -108,6 +116,7 @@ export interface StaticFrontendSiteConfig {
     readonly publicHostedZone: route53.IHostedZone;
 }
 
+// Static frontend sites share the same secure S3, CloudFront, DNS, and SSM output contract.
 export function createStaticFrontendSite(scope: Construct, config: StaticFrontendSiteConfig): void {
     const bucket = new s3.Bucket(scope, `${config.idPrefix}Bucket`, {
         bucketName: config.bucketName,

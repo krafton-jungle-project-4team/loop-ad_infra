@@ -255,3 +255,33 @@ Initial priority:
 | 운영 안정성 | 91 | 91 | ECS logical ID stability test를 추가해 helper refactor replacement 위험을 낮췄다. |
 | CDK 모범사례/유지보수성 | 95 | 96 | 반복 runtime service 생성 로직을 helper로 모으고 stack은 service별 contract 중심으로 줄였다. |
 | 테스트/문서화 | 95 | 96 | runtime ECS task/service/log/scaling logical ID guard를 추가했다. |
+
+## Cycle 6 - Annotate Runtime CDK Sections
+
+목적:
+
+- `LoopAdDevRuntimeStack`을 contract wiring, static frontend/DNS, public ingress, ECS service wiring 섹션으로 주석 구분한다.
+- `createFargateHttpService` helper에 logical ID 안정성, cost envelope, per-service grant callback, Cloud Map/public ingress 경계 의도를 남긴다.
+- 동작 변경 없이 CDK 유지보수성과 리뷰 가능성을 높인다.
+
+변경 파일:
+
+- `src/runtime-helpers.ts`
+- `src/loop-ad-stack.ts`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 14 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 리소스 shape 변경 없이 비용 상한 의도를 helper 주석으로 명확히 했다. |
+| 보안/안전성 | 90 | 90 | secret/grant 경계가 stack 호출부에 남아야 하는 이유를 주석화했다. |
+| 운영 안정성 | 91 | 91 | Cloud Map/public ingress 경계를 코드 안에서 더 쉽게 검토할 수 있다. |
+| CDK 모범사례/유지보수성 | 96 | 96 | logical ID 안정성과 helper 책임 경계가 코드 주석으로 드러난다. |
+| 테스트/문서화 | 96 | 96 | 동작 검증은 기존 테스트로 유지하고 코드 내부 설명을 보강했다. |

@@ -469,6 +469,7 @@ export class LoopAdDevRuntimeStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdDevRuntimeStackProps) {
         super(scope, id, props);
 
+        // Section 1: runtime stack이 참조하는 network/data contract를 연결합니다.
         // Network/Data stack에서 만든 기반 리소스를 재사용합니다.
         // 아직 배포 전이라 stack 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
@@ -512,6 +513,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             decisionApiRepository,
         ] = repositories;
 
+        // Section 2: static frontend hosting과 public DNS contract를 만듭니다.
         // .env에서 받은 public hosted zone을 import합니다.
         // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 record template만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
@@ -554,6 +556,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             parameterName: OPENAI_API_KEY_PARAMETER_NAME,
         });
 
+        // Section 3: 외부 ingress는 public load balancer로 제한하고 내부 service discovery와 분리합니다.
         // ALB는 API 경로를 열고, NLB는 raw event ingestion 경로를 엽니다.
         // HTTP API와 ingestion traffic의 성격이 달라 listener/target group을 분리해 장애 범위를 줄입니다.
         // ALB/NLB에 붙는 인증서는 같은 region(ap-northeast-2)에 있어야 하므로 runtime stack에서 별도로 만듭니다.
@@ -607,6 +610,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             });
         }
 
+        // Section 4: ECS service별 env/secret/grant contract는 호출부에 남기고 공통 task shape만 helper에 위임합니다.
         // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
         // public ingestion 진입점이지만 task 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
         const eventCollector = createFargateHttpService(this, {

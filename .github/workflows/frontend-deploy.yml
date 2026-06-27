@@ -11,10 +11,6 @@ on:
                 description: AWS region for S3 and CloudFront operations.
                 required: true
                 type: string
-            aws_role_arn:
-                description: IAM role ARN assumed through GitHub OIDC.
-                required: true
-                type: string
             node_version:
                 description: Node.js version used to build the frontend.
                 required: true
@@ -66,6 +62,10 @@ on:
             cloudfront_invalidation_id:
                 description: CloudFront invalidation ID created for this deploy.
                 value: ${{ jobs.deploy.outputs.cloudfront_invalidation_id }}
+        secrets:
+            LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN:
+                description: Organization secret containing the IAM role ARN assumed through GitHub OIDC.
+                required: true
 
 permissions:
     contents: read
@@ -91,7 +91,7 @@ jobs:
               env:
                   ENVIRONMENT: ${{ inputs.environment }}
                   AWS_REGION: ${{ inputs.aws_region }}
-                  AWS_ROLE_ARN: ${{ inputs.aws_role_arn }}
+                  AWS_ROLE_ARN: ${{ secrets.LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN }}
                   NODE_VERSION: ${{ inputs.node_version }}
                   WORKING_DIRECTORY: ${{ inputs.working_directory }}
                   INSTALL_COMMAND: ${{ inputs.install_command }}
@@ -153,7 +153,7 @@ jobs:
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v4
               with:
-                  role-to-assume: ${{ inputs.aws_role_arn }}
+                  role-to-assume: ${{ secrets.LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN }}
                   aws-region: ${{ inputs.aws_region }}
                   role-session-name: gha-frontend-${{ github.run_id }}
 

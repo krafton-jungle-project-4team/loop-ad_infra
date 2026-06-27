@@ -11,10 +11,6 @@ on:
                 description: AWS region for ECR/ECS.
                 required: true
                 type: string
-            aws_role_arn:
-                description: IAM role ARN assumed through GitHub OIDC.
-                required: true
-                type: string
             service_name:
                 description: Logical service name used in logs/concurrency.
                 required: true
@@ -55,6 +51,10 @@ on:
             image:
                 description: Fully qualified ECR image URI deployed to ECS.
                 value: ${{ jobs.deploy.outputs.image }}
+        secrets:
+            LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN:
+                description: Organization secret containing the IAM role ARN assumed through GitHub OIDC.
+                required: true
 
 permissions:
     contents: read
@@ -78,7 +78,7 @@ jobs:
               shell: bash
               env:
                   AWS_REGION: ${{ inputs.aws_region }}
-                  AWS_ROLE_ARN: ${{ inputs.aws_role_arn }}
+                  AWS_ROLE_ARN: ${{ secrets.LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN }}
                   SERVICE_NAME: ${{ inputs.service_name }}
                   ECR_REPOSITORY: ${{ inputs.ecr_repository }}
                   ECS_CLUSTER: ${{ inputs.ecs_cluster }}
@@ -112,7 +112,7 @@ jobs:
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v4
               with:
-                  role-to-assume: ${{ inputs.aws_role_arn }}
+                  role-to-assume: ${{ secrets.LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN }}
                   aws-region: ${{ inputs.aws_region }}
                   role-session-name: gha-${{ inputs.service_name }}-${{ github.run_id }}
 

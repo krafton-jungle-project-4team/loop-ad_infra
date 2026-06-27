@@ -252,7 +252,11 @@ describe('loop-ad local safety contracts', () => {
 
         expect(ecsWorkflow).toContain('id-token: write');
         expect(ecsWorkflow).toContain('--platform linux/arm64');
+        expect(ecsWorkflow).toContain('LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN');
+        expect(ecsWorkflow).not.toContain('aws_role_arn:');
         expect(frontendWorkflow).toContain('id-token: write');
+        expect(frontendWorkflow).toContain('LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN');
+        expect(frontendWorkflow).not.toContain('aws_role_arn:');
         expect(infraWorkflow).toContain('npm run build');
         expect(infraWorkflow).toContain('npm test');
         expect(infraWorkflow).toContain('npm run synth:${{ inputs.environment }}');

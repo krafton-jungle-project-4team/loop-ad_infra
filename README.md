@@ -24,7 +24,6 @@ loop-ad 관련 인프라를 관리하는 레포입니다.
    - ECS 서비스 배포 reusable workflow: [.github/workflows/ecs-deploy.yml](.github/workflows/ecs-deploy.yml)
    - Frontend 정적 배포 reusable workflow: [.github/workflows/frontend-deploy.yml](.github/workflows/frontend-deploy.yml)
    - 인프라 검증 workflow: [.github/workflows/infra-check.yml](.github/workflows/infra-check.yml)
-   - 호출 예시는 [docs/github-actions](docs/github-actions)를 봅니다.
 
 ## 주요 명령
 

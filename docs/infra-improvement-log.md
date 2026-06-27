@@ -315,3 +315,36 @@ Initial priority:
 | 운영 안정성 | 91 | 91 | 로드 밸런서, Cloud Map, autoscaling 경계를 읽기 쉽게 정리했다. |
 | CDK 모범사례/유지보수성 | 96 | 96 | helper가 만드는 리소스와 호출부에 남긴 계약의 이유가 코드 안에서 드러난다. |
 | 테스트/문서화 | 96 | 96 | 한국어 코드 주석과 개선 로그를 보강했다. |
+
+## Cycle 8 - Remove Non-Essential Maintained Tests and Docs
+
+목적:
+
+- 현재 작업 기록으로만 남겨도 되는 내용은 `infra-improvement-log`에 두고, 계속 유지해야 하는 테스트/문서 표면에서는 중복을 제거한다.
+- 문서의 특정 문구를 검증하던 brittle test를 삭제하고, 실제 CDK 소스가 Budget 리소스를 만들지 않는지만 검증한다.
+- 실제 reusable workflow와 앱 가이드가 이미 설명하는 GitHub Actions 호출 예시 문서는 삭제한다.
+
+변경 파일:
+
+- `test/infra-contract.test.ts`
+- `README.md`
+- `docs/github-actions/app-ecs-deploy.example.yml`
+- `docs/github-actions/frontend-deploy.example.yml`
+- `docs/github-actions/infra-check.example.yml`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 13 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | Budget 리소스 미생성 guard는 유지하고 문서 문구 검증만 제거했다. |
+| 보안/안전성 | 90 | 90 | OIDC/deploy-free workflow guard는 유지했다. |
+| 운영 안정성 | 91 | 91 | 실제 synth/test guard는 유지했다. |
+| CDK 모범사례/유지보수성 | 96 | 96 | 유지해야 하는 문서와 테스트 표면을 줄였다. |
+| 테스트/문서화 | 96 | 96 | 문서 내용 검증 대신 인프라 계약 검증 중심으로 정리했다. |

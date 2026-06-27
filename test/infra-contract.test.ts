@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { Match, Template } from 'aws-cdk-lib/assertions';
+import { Template } from 'aws-cdk-lib/assertions';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -281,40 +281,12 @@ describe('loop-ad local safety contracts', () => {
         expect(model.lineItems.every((item) => Number.isFinite(item.monthlyUsd) && item.monthlyUsd >= 0)).toBe(true);
     });
 
-    it('keeps cost alerts owned outside this CDK app', () => {
-        const modelDoc = readFileSync(join(ROOT, 'docs/cost-model.md'), 'utf8');
+    it('does not create CDK-owned budget alert resources', () => {
         const synthesizedSources = sourceFiles(SRC_DIR)
             .map((file) => readFileSync(file, 'utf8'))
             .join('\n');
 
-        expect(modelDoc).toContain('별도 정기 비용 알림');
-        expect(modelDoc).toContain('이 CDK app은 AWS Budget 알림 리소스를 생성하지 않는다');
         expect(synthesizedSources).not.toContain('CfnBudget');
-    });
-
-    it('documents managed transition gates without changing app contracts', () => {
-        const plan = readFileSync(join(ROOT, 'docs/managed-service-transition-plan.md'), 'utf8');
-
-        for (const requiredText of [
-            'Performance test',
-            'Monthly $1200 verification',
-            'Rollback',
-            'Migration risk',
-            'CDK scope',
-            '/loop-ad/dev/kafka/bootstrap-brokers',
-            '/loop-ad/dev/clickhouse/endpoint',
-            '/loop-ad/dev/redis/endpoint',
-            '/loop-ad/dev/aurora/endpoint',
-            'LOOPAD_KAFKA_BOOTSTRAP_BROKERS',
-            'LOOPAD_CLICKHOUSE_URL',
-            'LOOPAD_REDIS_URL',
-            'LOOPAD_AURORA_HOST',
-            'serverSecurityGroup',
-            'dataStorageSecurityGroup',
-            'LoopAdDevDataStack',
-        ]) {
-            expect(plan).toContain(requiredText);
-        }
     });
 });
 

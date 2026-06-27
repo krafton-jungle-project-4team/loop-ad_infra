@@ -348,3 +348,32 @@ Initial priority:
 | 운영 안정성 | 91 | 91 | 실제 synth/test guard는 유지했다. |
 | CDK 모범사례/유지보수성 | 96 | 96 | 유지해야 하는 문서와 테스트 표면을 줄였다. |
 | 테스트/문서화 | 96 | 96 | 문서 내용 검증 대신 인프라 계약 검증 중심으로 정리했다. |
+
+## Cycle 9 - Localize Managed Transition Plan
+
+목적:
+
+- `docs/managed-service-transition-plan.md`의 제목, 섹션, 본문을 한국어 중심으로 전환한다.
+- SSM path, ECS env, construct id, AWS 서비스명처럼 계약 식별자는 그대로 유지한다.
+- 관리형 전환 기준을 운영자가 한글 문서만 보고 검토할 수 있게 한다.
+
+변경 파일:
+
+- `docs/managed-service-transition-plan.md`
+- `docs/infra-improvement-log.md`
+
+검증:
+
+- `npm run build`: pass
+- `npm test`: pass, 1 suite / 13 tests
+- `CDK_DEFAULT_ACCOUNT=123456789012 LOOP_AD_PUBLIC_HOSTED_ZONE_ID=ZTESTHOSTEDZONEID LOOP_AD_PUBLIC_DOMAIN_NAME=example.test LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN=arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets npm run synth:dev`: pass
+
+점수 영향:
+
+| 항목 | 이전 | 이후 | 판단 |
+|---|---:|---:|---|
+| 비용 적합성 | 91 | 91 | 비용 검증 기준은 유지하고 문서 언어만 정리했다. |
+| 보안/안전성 | 90 | 90 | env/SSM/SG 계약 설명을 유지했다. |
+| 운영 안정성 | 91 | 91 | 성능 테스트, 롤백, 마이그레이션 위험 기준을 한국어로 명확히 했다. |
+| CDK 모범사례/유지보수성 | 96 | 96 | CDK 변경 범위와 stack boundary 설명을 유지했다. |
+| 테스트/문서화 | 96 | 96 | 유지 문서의 언어 일관성을 높였다. |

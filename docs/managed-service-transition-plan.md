@@ -178,6 +178,7 @@ CDK 변경 범위:
 - Aurora PostgreSQL Serverless v2 min 0 ACU, max 2 ACU, 10 minute auto-pause
 - SSM: `/loop-ad/dev/aurora/endpoint`
 - ECS 환경 변수: `LOOPAD_AURORA_HOST`, `LOOPAD_AURORA_PORT`, `LOOPAD_AURORA_DATABASE`, secret username/password
+- TODO: 현재 Aurora master credential은 CDK가 자동 생성한 Secrets Manager secret을 사용한다. 향후 개선 시에는 운영자가 제어하는 app DB user secret을 직접 만들고, 해당 secret ARN을 환경변수로 받아 ECS runtime에 주입하도록 전환한다. 기존 DB 데이터는 유지하고 app user 생성, 권한 부여, runtime secret 참조 변경만 수행한다.
 
 전환 후보:
 

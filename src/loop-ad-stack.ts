@@ -18,8 +18,10 @@ import { join } from 'node:path';
 import {
     AURORA_DATABASE_NAME,
     CLICKHOUSE_DATABASE_NAME,
+    DASHBOARD_API_RECORD_NAME,
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
+    DECISION_API_RECORD_NAME,
     DEV_APPLICATION_REPOSITORIES,
     DEV_AURORA_AUTO_PAUSE_MINUTES,
     DEV_AURORA_MAX_ACU,
@@ -36,10 +38,10 @@ import {
     DEV_KAFKA_VERSION,
     DEV_KAFKA_VOLUME_GIB,
     DEV_VPC_AVAILABILITY_ZONES,
+    EVENT_COLLECTOR_API_RECORD_NAME,
     EVENT_TOPIC_NAME,
     GENAI_GENERATED_ASSETS_PREFIX,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
-    PUBLIC_API_RECORD_NAME,
     type DeveloperAllowlistConfig,
     type LoopAdDevCertificateArns,
     type LoopAdDevDataSecretNames,
@@ -134,6 +136,7 @@ export class LoopAdDevNetworkStack extends Stack {
         this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public HTTPS to dev ALB.');
         this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.tcp(APP_CONTAINER_PORT), 'ALB may reach app containers.');
         this.serverSecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.tcp(APP_CONTAINER_PORT), 'ALB may reach app containers.');
+        this.serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Servers may reach AWS APIs, ECR, CloudWatch Logs, and public HTTPS endpoints.');
 
         // 서버에서 데이터소스로 나가는 경로는 앱이 실제로 쓰는 포트만 엽니다.
         // allowAllOutbound를 끈 상태라 빠진 포트는 곧 연결 실패로 드러나며, 의도치 않은 외부 egress를 줄입니다.
@@ -418,7 +421,9 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
         const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        const publicApiDomainName = `${PUBLIC_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const eventCollectorApiDomainName = `${EVENT_COLLECTOR_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const dashboardApiDomainName = `${DASHBOARD_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
+        const decisionApiDomainName = `${DECISION_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
 
         // 정적 프론트는 같은 ACM 인증서와 공통 헬퍼를 사용합니다.
         // dashboard와 demo-shoppingmall은 앱 배포 산출물만 다르고 CDN/S3 보안 기본값은 같아야 합니다.
@@ -446,10 +451,14 @@ export class LoopAdDevRuntimeStack extends Stack {
             publicHostedZone,
         });
 
-        // API 진입점은 public ALB 하나로 통일합니다.
-        // path routing으로 서비스 경계를 나누면 NLB나 서비스별 외부 endpoint 없이도 public HTTPS 계약을 유지할 수 있습니다.
+        // API 진입점은 public ALB 하나로 통일하고, 서비스 경계는 host-header routing으로 나눕니다.
+        // event.api.dev, dashboard.api.dev, decision.api.dev가 각각 같은 ALB의 대상 그룹으로 연결됩니다.
         const regionalIngressCertificate = new acm.Certificate(this, 'RegionalIngressCertificate', {
-            domainName: publicApiDomainName,
+            domainName: eventCollectorApiDomainName,
+            subjectAlternativeNames: [
+                dashboardApiDomainName,
+                decisionApiDomainName,
+            ],
             validation: acm.CertificateValidation.fromDns(publicHostedZone),
         });
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
@@ -465,14 +474,20 @@ export class LoopAdDevRuntimeStack extends Stack {
             open: false,
             defaultAction: elbv2.ListenerAction.fixedResponse(404, {
                 contentType: 'text/plain',
-                messageBody: 'No loop-ad API route is registered.',
+                messageBody: 'No loop-ad API host is registered.',
             }),
         });
-        new route53.ARecord(this, 'DevApiDnsRecord', {
-            zone: publicHostedZone,
-            recordName: PUBLIC_API_RECORD_NAME,
-            target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
-        });
+        for (const apiRecord of [
+            { id: 'EventCollectorApiDnsRecord', recordName: EVENT_COLLECTOR_API_RECORD_NAME },
+            { id: 'DashboardApiDnsRecord', recordName: DASHBOARD_API_RECORD_NAME },
+            { id: 'DecisionApiDnsRecord', recordName: DECISION_API_RECORD_NAME },
+        ] as const) {
+            new route53.ARecord(this, apiRecord.id, {
+                zone: publicHostedZone,
+                recordName: apiRecord.recordName,
+                target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
+            });
+        }
 
         // event-collector는 이벤트 수집과 Kafka publish만 담당합니다.
         // 내부 API key도 함께 주입해 앱이 자체 /internal 경로를 검증할 수 있게 합니다.
@@ -508,7 +523,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 10,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/event/*'])],
+            conditions: [elbv2.ListenerCondition.hostHeaders([eventCollectorApiDomainName])],
             healthCheck: {
                 enabled: true,
                 port: APP_CONTAINER_PORT_TEXT,
@@ -543,6 +558,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
+                LOOPAD_DECISION_API_BASE_URL: `https://${decisionApiDomainName}`,
             },
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
@@ -557,7 +573,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 20,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/dashboard/*'])],
+            conditions: [elbv2.ListenerCondition.hostHeaders([dashboardApiDomainName])],
             healthCheck: {
                 enabled: true,
                 port: APP_CONTAINER_PORT_TEXT,
@@ -607,7 +623,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
             priority: 30,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/decision/*'])],
+            conditions: [elbv2.ListenerCondition.hostHeaders([decisionApiDomainName])],
             healthCheck: {
                 enabled: true,
                 port: APP_CONTAINER_PORT_TEXT,

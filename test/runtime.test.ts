@@ -53,16 +53,20 @@ describe('runtime architecture', () => {
         expect(JSON.stringify(template.toJSON())).not.toContain('advertisement-api');
     });
 
-    it('routes public API paths to the expected service target groups', () => {
+    it('routes public API hosts to the expected service target groups', () => {
         const template = Template.fromStack(synthRuntime());
 
-        for (const pathPattern of ['/api/event/*', '/api/dashboard/*', '/api/decision/*']) {
+        for (const hostHeader of [
+            'event.api.dev.example.test',
+            'dashboard.api.dev.example.test',
+            'decision.api.dev.example.test',
+        ]) {
             template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
                 Conditions: [
                     {
-                        Field: 'path-pattern',
-                        PathPatternConfig: {
-                            Values: [pathPattern],
+                        Field: 'host-header',
+                        HostHeaderConfig: {
+                            Values: [hostHeader],
                         },
                     },
                 ],
@@ -74,6 +78,9 @@ describe('runtime architecture', () => {
             HealthCheckPath: '/health',
             HealthCheckPort: String(EXPECTED_APP_INTERNAL_PORT),
         }, 3);
+        template.resourcePropertiesCountIs('AWS::Route53::RecordSet', {
+            Type: 'A',
+        }, 5);
     });
 
     it('injects Secrets Manager fields for app credentials and internal key verification', () => {

@@ -24,17 +24,17 @@
 
 `advertisement-api`는 dev 인프라 대상이 아닙니다.
 
-## Public API Paths
+## Public API Domains
 
-Public HTTPS entrypoint는 하나입니다.
+Public HTTPS entrypoint는 ALB 하나를 공유하고, host-header로 서비스별 target group을 나눕니다.
 
-| Path | Target service |
+| Domain | Target service |
 |---|---|
-| `/api/event/*` | `event-collector` |
-| `/api/dashboard/*` | `dashboard-api` |
-| `/api/decision/*` | `decision-api` |
+| `https://event.api.dev.loop-ad.org` | `event-collector` |
+| `https://dashboard.api.dev.loop-ad.org` | `dashboard-api` |
+| `https://decision.api.dev.loop-ad.org` | `decision-api` |
 
-`/api/*/internal/*` 요청은 앱이 `X-Loop-Ad-Internal-Key` header를 검증합니다. 인프라는 같은 key 값을 `LOOPAD_INTERNAL_API_KEY` secret env로 주입합니다. 별도 EventBridge scheduler나 internal-only load balancer는 없습니다.
+`/internal/*` 같은 내부성 요청은 앱이 `X-Loop-Ad-Internal-Key` header를 검증합니다. 인프라는 같은 key 값을 `LOOPAD_INTERNAL_API_KEY` secret env로 주입합니다. 별도 EventBridge scheduler나 internal-only load balancer는 없습니다.
 
 ## Common Server Env
 

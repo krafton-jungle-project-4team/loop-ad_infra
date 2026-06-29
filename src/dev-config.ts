@@ -14,6 +14,7 @@ export const DEV_KAFKA_VOLUME_GIB = 20;
 export const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
 export const DEV_KAFKA_VERSION = '3.9.1';
 export const DEV_KAFKA_SCALA_VERSION = '2.13';
+export const DEV_KAFKA_SCRAM_PORT = '9094';
 export const DEV_VALKEY_MAJOR_ENGINE_VERSION = '7';
 export const DEV_VALKEY_MAX_DATA_STORAGE_GB = 1;
 export const DEV_VALKEY_MAX_ECPU_PER_SECOND = 1000;

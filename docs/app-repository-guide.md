@@ -126,9 +126,14 @@ Data env:
 | `LOOPAD_AURORA_USERNAME` | Secret | secret 주입 | Aurora username입니다. |
 | `LOOPAD_AURORA_PASSWORD` | Secret | secret 주입 | Aurora password입니다. |
 | `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. `http://...:8123` 형식입니다. |
-| `LOOPAD_CLICKHOUSE_USERNAME` | Plain | `default` | ClickHouse username입니다. |
+| `LOOPAD_CLICKHOUSE_USERNAME` | Secret | secret 주입 | ClickHouse username입니다. |
+| `LOOPAD_CLICKHOUSE_PASSWORD` | Secret | secret 주입 | ClickHouse password입니다. |
 | `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis 호환 Valkey endpoint입니다. TLS 연결을 위해 `rediss://...:6379` 형식을 사용합니다. |
 | `LOOPAD_KAFKA_BOOTSTRAP_BROKERS` | Plain | 인프라 주입 | Kafka bootstrap broker 목록입니다. |
+| `LOOPAD_KAFKA_SECURITY_PROTOCOL` | Plain | `SASL_PLAINTEXT` | Kafka client security protocol입니다. |
+| `LOOPAD_KAFKA_SASL_MECHANISM` | Plain | `SCRAM-SHA-512` | Kafka client SASL mechanism입니다. |
+| `LOOPAD_KAFKA_USERNAME` | Secret | secret 주입 | Kafka SCRAM username입니다. |
+| `LOOPAD_KAFKA_PASSWORD` | Secret | secret 주입 | Kafka SCRAM password입니다. |
 | `LOOPAD_EVENT_TOPIC` | Plain | `loop-ad.events.raw` | raw event topic 이름입니다. |
 
 DataStorage env:
@@ -150,7 +155,7 @@ OpenAI API key는 앱 repo workflow에서 다루지 않습니다. Infra repo 배
 
 | Service | 필수 env |
 |---|---|
-| Event Collector | 공통 서버 env, `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`, `LOOPAD_EVENT_TOPIC` |
+| Event Collector | 공통 서버 env, Kafka env, `LOOPAD_EVENT_TOPIC` |
 | Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
 | Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
 | Decision API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |

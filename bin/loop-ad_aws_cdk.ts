@@ -63,6 +63,7 @@ if (environmentName === 'dev-certificate') {
     });
 } else if (environmentName === 'dev-runtime') {
     const publicHostedZone = readPublicHostedZoneConfig();
+    const authSecretArns = readAuthSecretArns();
     const networkStack = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
         env,
     });
@@ -78,6 +79,7 @@ if (environmentName === 'dev-certificate') {
         publicHostedZone,
         network: networkStack,
         data: dataStack,
+        authSecretArns,
         certificateArns: {
             frontendSitesCertificateArn: readRequiredEnv('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN'),
             genAiGeneratedAssetsCertificateArn: readRequiredEnv('LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN'),
@@ -85,6 +87,7 @@ if (environmentName === 'dev-certificate') {
     });
 } else {
     const publicHostedZone = readPublicHostedZoneConfig();
+    const authSecretArns = readAuthSecretArns();
 
     // dev 환경은 네트워크, 데이터, 런타임 stack을 함께 합성/배포합니다.
     // 최초 배포 전 분리하는 구조라 기존 리소스 이동으로 인한 교체 이슈는 없습니다.
@@ -102,6 +105,7 @@ if (environmentName === 'dev-certificate') {
         publicHostedZone,
         network: networkStack,
         data: dataStack,
+        authSecretArns,
         certificateArns: {
             frontendSitesCertificateArn: readRequiredEnv('LOOP_AD_FRONTEND_SITES_CERTIFICATE_ARN'),
             genAiGeneratedAssetsCertificateArn: readRequiredEnv('LOOP_AD_GENAI_GENERATED_ASSETS_CERTIFICATE_ARN'),
@@ -130,6 +134,14 @@ function readPublicHostedZoneConfig() {
     return {
         hostedZoneId: readRequiredEnv('LOOP_AD_PUBLIC_HOSTED_ZONE_ID'),
         domainName: readRequiredEnv('LOOP_AD_PUBLIC_DOMAIN_NAME'),
+    };
+}
+
+function readAuthSecretArns() {
+    return {
+        kafkaScramAppSecretArn: readRequiredEnv('LOOP_AD_KAFKA_SCRAM_APP_SECRET_ARN'),
+        kafkaScramBrokerSecretArn: readRequiredEnv('LOOP_AD_KAFKA_SCRAM_BROKER_SECRET_ARN'),
+        clickHouseCredentialsSecretArn: readRequiredEnv('LOOP_AD_CLICKHOUSE_CREDENTIALS_SECRET_ARN'),
     };
 }
 

@@ -27,6 +27,11 @@ const testCertificateArns = {
     frontendSitesCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites',
     genAiGeneratedAssetsCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets',
 };
+const testAuthSecretArns = {
+    kafkaScramAppSecretArn: 'arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:/loop-ad/dev/kafka/scram/app-AbCdEf',
+    kafkaScramBrokerSecretArn: 'arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:/loop-ad/dev/kafka/scram/broker-AbCdEf',
+    clickHouseCredentialsSecretArn: 'arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:/loop-ad/dev/clickhouse/app-AbCdEf',
+};
 
 describe('loop-ad CDK guardrails', () => {
     it('keeps the network low-cost and private-by-default', () => {
@@ -100,6 +105,7 @@ describe('loop-ad CDK guardrails', () => {
             '/loop-ad/dev/redis/endpoint',
             '/loop-ad/dev/clickhouse/endpoint',
             '/loop-ad/dev/kafka/bootstrap-brokers',
+            '/loop-ad/dev/kafka/scram-bootstrap-brokers',
             '/loop-ad/dev/data-storage/bucket-name',
         ]));
     });
@@ -194,6 +200,10 @@ describe('loop-ad CDK guardrails', () => {
         expect(targetGroups.filter((targetGroup) => targetGroup.Properties?.HealthCheckPort === String(EXPECTED_APP_INTERNAL_PORT))).toHaveLength(3);
         expect(targetGroups.filter((targetGroup) => targetGroup.Properties?.Port === 80 || targetGroup.Properties?.HealthCheckPort === '80')).toHaveLength(0);
         expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_OPENAI_API_KEY');
+        expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_KAFKA_SECURITY_PROTOCOL');
+        expect(JSON.stringify(template.toJSON())).toContain('SCRAM-SHA-512');
+        expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_KAFKA_USERNAME');
+        expect(JSON.stringify(template.toJSON())).toContain('LOOPAD_CLICKHOUSE_PASSWORD');
     });
 
     it('keeps repositories and certificates in lifecycle-specific stacks', () => {
@@ -367,6 +377,7 @@ function synthRuntime(): LoopAdDevRuntimeStack {
         certificateArns: testCertificateArns,
         network,
         data,
+        authSecretArns: testAuthSecretArns,
     });
 }
 

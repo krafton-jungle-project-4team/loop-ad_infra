@@ -26,6 +26,7 @@ import {
     DEV_AURORA_MIN_ACU,
     DEV_CLICKHOUSE_IMAGE,
     DEV_CLICKHOUSE_VOLUME_GIB,
+    DEV_KAFKA_SCRAM_PORT,
     DEV_KAFKA_SCALA_VERSION,
     DEV_KAFKA_VERSION,
     DEV_KAFKA_VOLUME_GIB,
@@ -167,6 +168,7 @@ export class LoopAdDevDataStack extends Stack {
     public readonly redisUrl: string;
     public readonly clickHouseUrl: string;
     public readonly kafkaBootstrapBrokerString: string;
+    public readonly kafkaScramBootstrapBrokerString: string;
 
     public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
         super(scope, id, props);
@@ -401,6 +403,7 @@ export class LoopAdDevDataStack extends Stack {
         this.auroraPort = '5432';
         this.clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
         this.kafkaBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':9092']);
+        this.kafkaScramBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':', DEV_KAFKA_SCRAM_PORT]);
         const auroraCredentialsSecret = auroraCluster.secret;
         if (!auroraCredentialsSecret) {
             throw new Error('Aurora generated credentials secret is required.');
@@ -435,6 +438,12 @@ export class LoopAdDevDataStack extends Stack {
                 description: 'Dev Kafka bootstrap broker contract.',
             },
             {
+                id: 'KafkaScramEndpointParameter',
+                parameterName: '/loop-ad/dev/kafka/scram-bootstrap-brokers',
+                stringValue: this.kafkaScramBootstrapBrokerString,
+                description: 'Dev Kafka SCRAM bootstrap broker contract.',
+            },
+            {
                 id: 'DataStorageBucketNameParameter',
                 parameterName: '/loop-ad/dev/data-storage/bucket-name',
                 stringValue: this.dataStorageBucket.bucketName,
@@ -467,6 +476,13 @@ export interface LoopAdDevRuntimeStackProps extends StackProps {
     readonly certificateArns: LoopAdDevCertificateArns;
     readonly network: LoopAdDevNetworkStack;
     readonly data: LoopAdDevDataStack;
+    readonly authSecretArns: LoopAdDevAuthSecretArns;
+}
+
+export interface LoopAdDevAuthSecretArns {
+    readonly kafkaScramAppSecretArn: string;
+    readonly kafkaScramBrokerSecretArn: string;
+    readonly clickHouseCredentialsSecretArn: string;
 }
 
 // 상시 개발 런타임 스택입니다.
@@ -494,8 +510,12 @@ export class LoopAdDevRuntimeStack extends Stack {
             auroraCredentialsSecret,
             redisUrl,
             clickHouseUrl,
-            kafkaBootstrapBrokerString,
+            kafkaScramBootstrapBrokerString,
         } = props.data;
+        const kafkaScramAppSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'KafkaScramAppSecret', props.authSecretArns.kafkaScramAppSecretArn);
+        const clickHouseCredentialsSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'ClickHouseCredentialsSecret', props.authSecretArns.clickHouseCredentialsSecretArn);
+        // Broker credentials are consumed by the in-place EC2 Kafka migration, not by ECS tasks.
+        void props.authSecretArns.kafkaScramBrokerSecretArn;
 
         // 개발 환경은 상시 운영되므로 Fargate 클러스터를 사용합니다.
         // 이 클러스터는 event collector와 API service가 배치되는 공통 실행 단위입니다.
@@ -646,8 +666,14 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
                 PORT: appContainerPortEnv,
-                LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaBootstrapBrokerString,
+                LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaScramBootstrapBrokerString,
+                LOOPAD_KAFKA_SECURITY_PROTOCOL: 'SASL_PLAINTEXT',
+                LOOPAD_KAFKA_SASL_MECHANISM: 'SCRAM-SHA-512',
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
+            },
+            secrets: {
+                LOOPAD_KAFKA_USERNAME: ecs.Secret.fromSecretsManager(kafkaScramAppSecret, 'username'),
+                LOOPAD_KAFKA_PASSWORD: ecs.Secret.fromSecretsManager(kafkaScramAppSecret, 'password'),
             },
         });
 
@@ -735,13 +761,14 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
-                LOOPAD_CLICKHOUSE_USERNAME: 'default',
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
             },
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
+                LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
+                LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
             },
         });
         httpsAlbListener.addTargets('DashboardApiTargets', {
@@ -780,13 +807,14 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
-                LOOPAD_CLICKHOUSE_USERNAME: 'default',
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
             },
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
+                LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
+                LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
                 LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSsmParameter(openAiApiKeyParameter),
             },
         });

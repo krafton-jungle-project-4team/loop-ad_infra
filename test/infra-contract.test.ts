@@ -104,7 +104,6 @@ describe('loop-ad CDK guardrails', () => {
             '/loop-ad/dev/aurora/endpoint',
             '/loop-ad/dev/redis/endpoint',
             '/loop-ad/dev/clickhouse/endpoint',
-            '/loop-ad/dev/kafka/bootstrap-brokers',
             '/loop-ad/dev/kafka/scram-bootstrap-brokers',
             '/loop-ad/dev/data-storage/bucket-name',
         ]));

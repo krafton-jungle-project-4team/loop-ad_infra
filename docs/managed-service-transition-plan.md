@@ -46,8 +46,9 @@
 현재 구성:
 
 - `LoopAdDevDataStack`의 EC2 `t4g.small` 단일 Kafka broker
-- SSM: `/loop-ad/dev/kafka/bootstrap-brokers`
+- SSM: `/loop-ad/dev/kafka/scram-bootstrap-brokers`
 - ECS env: `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`
+- TODO: 현재 live Kafka broker는 SSM 운영 작업으로 `9094` SCRAM-only 상태지만, 기존 `KafkaInstance` userData를 바로 SCRAM-only bootstrap으로 바꾸는 CDK diff는 `KafkaInstance may be replaced`로 잡힌다. 기존 EBS/topic 데이터를 보존하려면 EC2 replacement 없이 적용 가능한 SSM Association/State Manager hardening, EBS retain-and-reattach, 또는 새 broker migration 절차를 먼저 설계한 뒤 userData를 정리한다.
 
 전환 후보:
 
@@ -71,7 +72,7 @@
 롤백:
 
 - MSK가 7일 관찰을 통과할 때까지 data 설정 뒤에 EC2 Kafka stack code path를 남긴다.
-- `/loop-ad/dev/kafka/bootstrap-brokers`를 EC2 private DNS broker string으로 복구한다.
+- `/loop-ad/dev/kafka/scram-bootstrap-brokers`를 EC2 private DNS broker string으로 복구한다.
 - client가 자동 재연결하지 못하는 경우에만 Kafka client를 가진 ECS 서비스를 재시작한다.
 
 마이그레이션 위험:

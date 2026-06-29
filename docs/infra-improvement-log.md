@@ -124,7 +124,7 @@ Initial priority:
 
 관리형 전환 가능성 평가:
 
-- Kafka/MSK: SSM `/loop-ad/dev/kafka/bootstrap-brokers`와 `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`를 유지하면 data stack 내부 construct/config 교체로 전환 가능하다. offset/topic migration은 주요 risk다.
+- Kafka/MSK: SSM `/loop-ad/dev/kafka/scram-bootstrap-brokers`와 `LOOPAD_KAFKA_BOOTSTRAP_BROKERS`를 유지하면 data stack 내부 construct/config 교체로 전환 가능하다. offset/topic migration은 주요 risk다.
 - ClickHouse: `/loop-ad/dev/clickhouse/endpoint`와 `LOOPAD_CLICKHOUSE_URL` 유지 시 runtime 변경 없이 전환 가능하다. SQL dialect/schema compatibility가 risk다.
 - Cache: `LOOPAD_REDIS_URL`과 `/loop-ad/dev/redis/endpoint` 유지 시 Redis-compatible cache 교체가 좁은 변경으로 가능하다.
 - DB: Aurora endpoint/secret contract 유지 시 scaling/replacement가 data stack 중심 변경으로 가능하다.

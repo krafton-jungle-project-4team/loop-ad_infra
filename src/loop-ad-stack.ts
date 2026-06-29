@@ -167,7 +167,6 @@ export class LoopAdDevDataStack extends Stack {
     public readonly auroraCredentialsSecret: secretsmanager.ISecret;
     public readonly redisUrl: string;
     public readonly clickHouseUrl: string;
-    public readonly kafkaBootstrapBrokerString: string;
     public readonly kafkaScramBootstrapBrokerString: string;
 
     public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
@@ -402,7 +401,6 @@ export class LoopAdDevDataStack extends Stack {
         this.auroraHost = auroraCluster.clusterEndpoint.hostname;
         this.auroraPort = '5432';
         this.clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
-        this.kafkaBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':9092']);
         this.kafkaScramBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':', DEV_KAFKA_SCRAM_PORT]);
         const auroraCredentialsSecret = auroraCluster.secret;
         if (!auroraCredentialsSecret) {
@@ -430,12 +428,6 @@ export class LoopAdDevDataStack extends Stack {
                 parameterName: '/loop-ad/dev/clickhouse/endpoint',
                 stringValue: this.clickHouseUrl,
                 description: 'Dev ClickHouse endpoint contract.',
-            },
-            {
-                id: 'KafkaEndpointParameter',
-                parameterName: '/loop-ad/dev/kafka/bootstrap-brokers',
-                stringValue: this.kafkaBootstrapBrokerString,
-                description: 'Dev Kafka bootstrap broker contract.',
             },
             {
                 id: 'KafkaScramEndpointParameter',

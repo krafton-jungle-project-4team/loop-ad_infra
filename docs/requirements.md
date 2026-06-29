@@ -50,9 +50,9 @@
 - Redis 호환 cache는 ElastiCache Serverless for Valkey major version `7`로 시작하고, `LOOPAD_REDIS_URL`에는 TLS endpoint인 `rediss://...:6379`를 주입한다.
 - ClickHouse는 LTS tag `26.3.13.31`, EC2 `t4g.small`, Amazon Linux 2023, gp3 50GB EBS로 시작한다.
 - Kafka는 비용 절감을 위해 Amazon Linux 2023 EC2 `t4g.small` 단일 노드, Apache Kafka `3.9.1`, KRaft mode, gp3 20GB EBS로 시작한다.
-- Kafka는 private subnet 안에서만 plain listener `9092`를 열고, production 수준의 HA나 managed broker 운영은 목표로 하지 않는다.
+- Kafka는 private subnet 안에서 SCRAM listener `9094`만 열고, production 수준의 HA나 managed broker 운영은 목표로 하지 않는다.
 - ClickHouse와 Kafka EC2는 schema/topic 초기화와 장애 대응을 위해 Session Manager 관리 대상이어야 한다.
-- Kafka bootstrap broker 문자열은 EC2 private DNS와 `9092` port를 조합해 `/loop-ad/dev/kafka/bootstrap-brokers` SSM parameter에 넣는다.
+- Kafka bootstrap broker 문자열은 EC2 private DNS와 `9094` port를 조합해 `/loop-ad/dev/kafka/scram-bootstrap-brokers` SSM parameter에 넣는다.
 - OpenAI API key는 infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입한 뒤 Runtime stack에서 참조한다.
 - 앱 repo GitHub Actions OIDC role은 ECR image push와 ECS service update 권한을 가진다.
 - 앱 repo GitHub Actions OIDC role ARN은 organization Actions variable로 관리하고, caller workflow는 서버 `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`, 프론트엔드 `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 `role_arn` input으로 reusable workflow에 전달한다.

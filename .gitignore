@@ -3,6 +3,7 @@
 *.d.ts
 node_modules
 .env
+.env.secrets
 .deploy-logs/
 
 # CDK asset staging directory

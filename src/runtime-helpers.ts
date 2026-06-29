@@ -12,6 +12,8 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import {
     DEV_ECS_LOG_GROUP_PREFIX,
+    DEV_FARGATE_TASK_CPU,
+    DEV_FARGATE_TASK_MEMORY_MIB,
     DEV_LOG_RETENTION,
     DEV_SERVICE_DESIRED_TASKS,
     DEV_SERVICE_MAX_TASKS,
@@ -31,8 +33,8 @@ export function createEcsServiceLogGroup(scope: Construct, id: string, serviceId
 }
 
 // 이 설정은 하나의 HTTP 기반 Fargate 서비스를 만들기 위한 입력입니다.
-// 작업 정의, 컨테이너, 서비스, 스케일링 construct ID는 호출부에서 직접 넘겨 CloudFormation logical ID를 고정합니다.
-// 헬퍼 내부 이름을 바꾸거나 책임을 조금 나누더라도 이미 배포된 ECS 리소스가 교체되지 않게 하기 위함입니다.
+// 새 dev 환경은 이미 destroy된 리소스 위에 다시 올라가므로 construct ID 호환성보다
+// 서비스별 env/secret/ingress 계약을 호출부에 드러내는 것을 우선합니다.
 export interface FargateHttpServiceConfig {
     readonly taskDefinitionId: string;
     readonly logGroupId: string;
@@ -58,10 +60,10 @@ export interface FargateHttpService {
 
 export function createFargateHttpService(scope: Construct, config: FargateHttpServiceConfig): FargateHttpService {
     // 작업 정의는 컨테이너가 사용할 CPU, 메모리, 런타임 아키텍처의 비용 단위입니다.
-    // 개발 환경의 모든 서비스는 작은 ARM64 작업 크기를 공유해 월 비용 모델의 Fargate 상한을 예측 가능하게 둡니다.
+    // 개발 환경의 모든 서비스는 같은 ARM64 작업 크기를 공유해 Fargate 비용 상한을 예측 가능하게 둡니다.
     const taskDefinition = new ecs.FargateTaskDefinition(scope, config.taskDefinitionId, {
-        cpu: 256,
-        memoryLimitMiB: 512,
+        cpu: DEV_FARGATE_TASK_CPU,
+        memoryLimitMiB: DEV_FARGATE_TASK_MEMORY_MIB,
         runtimePlatform: {
             cpuArchitecture: ecs.CpuArchitecture.ARM64,
             operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
@@ -89,20 +91,19 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
     // TLS 종료와 외부 리스너 구성은 로드 밸런서 쪽에 두어 컨테이너 이미지를 단순하게 유지합니다.
     container.addPortMappings({ containerPort: APP_CONTAINER_PORT, protocol: ecs.Protocol.TCP });
 
-    // FargateService는 private subnet에 작업을 배치하고 Cloud Map 이름을 등록합니다.
-    // 내부 서비스 호출은 Cloud Map을 쓰고, 외부 공개 여부는 스택에서 ALB/NLB 대상 연결로 따로 결정합니다.
+    // FargateService는 public subnet에 작업을 배치하고 public IP를 받습니다.
+    // NAT Gateway를 제거한 dev 구조라 image pull, logs, public API 접근은 task ENI의 public route를 전제로 합니다.
     const service = new ecs.FargateService(scope, config.serviceConstructId, {
         cluster: config.cluster,
         taskDefinition,
         serviceName: `dev-${config.serviceId}`,
         desiredCount: DEV_SERVICE_DESIRED_TASKS,
-        assignPublicIp: false,
+        assignPublicIp: true,
         securityGroups: [config.securityGroup],
         vpcSubnets: config.vpcSubnets,
         circuitBreaker: { rollback: true },
         minHealthyPercent: 100,
         maxHealthyPercent: 200,
-        cloudMapOptions: { name: config.serviceId },
         healthCheckGracePeriod: config.healthCheckGracePeriod,
     });
 
@@ -133,15 +134,15 @@ export interface StaticFrontendSiteConfig {
 // dashboard와 demo-shoppingmall이 같은 보안 기본값을 쓰도록 공통화하고, 배포 파이프라인은 SSM 계약으로 산출물을 찾습니다.
 export function createStaticFrontendSite(scope: Construct, config: StaticFrontendSiteConfig): void {
     // S3 버킷은 원본 저장소입니다. 직접 공개 호스팅을 켜지 않고 CloudFront OAC로만 읽게 합니다.
-    // 버전 관리와 RETAIN은 잘못된 삭제나 배포 실수에서 정적 파일을 복구할 시간을 주기 위한 개발 안전장치입니다.
+    // 정적 프론트 버킷은 dev 재생성이 쉬운 산출물이므로 destroy 시 객체까지 삭제합니다.
     const bucket = new s3.Bucket(scope, `${config.idPrefix}Bucket`, {
         bucketName: config.bucketName,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         encryption: s3.BucketEncryption.S3_MANAGED,
         enforceSSL: true,
-        versioned: true,
         objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-        removalPolicy: RemovalPolicy.RETAIN,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
     });
     // CloudFront 배포는 HTTPS, 캐시, SPA fallback을 담당합니다.
     // PRICE_CLASS_100은 전 세계 edge를 모두 쓰지 않아 개발 환경의 전송 비용을 낮추기 위한 선택입니다.

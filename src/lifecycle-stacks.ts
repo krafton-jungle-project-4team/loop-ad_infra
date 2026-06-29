@@ -3,12 +3,14 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import {
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
     DEV_APPLICATION_REPOSITORIES,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
+    type LoopAdDevSecretNames,
     type PublicHostedZoneConfig,
 } from './dev-config';
 
@@ -68,6 +70,58 @@ export class LoopAdDevRepositoryStack extends Stack {
             new cdk.CfnOutput(this, repositoryConfig.outputId, {
                 value: repository.repositoryUri,
             });
+        }
+    }
+}
+
+export interface LoopAdDevSecretsStackProps extends StackProps {
+    readonly secretNames: LoopAdDevSecretNames;
+}
+
+export class LoopAdDevSecretsStack extends Stack {
+    public constructor(scope: Construct, id: string, props: LoopAdDevSecretsStackProps) {
+        super(scope, id, props);
+
+        // L2 Secret construct는 값이 없으면 GenerateSecretString을 넣으므로 여기서는 L1을 사용합니다.
+        // 의도는 "이름과 수명은 CDK가 관리하고 값은 운영자가 동기화"하는 것이므로 SecretString을 절대 지정하지 않습니다.
+        for (const secret of [
+            {
+                id: 'AuroraCredentialsSecret',
+                name: props.secretNames.auroraCredentialsSecretName,
+                description: 'loop-ad dev Aurora application credentials.',
+            },
+            {
+                id: 'ClickHouseCredentialsSecret',
+                name: props.secretNames.clickHouseCredentialsSecretName,
+                description: 'loop-ad dev ClickHouse application credentials.',
+            },
+            {
+                id: 'KafkaAppUserSecret',
+                name: props.secretNames.kafkaAppUserSecretName,
+                description: 'loop-ad dev Kafka app user credentials.',
+            },
+            {
+                id: 'KafkaBrokerUserSecret',
+                name: props.secretNames.kafkaBrokerUserSecretName,
+                description: 'loop-ad dev Kafka broker user credentials.',
+            },
+            {
+                id: 'OpenAiApiKeySecret',
+                name: props.secretNames.openAiApiKeySecretName,
+                description: 'loop-ad dev OpenAI API credential.',
+            },
+            {
+                id: 'InternalApiKeySecret',
+                name: props.secretNames.internalApiKeySecretName,
+                description: 'loop-ad dev internal endpoint shared credential.',
+            },
+        ] as const) {
+            const cfnSecret = new secretsmanager.CfnSecret(this, secret.id, {
+                name: secret.name,
+                description: secret.description,
+            });
+            // 시크릿 값은 운영자가 관리하므로 stack 교체/삭제 후에도 유지합니다.
+            cfnSecret.applyRemovalPolicy(RemovalPolicy.RETAIN);
         }
     }
 }

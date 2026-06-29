@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -6,41 +6,44 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import * as cdk from 'aws-cdk-lib';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
     AURORA_DATABASE_NAME,
+    CLICKHOUSE_DATABASE_NAME,
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
     DEV_APPLICATION_REPOSITORIES,
     DEV_AURORA_AUTO_PAUSE_MINUTES,
     DEV_AURORA_MAX_ACU,
     DEV_AURORA_MIN_ACU,
+    DEV_AURORA_PORT,
+    DEV_AL2023_ARM64_AMI_SSM_PARAMETER,
+    DEV_CLICKHOUSE_HTTP_PORT,
     DEV_CLICKHOUSE_IMAGE,
+    DEV_CLICKHOUSE_INSTANCE_TYPE,
     DEV_CLICKHOUSE_VOLUME_GIB,
+    DEV_KAFKA_INSTANCE_TYPE,
     DEV_KAFKA_SCRAM_PORT,
     DEV_KAFKA_SCALA_VERSION,
     DEV_KAFKA_VERSION,
     DEV_KAFKA_VOLUME_GIB,
-    DEV_VALKEY_MAJOR_ENGINE_VERSION,
-    DEV_VALKEY_MAX_DATA_STORAGE_GB,
-    DEV_VALKEY_MAX_ECPU_PER_SECOND,
     DEV_VPC_AVAILABILITY_ZONES,
     EVENT_TOPIC_NAME,
     GENAI_GENERATED_ASSETS_PREFIX,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
-    OPENAI_API_KEY_PARAMETER_NAME,
     PUBLIC_API_RECORD_NAME,
-    PUBLIC_INGEST_RECORD_NAME,
+    type DeveloperAllowlistConfig,
     type LoopAdDevCertificateArns,
+    type LoopAdDevDataSecretNames,
+    type LoopAdDevRuntimeSecretNames,
     type PublicHostedZoneConfig,
 } from './dev-config';
 import {
@@ -51,104 +54,118 @@ import {
 
 export {
     LOOP_AD_REGION,
+    buildDevSecretNames,
+    type DeveloperAllowlistConfig,
     type LoopAdDevCertificateArns,
+    type LoopAdDevDataSecretNames,
+    type LoopAdDevRuntimeSecretNames,
+    type LoopAdDevSecretNames,
     type PublicHostedZoneConfig,
 } from './dev-config';
 export {
     LoopAdDevCertificateStack,
     LoopAdDevRepositoryStack,
+    LoopAdDevSecretsStack,
 } from './lifecycle-stacks';
 
-type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository, ecr.IRepository];
+const APP_CONTAINER_PORT_TEXT = String(APP_CONTAINER_PORT);
+const AURORA_PORT_TEXT = String(DEV_AURORA_PORT);
+const CLICKHOUSE_HTTP_PORT_TEXT = String(DEV_CLICKHOUSE_HTTP_PORT);
+const KAFKA_SCRAM_PORT_TEXT = String(DEV_KAFKA_SCRAM_PORT);
+const KAFKA_SECURITY_PROTOCOL = 'SASL_PLAINTEXT';
+const KAFKA_SASL_MECHANISM = 'SCRAM-SHA-512';
+const KAFKA_HEAP_OPTS = '-Xms512m -Xmx1536m';
+const USER_DATA_SCRIPT_DIR = join(__dirname, '..', 'assets', 'user-data');
 
-// VPC, 서브넷, 엔드포인트, 보안 그룹은 애플리케이션보다 변경 주기가 깁니다.
-// 최초 배포 전에 네트워크 스택으로 분리해 두면 이후 데이터/런타임 변경의 영향 범위를 줄일 수 있습니다.
+type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository];
+
+export interface LoopAdDevNetworkStackProps extends StackProps {
+    readonly developerAllowlist: DeveloperAllowlistConfig;
+}
+
 export class LoopAdDevNetworkStack extends Stack {
     public readonly vpc: ec2.Vpc;
-    public readonly privateSubnetSelection: ec2.SubnetSelection;
-    public readonly privateSubnets: ec2.SelectedSubnets;
+    public readonly publicSubnetSelection: ec2.SubnetSelection;
+    public readonly publicSubnets: ec2.SelectedSubnets;
     public readonly albSecurityGroup: ec2.SecurityGroup;
-    public readonly nlbSecurityGroup: ec2.SecurityGroup;
     public readonly serverSecurityGroup: ec2.SecurityGroup;
-    public readonly dataStorageSecurityGroup: ec2.SecurityGroup;
+    public readonly dataSourceSecurityGroup: ec2.SecurityGroup;
 
-    public constructor(scope: Construct, id: string, props?: StackProps) {
+    public constructor(scope: Construct, id: string, props: LoopAdDevNetworkStackProps) {
         super(scope, id, props);
 
-        // 개발 서버는 NAT가 있는 프라이빗 서브넷을 씁니다.
+        // 새 dev 구조는 NAT Gateway 없이 public subnet만 사용합니다.
+        // Fargate task와 data node가 public IP를 받아 dev 비용을 낮추는 대신, Security Group이 접근 경계가 됩니다.
         this.vpc = new ec2.Vpc(this, 'Vpc', {
             vpcName: 'dev-loop-ad-vpc',
             availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
-            natGateways: 1,
+            natGateways: 0,
+            restrictDefaultSecurityGroup: false,
             subnetConfiguration: [
                 {
                     name: 'public',
                     subnetType: ec2.SubnetType.PUBLIC,
                     cidrMask: 24,
                 },
-                {
-                    name: 'private',
-                    subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-                    cidrMask: 24,
-                },
             ],
         });
 
-        // 모든 ECS 서비스는 프라이빗 서브넷 그룹에서 실행됩니다.
-        this.privateSubnetSelection = { subnetGroupName: 'private' };
-        this.privateSubnets = this.vpc.selectSubnets(this.privateSubnetSelection);
+        this.publicSubnetSelection = { subnetGroupName: 'public' };
+        this.publicSubnets = this.vpc.selectSubnets(this.publicSubnetSelection);
 
-        // S3 게이트웨이 엔드포인트는 시간당 비용 없이 라우팅 테이블에 붙습니다.
-        // ECR 레이어 다운로드와 S3 접근 비용을 NAT 데이터 처리 요금으로 보내지 않기 위해 유지합니다.
-        this.vpc.addGatewayEndpoint('S3GatewayEndpoint', {
-            service: ec2.GatewayVpcEndpointAwsService.S3,
-            subnets: [this.privateSubnets],
-        });
-
-        // 외부 진입점은 로드 밸런서 종류별로 나누고, 프라이빗 서비스는
-        // 스택을 읽기 쉽게 유지하기 위해 넓은 내부 보안 그룹을 공유합니다.
+        // Security Group은 ALB, 서버, 데이터소스 세 종류로만 둡니다.
+        // 역할별로 ingress/egress를 분리해야 public subnet 구조에서도 허용 경로를 테스트로 검증하기 쉽습니다.
         this.albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
-            description: 'Dev ALB public HTTPS ingress.',
-        });
-        this.nlbSecurityGroup = new ec2.SecurityGroup(this, 'NlbSecurityGroup', {
-            vpc: this.vpc,
-            allowAllOutbound: false,
-            description: 'Dev NLB event ingestion TLS ingress.',
+            description: 'Dev public ALB HTTPS ingress.',
         });
         this.serverSecurityGroup = new ec2.SecurityGroup(this, 'ServerSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
-            description: 'Dev ECS server SG shared by app services.',
+            description: 'Dev public Fargate services.',
         });
-        this.dataStorageSecurityGroup = new ec2.SecurityGroup(this, 'DataStorageSecurityGroup', {
+        this.dataSourceSecurityGroup = new ec2.SecurityGroup(this, 'DataSourceSecurityGroup', {
             vpc: this.vpc,
             allowAllOutbound: false,
-            description: 'Dev data storage SG shared by internal data endpoints.',
+            description: 'Dev Aurora, ClickHouse, and Kafka data sources.',
         });
 
-        // 인터넷 트래픽은 외부 로드 밸런서의 443만 받습니다.
-        // 로드 밸런서에서 TLS를 종료하고 프라이빗 ECS 컨테이너의 8080 포트로 전달합니다.
         this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public HTTPS to dev ALB.');
-        this.nlbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Public TLS ingest to dev NLB.');
+        this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.tcp(APP_CONTAINER_PORT), 'ALB may reach app containers.');
+        this.serverSecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.tcp(APP_CONTAINER_PORT), 'ALB may reach app containers.');
 
-        // VPC 내부에서는 보안 그룹 경계를 기준으로 서버와 DataStorage가 서로 신뢰합니다.
-        this.albSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'ALB may reach dev servers.');
-        this.nlbSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'NLB may reach dev servers.');
-        this.serverSecurityGroup.addIngressRule(this.albSecurityGroup, ec2.Port.allTraffic(), 'ALB may enter dev servers.');
-        this.serverSecurityGroup.addIngressRule(this.nlbSecurityGroup, ec2.Port.allTraffic(), 'NLB may enter dev servers.');
-        this.serverSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
-        this.serverSecurityGroup.addEgressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may call each other.');
-        this.serverSecurityGroup.addEgressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may reach internal data storage.');
-        this.dataStorageSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.allTraffic(), 'Dev servers may enter internal data storage.');
-        this.dataStorageSecurityGroup.addIngressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
-        this.dataStorageSecurityGroup.addEgressRule(this.dataStorageSecurityGroup, ec2.Port.allTraffic(), 'Dev data storage may call each other.');
+        // 서버에서 데이터소스로 나가는 경로는 앱이 실제로 쓰는 포트만 엽니다.
+        // allowAllOutbound를 끈 상태라 빠진 포트는 곧 연결 실패로 드러나며, 의도치 않은 외부 egress를 줄입니다.
+        for (const dataSource of [
+            { name: 'Aurora PostgreSQL', port: DEV_AURORA_PORT },
+            { name: 'ClickHouse HTTP', port: DEV_CLICKHOUSE_HTTP_PORT },
+            { name: 'Kafka SCRAM', port: DEV_KAFKA_SCRAM_PORT },
+        ] as const) {
+            this.serverSecurityGroup.addEgressRule(this.dataSourceSecurityGroup, ec2.Port.tcp(dataSource.port), `Servers may reach ${dataSource.name}.`);
+            this.dataSourceSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.tcp(dataSource.port), `Servers may enter ${dataSource.name}.`);
+        }
 
-        // 개발 서버는 외부 SaaS/API 및 AWS 공개 API를 NAT로 호출합니다.
-        this.serverSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev servers may use external HTTPS through NAT.');
-        // ClickHouse/Kafka 초기화와 데이터 저장소 관리 작업도 NAT를 통해 HTTPS를 사용할 수 있습니다.
-        this.dataStorageSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Dev data storage may use external HTTPS through NAT.');
+        for (const cidr of props.developerAllowlist.ipv4Cidrs) {
+            this.addDeveloperDataSourceIngress(ec2.Peer.ipv4(cidr), cidr);
+        }
+        for (const cidr of props.developerAllowlist.ipv6Cidrs) {
+            this.addDeveloperDataSourceIngress(ec2.Peer.ipv6(cidr), cidr);
+        }
+
+        this.dataSourceSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Data nodes may bootstrap from AWS and public package registries.');
+    }
+
+    private addDeveloperDataSourceIngress(peer: ec2.IPeer, cidr: string): void {
+        // allowlist가 비어 있으면 이 함수는 호출되지 않아 개발자 직접 접근 rule도 생기지 않습니다.
+        // CIDR 검증은 config 단계에서 끝났으므로 여기서는 동일 CIDR에 필요한 데이터 포트만 반복해 추가합니다.
+        for (const dataSource of [
+            { name: 'Aurora PostgreSQL', port: DEV_AURORA_PORT },
+            { name: 'ClickHouse HTTP', port: DEV_CLICKHOUSE_HTTP_PORT },
+            { name: 'Kafka SCRAM', port: DEV_KAFKA_SCRAM_PORT },
+        ] as const) {
+            this.dataSourceSecurityGroup.addIngressRule(peer, ec2.Port.tcp(dataSource.port), `Developer ${cidr} may reach ${dataSource.name}.`);
+        }
     }
 }
 
@@ -156,32 +173,36 @@ export interface LoopAdDevDataStackProps extends StackProps {
     readonly publicHostedZone: PublicHostedZoneConfig;
     readonly genAiGeneratedAssetsCertificateArn: string;
     readonly network: LoopAdDevNetworkStack;
+    readonly secretNames: LoopAdDevDataSecretNames;
 }
 
-// 데이터 저장소와 엔드포인트 계약을 소유하는 스택입니다.
-// 런타임보다 먼저 배포해 ECS 작업이 참조할 저장소 엔드포인트를 안정적으로 제공합니다.
 export class LoopAdDevDataStack extends Stack {
     public readonly dataStorageBucket: s3.Bucket;
     public readonly auroraHost: string;
     public readonly auroraPort: string;
     public readonly auroraCredentialsSecret: secretsmanager.ISecret;
-    public readonly redisUrl: string;
     public readonly clickHouseUrl: string;
+    public readonly clickHouseCredentialsSecret: secretsmanager.ISecret;
     public readonly kafkaScramBootstrapBrokerString: string;
+    public readonly kafkaAppUserSecret: secretsmanager.ISecret;
 
     public constructor(scope: Construct, id: string, props: LoopAdDevDataStackProps) {
         super(scope, id, props);
 
-        // 네트워크 스택에서 만든 기반 리소스를 재사용합니다.
-        // 아직 배포 전이라 스택 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
             vpc,
-            privateSubnets,
-            dataStorageSecurityGroup,
+            publicSubnets,
+            dataSourceSecurityGroup,
         } = props.network;
 
-        // GenAI 생성물은 DataStorage S3 버킷의 전용 prefix에 저장합니다.
-        // 버킷은 직접 공개하지 않고 CloudFront OAC를 통해 필요한 prefix만 읽히게 합니다.
+        // CDK가 관리하는 시크릿 이름에만 연결하고 시크릿 값은 읽거나 생성하지 않습니다.
+        // fromSecretNameV2는 CloudFormation에 secret 값이 들어가지 않게 하고, ECS/RDS가 런타임에 참조하게 합니다.
+        const auroraCredentialsSecret = secretsmanager.Secret.fromSecretNameV2(this, 'AuroraCredentialsSecret', props.secretNames.auroraCredentialsSecretName);
+        const clickHouseCredentialsSecret = secretsmanager.Secret.fromSecretNameV2(this, 'ClickHouseCredentialsSecret', props.secretNames.clickHouseCredentialsSecretName);
+        const kafkaAppUserSecret = secretsmanager.Secret.fromSecretNameV2(this, 'KafkaAppUserSecret', props.secretNames.kafkaAppUserSecretName);
+
+        // DataStorage는 앱이 만든 원천/생성 산출물을 담는 장기 저장소입니다.
+        // dev stack을 재생성해도 데이터 손실을 피하려고 RETAIN을 쓰며, multipart 미완료 업로드만 정리합니다.
         this.dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             encryption: s3.BucketEncryption.S3_MANAGED,
@@ -198,29 +219,24 @@ export class LoopAdDevDataStack extends Stack {
             ],
         });
 
-        // .env에서 받은 공개 hosted zone을 가져옵니다.
-        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 레코드 template만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
         });
         const genAiPublicAssetsDomainName = `${GENAI_PUBLIC_ASSETS_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        const genAiGeneratedAssetsPublicBaseUrl = `https://${genAiPublicAssetsDomainName}`;
-        // GenAI asset용 인증서도 별도 ARN으로 받습니다.
-        // 도메인 범위를 분리해 두면 나중에 프론트엔드 인증서를 바꿔도 asset 배포 경로 영향이 작습니다.
         const genAiGeneratedAssetsCertificate = acm.Certificate.fromCertificateArn(
             this,
             'GenAiGeneratedAssetsCertificate',
             props.genAiGeneratedAssetsCertificateArn,
         );
+        // GenAI 생성 asset은 DataStorage 안의 prefix만 CloudFront로 공개합니다.
+        // 버킷 전체를 origin으로 열지 않고 originPath를 고정해 앱 산출물 공개 범위를 좁힙니다.
         const genAiGeneratedAssetsDistribution = new cloudfront.Distribution(this, 'GenAiGeneratedAssetsDistribution', {
             domainNames: [genAiPublicAssetsDomainName],
             certificate: genAiGeneratedAssetsCertificate,
             comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
             priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
             defaultBehavior: {
-                // originPath로 generated prefix만 공개합니다.
-                // 버킷 전체를 정적 호스팅으로 쓰지 않아도 asset URL 계약을 안정적으로 제공합니다.
                 origin: origins.S3BucketOrigin.withOriginAccessControl(this.dataStorageBucket, {
                     originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
                 }),
@@ -237,22 +253,24 @@ export class LoopAdDevDataStack extends Stack {
             target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(genAiGeneratedAssetsDistribution)),
         });
 
-        // 비용을 낮게 유지하는 개발용 데이터 저장소입니다.
-        // Aurora는 serverless v2 auto pause를 사용하고, 삭제 시에는 snapshot을 남겨 실수 복구 여지를 둡니다.
+        // Aurora Serverless v2는 dev 유휴 시간에 0 ACU까지 내려가도록 설정합니다.
+        // public accessible은 public subnet only 구조의 trade-off이며, 접근은 DataSourceSecurityGroup으로 제한합니다.
         const auroraCluster = new rds.DatabaseCluster(this, 'AuroraPostgresCluster', {
             clusterIdentifier: 'dev-loop-ad-aurora-postgres',
             engine: rds.DatabaseClusterEngine.auroraPostgres({
                 version: rds.AuroraPostgresEngineVersion.VER_16_13,
             }),
-            writer: rds.ClusterInstance.serverlessV2('writer'),
-            credentials: rds.Credentials.fromGeneratedSecret('loopad'),
+            writer: rds.ClusterInstance.serverlessV2('writer', {
+                publiclyAccessible: true,
+            }),
+            credentials: rds.Credentials.fromSecret(auroraCredentialsSecret),
             serverlessV2MinCapacity: DEV_AURORA_MIN_ACU,
             serverlessV2MaxCapacity: DEV_AURORA_MAX_ACU,
             serverlessV2AutoPauseDuration: Duration.minutes(DEV_AURORA_AUTO_PAUSE_MINUTES),
             defaultDatabaseName: AURORA_DATABASE_NAME,
             vpc,
-            vpcSubnets: privateSubnets,
-            securityGroups: [dataStorageSecurityGroup],
+            vpcSubnets: publicSubnets,
+            securityGroups: [dataSourceSecurityGroup],
             backup: {
                 retention: Duration.days(1),
             },
@@ -260,206 +278,85 @@ export class LoopAdDevDataStack extends Stack {
             removalPolicy: RemovalPolicy.SNAPSHOT,
         });
 
-        // Redis 호환 cache는 ElastiCache Serverless for Valkey로 둡니다.
-        // Valkey는 Redis OSS보다 최소 저장 과금이 낮아 개발 환경의 idle 비용을 줄이기 좋습니다.
-        // 앱 계약은 기존 Redis client 호환성을 위해 LOOPAD_REDIS_URL 이름을 유지합니다.
-        const valkeyCache = new elasticache.CfnServerlessCache(this, 'ValkeyServerlessCache', {
-            engine: 'valkey',
-            majorEngineVersion: DEV_VALKEY_MAJOR_ENGINE_VERSION,
-            serverlessCacheName: 'dev-loop-ad-valkey',
-            description: 'Dev Redis-compatible Valkey serverless cache for loop-ad.',
-            subnetIds: privateSubnets.subnetIds,
-            securityGroupIds: [dataStorageSecurityGroup.securityGroupId],
-            cacheUsageLimits: {
-                dataStorage: {
-                    maximum: DEV_VALKEY_MAX_DATA_STORAGE_GB,
-                    unit: 'GB',
-                },
-                ecpuPerSecond: {
-                    maximum: DEV_VALKEY_MAX_ECPU_PER_SECOND,
-                },
-            },
-        });
-        this.redisUrl = cdk.Fn.join('', ['rediss://', valkeyCache.attrEndpointAddress, ':', valkeyCache.attrEndpointPort]);
-
-        // ClickHouse는 개발 분석/집계용 단일 EC2 인스턴스로 시작합니다.
-        // 버전은 LTS patch tag로 고정해 재부팅/재배포 시에도 같은 바이너리를 사용하게 합니다.
-        // 관리형 cluster보다 단순하고 저렴하지만, production 수준의 고가용성은 목표로 하지 않습니다.
+        // ClickHouse는 관리형 클러스터 대신 단일 ARM EC2와 gp3 볼륨으로 둡니다.
+        // dev 분석 저장소 비용을 예측 가능하게 낮추고, user-data 스크립트로 재현 가능한 초기화를 수행합니다.
         const clickHouseInstance = new ec2.Instance(this, 'ClickHouseInstance', {
             vpc,
-            vpcSubnets: privateSubnets,
-            securityGroup: dataStorageSecurityGroup,
+            vpcSubnets: publicSubnets,
+            securityGroup: dataSourceSecurityGroup,
             instanceName: 'dev-loop-ad-clickhouse',
-            instanceType: new ec2.InstanceType('t4g.small'),
-            machineImage: ec2.MachineImage.latestAmazonLinux2023({
-                cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-            }),
+            instanceType: new ec2.InstanceType(DEV_CLICKHOUSE_INSTANCE_TYPE),
+            machineImage: ec2.MachineImage.fromSsmParameter(DEV_AL2023_ARM64_AMI_SSM_PARAMETER),
             blockDevices: [
                 {
                     deviceName: '/dev/xvda',
                     volume: ec2.BlockDeviceVolume.ebs(DEV_CLICKHOUSE_VOLUME_GIB, {
                         encrypted: true,
                         volumeType: ec2.EbsDeviceVolumeType.GP3,
+                        deleteOnTermination: true,
                     }),
                 },
             ],
             requireImdsv2: true,
+            associatePublicIpAddress: true,
         });
-        clickHouseInstance.userData.addCommands(
-            'set -eux',
-            'dnf update -y',
-            'dnf install -y docker',
-            'systemctl enable --now docker',
-            'mkdir -p /var/lib/clickhouse',
-            `docker run -d --restart unless-stopped --name clickhouse-server -p 8123:8123 -p 9000:9000 -v /var/lib/clickhouse:/var/lib/clickhouse ${DEV_CLICKHOUSE_IMAGE}`,
-        );
-        // ClickHouse EC2는 schema 초기화와 장애 대응을 위해 private Session Manager 대상도 겸합니다.
         clickHouseInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+        // user-data에는 시크릿 값을 직접 넣지 않고 Secrets Manager dynamic reference 문자열만 전달합니다.
+        // CloudFormation이 인스턴스 시작 시점에 해석하므로 CDK synth 결과에 평문이 남지 않습니다.
+        addUserDataScript(clickHouseInstance, 'clickhouse.sh', {
+            CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
+            CLICKHOUSE_HTTP_PORT: CLICKHOUSE_HTTP_PORT_TEXT,
+            CLICKHOUSE_IMAGE: DEV_CLICKHOUSE_IMAGE,
+            CLICKHOUSE_USER: secretDynamicReference(props.secretNames.clickHouseCredentialsSecretName, 'username'),
+            CLICKHOUSE_PASSWORD: secretDynamicReference(props.secretNames.clickHouseCredentialsSecretName, 'password'),
+        });
 
-        // Kafka는 원본 이벤트 스트림의 중심입니다.
-        // 개발 비용 절감을 위해 MSK 대신 private EC2 단일 broker로 운영합니다.
-        // 운영 안정성보다 저비용 공용 개발 환경을 우선한 선택이며, production 수준의 HA는 목표로 하지 않습니다.
+        // Kafka도 dev용 단일 broker로 고정합니다.
+        // app user와 broker user를 분리해 앱 접속 정보와 broker 내부 인증 정보를 같은 방식으로 회전할 수 있게 합니다.
         const kafkaInstance = new ec2.Instance(this, 'KafkaInstance', {
             vpc,
-            vpcSubnets: privateSubnets,
-            securityGroup: dataStorageSecurityGroup,
+            vpcSubnets: publicSubnets,
+            securityGroup: dataSourceSecurityGroup,
             instanceName: 'dev-loop-ad-kafka',
-            instanceType: new ec2.InstanceType('t4g.small'),
-            machineImage: ec2.MachineImage.latestAmazonLinux2023({
-                cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-            }),
+            instanceType: new ec2.InstanceType(DEV_KAFKA_INSTANCE_TYPE),
+            machineImage: ec2.MachineImage.fromSsmParameter(DEV_AL2023_ARM64_AMI_SSM_PARAMETER),
             blockDevices: [
                 {
                     deviceName: '/dev/xvda',
                     volume: ec2.BlockDeviceVolume.ebs(DEV_KAFKA_VOLUME_GIB, {
                         encrypted: true,
                         volumeType: ec2.EbsDeviceVolumeType.GP3,
+                        deleteOnTermination: true,
                     }),
                 },
             ],
             requireImdsv2: true,
+            associatePublicIpAddress: true,
         });
-        // Kafka EC2는 개발 DB 포트 포워딩용 private Session Manager 대상도 겸합니다.
         kafkaInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
-        kafkaInstance.userData.addCommands(
-            'set -eux',
-            'dnf update -y',
-            'dnf install -y java-17-amazon-corretto-headless tar gzip',
-            'useradd --system --home-dir /opt/kafka --shell /sbin/nologin kafka || true',
-            'mkdir -p /opt/kafka /var/lib/kafka /var/log/kafka',
-            `curl -fL https://archive.apache.org/dist/kafka/${DEV_KAFKA_VERSION}/kafka_${DEV_KAFKA_SCALA_VERSION}-${DEV_KAFKA_VERSION}.tgz -o /tmp/kafka.tgz`,
-            'tar -xzf /tmp/kafka.tgz --strip-components=1 -C /opt/kafka',
-            'TOKEN=$(curl -s -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" http://169.254.169.254/latest/api/token)',
-            'PRIVATE_DNS=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/local-hostname)',
-            'cat > /opt/kafka/config/kraft/server.properties <<EOF',
-            'process.roles=broker,controller',
-            'node.id=1',
-            'controller.quorum.voters=1@localhost:9093',
-            'listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093',
-            'advertised.listeners=PLAINTEXT://${PRIVATE_DNS}:9092',
-            'listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT',
-            'inter.broker.listener.name=PLAINTEXT',
-            'controller.listener.names=CONTROLLER',
-            'log.dirs=/var/lib/kafka',
-            'num.partitions=1',
-            'default.replication.factor=1',
-            'min.insync.replicas=1',
-            'offsets.topic.replication.factor=1',
-            'transaction.state.log.replication.factor=1',
-            'transaction.state.log.min.isr=1',
-            'group.initial.rebalance.delay.ms=0',
-            'auto.create.topics.enable=true',
-            'log.retention.hours=168',
-            'EOF',
-            'chown -R kafka:kafka /opt/kafka /var/lib/kafka /var/log/kafka',
-            'CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)',
-            'runuser -u kafka -- /opt/kafka/bin/kafka-storage.sh format -t "${CLUSTER_ID}" -c /opt/kafka/config/kraft/server.properties --ignore-formatted',
-            'cat > /etc/systemd/system/kafka.service <<EOF',
-            '[Unit]',
-            'Description=Loop Ad dev Kafka broker',
-            'After=network-online.target',
-            'Wants=network-online.target',
-            '',
-            '[Service]',
-            'Type=simple',
-            'User=kafka',
-            'Group=kafka',
-            'Environment="KAFKA_HEAP_OPTS=-Xms256m -Xmx768m"',
-            'ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties',
-            'ExecStop=/opt/kafka/bin/kafka-server-stop.sh',
-            'Restart=on-failure',
-            'RestartSec=10',
-            'LimitNOFILE=100000',
-            '',
-            '[Install]',
-            'WantedBy=multi-user.target',
-            'EOF',
-            'systemctl daemon-reload',
-            'systemctl enable --now kafka',
-        );
+        addUserDataScript(kafkaInstance, 'kafka.sh', {
+            APP_USERNAME: secretDynamicReference(props.secretNames.kafkaAppUserSecretName, 'username'),
+            APP_PASSWORD: secretDynamicReference(props.secretNames.kafkaAppUserSecretName, 'password'),
+            BROKER_USERNAME: secretDynamicReference(props.secretNames.kafkaBrokerUserSecretName, 'username'),
+            BROKER_PASSWORD: secretDynamicReference(props.secretNames.kafkaBrokerUserSecretName, 'password'),
+            EVENT_TOPIC_NAME,
+            KAFKA_HEAP_OPTS,
+            KAFKA_SASL_MECHANISM,
+            KAFKA_SCALA_VERSION: DEV_KAFKA_SCALA_VERSION,
+            KAFKA_SCRAM_PORT: KAFKA_SCRAM_PORT_TEXT,
+            KAFKA_SECURITY_PROTOCOL,
+            KAFKA_VERSION: DEV_KAFKA_VERSION,
+        });
 
+        // Runtime stack은 Data stack의 endpoint와 secret import만 알면 됩니다.
+        // 이 public DNS 기반 값들은 앱 env 계약으로 전달되고, 민감값은 ECS secret injection으로 분리합니다.
         this.auroraHost = auroraCluster.clusterEndpoint.hostname;
-        this.auroraPort = '5432';
-        this.clickHouseUrl = cdk.Fn.join('', ['http://', clickHouseInstance.instancePrivateDnsName, ':8123']);
-        this.kafkaScramBootstrapBrokerString = cdk.Fn.join('', [kafkaInstance.instancePrivateDnsName, ':', DEV_KAFKA_SCRAM_PORT]);
-        const auroraCredentialsSecret = auroraCluster.secret;
-        if (!auroraCredentialsSecret) {
-            throw new Error('Aurora generated credentials secret is required.');
-        }
+        this.auroraPort = AURORA_PORT_TEXT;
         this.auroraCredentialsSecret = auroraCredentialsSecret;
-
-        // 엔드포인트 계약은 SSM에도 남깁니다. 앱 작업에는 아래 값을 환경 변수로 직접 주입합니다.
-        // 다른 repository의 CI/CD나 운영 스크립트가 같은 엔드포인트 이름을 보고 연결값을 찾을 수 있게 하기 위함입니다.
-        for (const parameter of [
-            {
-                id: 'AuroraEndpointParameter',
-                parameterName: '/loop-ad/dev/aurora/endpoint',
-                stringValue: this.auroraHost,
-                description: 'Dev Aurora PostgreSQL endpoint contract.',
-            },
-            {
-                id: 'RedisEndpointParameter',
-                parameterName: '/loop-ad/dev/redis/endpoint',
-                stringValue: this.redisUrl,
-                description: 'Dev Redis-compatible Valkey endpoint contract.',
-            },
-            {
-                id: 'ClickHouseEndpointParameter',
-                parameterName: '/loop-ad/dev/clickhouse/endpoint',
-                stringValue: this.clickHouseUrl,
-                description: 'Dev ClickHouse endpoint contract.',
-            },
-            {
-                id: 'KafkaScramEndpointParameter',
-                parameterName: '/loop-ad/dev/kafka/scram-bootstrap-brokers',
-                stringValue: this.kafkaScramBootstrapBrokerString,
-                description: 'Dev Kafka SCRAM bootstrap broker contract.',
-            },
-            {
-                id: 'DataStorageBucketNameParameter',
-                parameterName: '/loop-ad/dev/data-storage/bucket-name',
-                stringValue: this.dataStorageBucket.bucketName,
-                description: 'Dev DataStorage S3 bucket name contract.',
-            },
-            {
-                id: 'GenAiGeneratedAssetsPrefixParameter',
-                parameterName: '/loop-ad/dev/data-storage/genai-generated-prefix',
-                stringValue: GENAI_GENERATED_ASSETS_PREFIX,
-                description: 'Dev DataStorage GenAI generated assets prefix contract.',
-            },
-            {
-                id: 'GenAiGeneratedAssetsPublicUrlParameter',
-                parameterName: '/loop-ad/dev/data-storage/genai-generated-assets-public-base-url',
-                stringValue: genAiGeneratedAssetsPublicBaseUrl,
-                description: 'Dev DataStorage GenAI generated assets public base URL contract.',
-            },
-        ]) {
-            new ssm.StringParameter(this, parameter.id, {
-                parameterName: parameter.parameterName,
-                stringValue: parameter.stringValue,
-                description: parameter.description,
-            });
-        }
+        this.clickHouseUrl = Fn.join('', ['http://', clickHouseInstance.instancePublicDnsName, ':', CLICKHOUSE_HTTP_PORT_TEXT]);
+        this.clickHouseCredentialsSecret = clickHouseCredentialsSecret;
+        this.kafkaScramBootstrapBrokerString = Fn.join('', [kafkaInstance.instancePublicDnsName, ':', KAFKA_SCRAM_PORT_TEXT]);
+        this.kafkaAppUserSecret = kafkaAppUserSecret;
     }
 }
 
@@ -468,31 +365,17 @@ export interface LoopAdDevRuntimeStackProps extends StackProps {
     readonly certificateArns: LoopAdDevCertificateArns;
     readonly network: LoopAdDevNetworkStack;
     readonly data: LoopAdDevDataStack;
-    readonly authSecretArns: LoopAdDevAuthSecretArns;
+    readonly runtimeSecretNames: LoopAdDevRuntimeSecretNames;
 }
 
-export interface LoopAdDevAuthSecretArns {
-    readonly kafkaScramAppSecretArn: string;
-    readonly kafkaScramBrokerSecretArn: string;
-    readonly clickHouseCredentialsSecretArn: string;
-}
-
-// 상시 개발 런타임 스택입니다.
-// 프론트엔드 정적 호스팅, 외부 진입점, ECS 클러스터/서비스를 소유하고 데이터 저장소는 DataStack에서 받습니다.
 export class LoopAdDevRuntimeStack extends Stack {
     public constructor(scope: Construct, id: string, props: LoopAdDevRuntimeStackProps) {
         super(scope, id, props);
 
-        // 1단계: 런타임 스택이 참조하는 네트워크/데이터 계약을 연결합니다.
-        // 이 스택은 VPC, 보안 그룹, Aurora, Valkey, ClickHouse, Kafka를 새로 만들지 않습니다.
-        // 이미 분리된 스택에서 받은 endpoint와 권한 경계만 사용해 런타임 변경의 영향 범위를 줄입니다.
-        // 네트워크/데이터 스택에서 만든 기반 리소스를 재사용합니다.
-        // 아직 배포 전이라 스택 분리로 인한 기존 리소스 이동/import 문제는 고려하지 않아도 됩니다.
         const {
             vpc,
-            privateSubnets,
+            publicSubnets,
             albSecurityGroup,
-            nlbSecurityGroup,
             serverSecurityGroup,
         } = props.network;
         const {
@@ -500,45 +383,35 @@ export class LoopAdDevRuntimeStack extends Stack {
             auroraHost,
             auroraPort,
             auroraCredentialsSecret,
-            redisUrl,
             clickHouseUrl,
+            clickHouseCredentialsSecret,
             kafkaScramBootstrapBrokerString,
+            kafkaAppUserSecret,
         } = props.data;
-        const kafkaScramAppSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'KafkaScramAppSecret', props.authSecretArns.kafkaScramAppSecretArn);
-        const clickHouseCredentialsSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'ClickHouseCredentialsSecret', props.authSecretArns.clickHouseCredentialsSecretArn);
-        // Broker credentials are consumed by the in-place EC2 Kafka migration, not by ECS tasks.
-        void props.authSecretArns.kafkaScramBrokerSecretArn;
+        // 런타임 task는 평문 환경 변수가 아니라 ECS 시크릿 주입으로 시크릿 필드를 받습니다.
+        // internal key는 /api/*/internal/* 같은 내부성 API를 앱 레벨에서 검증하기 위한 공유 키입니다.
+        const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenAiApiKeySecret', props.runtimeSecretNames.openAiApiKeySecretName);
+        const internalApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'InternalApiKeySecret', props.runtimeSecretNames.internalApiKeySecretName);
 
-        // 개발 환경은 상시 운영되므로 Fargate 클러스터를 사용합니다.
-        // 이 클러스터는 event collector와 API service가 배치되는 공통 실행 단위입니다.
-        // Cloud Map namespace를 같이 열어 private 서비스끼리는 public DNS 없이 이름으로 호출할 수 있게 합니다.
+        // 하나의 ECS cluster에 세 API 서비스를 모읍니다.
+        // Container Insights는 dev 장애 분석에 필요한 최소 관측성을 제공하므로 켜 둡니다.
         const cluster = new ecs.Cluster(this, 'Cluster', {
             vpc,
             clusterName: 'dev-loop-ad-cluster',
             containerInsightsV2: ecs.ContainerInsights.ENABLED,
-            defaultCloudMapNamespace: {
-                name: 'dev.loop-ad.local',
-            },
         });
 
-        // ECR repository는 repository stack에서 먼저 만듭니다.
-        // 런타임 스택은 repository 이름 계약만 가져와 ECS가 이미 push된 image를 참조하게 합니다.
-        // 이렇게 두면 image lifecycle과 service 배치 변경을 분리해 배포 순서와 권한 범위를 단순하게 유지할 수 있습니다.
+        // Repository stack이 만든 ECR 이름을 import합니다.
+        // Runtime stack은 이미지를 빌드하지 않고, 각 앱 repository가 latest 태그를 배포 전에 push했다고 가정합니다.
         const repositories = DEV_APPLICATION_REPOSITORIES.map((repository) => (
             ecr.Repository.fromRepositoryName(this, `${repository.id}Import`, repository.repositoryName)
         )) as DevApplicationRepositories;
         const [
             eventCollectorRepository,
-            advertisementRepository,
             dashboardRepository,
             decisionApiRepository,
         ] = repositories;
 
-        // 2단계: 정적 프론트엔드 호스팅과 외부 DNS 계약을 만듭니다.
-        // dashboard와 demo-shoppingmall은 S3 원본, CloudFront 배포, Route 53 레코드, SSM 출력값을 같은 패턴으로 가집니다.
-        // 앱별 차이는 레코드/버킷/도메인 이름뿐이라 헬퍼로 묶어 보안 기본값과 배포 계약을 맞춥니다.
-        // .env에서 받은 공개 hosted zone을 가져옵니다.
-        // fromHostedZoneAttributes는 synth 때 AWS lookup을 하지 않고 레코드 template만 만듭니다.
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
@@ -546,10 +419,9 @@ export class LoopAdDevRuntimeStack extends Stack {
         const dashboardWebDomainName = `${DASHBOARD_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const demoShoppingmallWebDomainName = `${DEMO_SHOPPINGMALL_WEB_RECORD_NAME}.${props.publicHostedZone.domainName}`;
         const publicApiDomainName = `${PUBLIC_API_RECORD_NAME}.${props.publicHostedZone.domainName}`;
-        const publicIngestDomainName = `${PUBLIC_INGEST_RECORD_NAME}.${props.publicHostedZone.domainName}`;
 
-        // 인증서 스택에서 만든 ACM ARN을 명시적으로 가져옵니다.
-        // deprecated된 DnsValidatedCertificate를 쓰지 않고, CloudFront용 us-east-1 인증서 요구사항도 유지합니다.
+        // 정적 프론트는 같은 ACM 인증서와 공통 헬퍼를 사용합니다.
+        // dashboard와 demo-shoppingmall은 앱 배포 산출물만 다르고 CDN/S3 보안 기본값은 같아야 합니다.
         const frontendSitesCertificate = acm.Certificate.fromCertificateArn(
             this,
             'FrontendSitesCertificate',
@@ -574,74 +446,36 @@ export class LoopAdDevRuntimeStack extends Stack {
             publicHostedZone,
         });
 
-        // 외부 SaaS 인증 정보는 infra code에 직접 넣지 않고 SSM SecureString 이름만 참조합니다.
-        // 실제 secret 값은 배포 전 AWS 계정에 별도로 만들어 둡니다.
-        const openAiApiKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'OpenAiApiKeyParameter', {
-            parameterName: OPENAI_API_KEY_PARAMETER_NAME,
-        });
-
-        // 3단계: 외부 진입점은 외부 로드 밸런서로 제한하고 내부 서비스 검색과 분리합니다.
-        // 외부 API는 ALB의 경로 규칙으로 분기하고, 이벤트 수집은 NLB의 TCP/TLS 경로로 받습니다.
-        // 두 트래픽의 상태 검사와 대상 그룹을 분리해 광고 조회 장애가 이벤트 수집 경로까지 번지지 않게 합니다.
-        // ALB는 API 경로를 열고, NLB는 원본 이벤트 수집 경로를 엽니다.
-        // HTTP API와 수집 트래픽의 성격이 달라 리스너/대상 그룹을 분리해 장애 범위를 줄입니다.
-        // ALB/NLB에 붙는 인증서는 같은 region(ap-northeast-2)에 있어야 하므로 런타임 스택에서 별도로 만듭니다.
+        // API 진입점은 public ALB 하나로 통일합니다.
+        // path routing으로 서비스 경계를 나누면 NLB나 서비스별 외부 endpoint 없이도 public HTTPS 계약을 유지할 수 있습니다.
         const regionalIngressCertificate = new acm.Certificate(this, 'RegionalIngressCertificate', {
             domainName: publicApiDomainName,
-            subjectAlternativeNames: [publicIngestDomainName],
             validation: acm.CertificateValidation.fromDns(publicHostedZone),
         });
-        const regionalIngressListenerCertificate = elbv2.ListenerCertificate.fromCertificateManager(regionalIngressCertificate);
         const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
             vpc,
             internetFacing: true,
             securityGroup: albSecurityGroup,
-            vpcSubnets: { subnetGroupName: 'public' },
+            vpcSubnets: publicSubnets,
         });
         const httpsAlbListener = alb.addListener('HttpsListener', {
             port: 443,
             protocol: elbv2.ApplicationProtocol.HTTPS,
-            certificates: [regionalIngressListenerCertificate],
+            certificates: [elbv2.ListenerCertificate.fromCertificateManager(regionalIngressCertificate)],
             open: false,
             defaultAction: elbv2.ListenerAction.fixedResponse(404, {
                 contentType: 'text/plain',
                 messageBody: 'No loop-ad API route is registered.',
             }),
         });
-        const nlb = new elbv2.NetworkLoadBalancer(this, 'NetworkLoadBalancer', {
-            vpc,
-            internetFacing: true,
-            securityGroups: [nlbSecurityGroup],
-            vpcSubnets: { subnetGroupName: 'public' },
+        new route53.ARecord(this, 'DevApiDnsRecord', {
+            zone: publicHostedZone,
+            recordName: PUBLIC_API_RECORD_NAME,
+            target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
         });
 
-        // 외부에서 접근해야 하는 주소만 Route 53 레코드로 노출합니다.
-        // 내부 서비스 간 호출은 Cloud Map 이름을 쓰므로 외부 DNS 레코드를 추가하지 않습니다.
-        for (const dnsRecord of [
-            {
-                id: 'DevApiDnsRecord',
-                recordName: PUBLIC_API_RECORD_NAME,
-                target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(alb)),
-            },
-            {
-                id: 'DevIngestDnsRecord',
-                recordName: PUBLIC_INGEST_RECORD_NAME,
-                target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(nlb)),
-            },
-        ] as const) {
-            new route53.ARecord(this, dnsRecord.id, {
-                zone: publicHostedZone,
-                recordName: dnsRecord.recordName,
-                target: dnsRecord.target,
-            });
-        }
-
-        // 4단계: ECS 서비스별 환경 변수/시크릿/권한 계약을 명시하고 공통 작업 크기만 헬퍼에 위임합니다.
-        // 헬퍼는 작업 정의, 로그 그룹, 컨테이너, Fargate 서비스, 자동 스케일링을 만들고,
-        // 이 호출부는 어떤 이미지가 어떤 엔드포인트/시크릿/권한을 쓰며 외부 대상에 붙는지를 보여줍니다.
-        // Event Collector는 NLB 트래픽을 받고 event를 Kafka로 발행합니다.
-        // 외부 수집 진입점이지만 작업 자체는 private subnet에서 실행되고 NLB만 앞에 둡니다.
-        const appContainerPortEnv = String(APP_CONTAINER_PORT);
+        // event-collector는 이벤트 수집과 Kafka publish만 담당합니다.
+        // 내부 API key도 함께 주입해 앱이 자체 /internal 경로를 검증할 수 있게 합니다.
         const eventCollector = createFargateHttpService(this, {
             taskDefinitionId: 'EventCollectorTaskDefinition',
             logGroupId: 'EventCollectorLogGroup',
@@ -652,86 +486,39 @@ export class LoopAdDevRuntimeStack extends Stack {
             image: ecs.ContainerImage.fromEcrRepository(eventCollectorRepository, 'latest'),
             cluster,
             securityGroup: serverSecurityGroup,
-            vpcSubnets: privateSubnets,
+            vpcSubnets: publicSubnets,
             healthCheckGracePeriod: Duration.seconds(60),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'event-collector',
-                PORT: appContainerPortEnv,
+                PORT: APP_CONTAINER_PORT_TEXT,
                 LOOPAD_KAFKA_BOOTSTRAP_BROKERS: kafkaScramBootstrapBrokerString,
-                LOOPAD_KAFKA_SECURITY_PROTOCOL: 'SASL_PLAINTEXT',
-                LOOPAD_KAFKA_SASL_MECHANISM: 'SCRAM-SHA-512',
+                LOOPAD_KAFKA_SECURITY_PROTOCOL: KAFKA_SECURITY_PROTOCOL,
+                LOOPAD_KAFKA_SASL_MECHANISM: KAFKA_SASL_MECHANISM,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
             },
             secrets: {
-                LOOPAD_KAFKA_USERNAME: ecs.Secret.fromSecretsManager(kafkaScramAppSecret, 'username'),
-                LOOPAD_KAFKA_PASSWORD: ecs.Secret.fromSecretsManager(kafkaScramAppSecret, 'password'),
+                LOOPAD_KAFKA_USERNAME: ecs.Secret.fromSecretsManager(kafkaAppUserSecret, 'username'),
+                LOOPAD_KAFKA_PASSWORD: ecs.Secret.fromSecretsManager(kafkaAppUserSecret, 'password'),
+                LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
             },
         });
-
-        // NLB는 443에서 TLS를 종료하고 collector service의 8080 포트로 전달합니다.
-        const tlsNlbListener = nlb.addListener('TlsEventCollectorListener', {
-            port: 443,
-            protocol: elbv2.Protocol.TLS,
-            certificates: [regionalIngressListenerCertificate],
-        });
-        tlsNlbListener.addTargets('TlsEventCollectorTargets', {
+        httpsAlbListener.addTargets('EventCollectorTargets', {
             targets: [eventCollector.service],
             port: APP_CONTAINER_PORT,
-            protocol: elbv2.Protocol.TCP,
-            healthCheck: {
-                enabled: true,
-                port: appContainerPortEnv,
-                protocol: elbv2.Protocol.HTTP,
-                path: '/health',
-                healthyHttpCodes: '200',
-            },
-        });
-
-        // Advertisement API는 ALB를 통해 외부 광고 조회 경로를 제공합니다.
-        // Aurora 인증 정보는 Secrets Manager에서 주입하고, 조회 성능을 위한 cache 계층은 Valkey 연결 계약으로 연결합니다.
-        const advertisement = createFargateHttpService(this, {
-            taskDefinitionId: 'AdvertisementApiTaskDefinition',
-            logGroupId: 'AdvertisementApiLogGroup',
-            containerId: 'AdvertisementApiContainer',
-            serviceConstructId: 'AdvertisementApiService',
-            cpuScalingId: 'AdvertisementApiCpuScaling',
-            serviceId: 'advertisement-api',
-            image: ecs.ContainerImage.fromEcrRepository(advertisementRepository, 'latest'),
-            cluster,
-            securityGroup: serverSecurityGroup,
-            vpcSubnets: privateSubnets,
-            healthCheckGracePeriod: Duration.seconds(60),
-            environment: {
-                LOOPAD_ENV: 'dev',
-                LOOPAD_SERVICE_ID: 'advertisement-api',
-                PORT: appContainerPortEnv,
-                LOOPAD_REDIS_URL: redisUrl,
-                LOOPAD_AURORA_HOST: auroraHost,
-                LOOPAD_AURORA_PORT: auroraPort,
-                LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
-            },
-            secrets: {
-                LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),
-                LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
-            },
-        });
-        httpsAlbListener.addTargets('AdvertisementApiTargets', {
-            targets: [advertisement.service],
-            port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
-            priority: 20,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/ads/*', '/advertisements/*'])],
+            priority: 10,
+            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/event/*'])],
             healthCheck: {
                 enabled: true,
-                port: appContainerPortEnv,
+                port: APP_CONTAINER_PORT_TEXT,
                 path: '/health',
                 healthyHttpCodes: '200',
             },
         });
 
-        // Dashboard API는 dashboard 경로를 제공하고 Cloud Map으로 Decision API를 호출합니다.
-        // 생성된 asset 목록/메타데이터를 조회해야 하므로 DataStorage 버킷의 generated prefix 읽기 권한만 부여합니다.
+        // dashboard-api는 Aurora/ClickHouse 조회와 생성 asset 읽기만 필요합니다.
+        // S3 권한도 생성 asset prefix read로 제한해 dashboard가 임의 객체를 쓰지 못하게 합니다.
         const dashboard = createFargateHttpService(this, {
             taskDefinitionId: 'DashboardApiTaskDefinition',
             logGroupId: 'DashboardApiLogGroup',
@@ -742,17 +529,18 @@ export class LoopAdDevRuntimeStack extends Stack {
             image: ecs.ContainerImage.fromEcrRepository(dashboardRepository, 'latest'),
             cluster,
             securityGroup: serverSecurityGroup,
-            vpcSubnets: privateSubnets,
+            vpcSubnets: publicSubnets,
             healthCheckGracePeriod: Duration.seconds(60),
             grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
-                PORT: appContainerPortEnv,
+                PORT: APP_CONTAINER_PORT_TEXT,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
+                LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
             },
@@ -761,25 +549,26 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
                 LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
                 LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
+                LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
             },
         });
         httpsAlbListener.addTargets('DashboardApiTargets', {
             targets: [dashboard.service],
             port: APP_CONTAINER_PORT,
             protocol: elbv2.ApplicationProtocol.HTTP,
-            priority: 30,
-            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/dashboard/*', '/dashboard/*'])],
+            priority: 20,
+            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/dashboard/*'])],
             healthCheck: {
                 enabled: true,
-                port: appContainerPortEnv,
+                port: APP_CONTAINER_PORT_TEXT,
                 path: '/health',
                 healthyHttpCodes: '200',
             },
         });
 
-        // Decision API는 private 전용이며 외부 ALB에 연결하지 않습니다.
-        // OpenAI 호출과 GenAI asset 생성을 담당하므로 SecureString과 DataStorage write 권한을 이 작업에만 줍니다.
-        createFargateHttpService(this, {
+        // decision-api는 판단 요청 처리와 GenAI asset 생성을 담당합니다.
+        // OpenAI API key와 S3 read/write 권한은 이 서비스에만 주입해 blast radius를 줄입니다.
+        const decision = createFargateHttpService(this, {
             taskDefinitionId: 'DecisionApiTaskDefinition',
             logGroupId: 'DecisionApiLogGroup',
             containerId: 'DecisionApiContainer',
@@ -789,16 +578,18 @@ export class LoopAdDevRuntimeStack extends Stack {
             image: ecs.ContainerImage.fromEcrRepository(decisionApiRepository, 'latest'),
             cluster,
             securityGroup: serverSecurityGroup,
-            vpcSubnets: privateSubnets,
+            vpcSubnets: publicSubnets,
+            healthCheckGracePeriod: Duration.seconds(60),
             grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
-                PORT: appContainerPortEnv,
+                PORT: APP_CONTAINER_PORT_TEXT,
                 LOOPAD_AURORA_HOST: auroraHost,
                 LOOPAD_AURORA_PORT: auroraPort,
                 LOOPAD_AURORA_DATABASE: AURORA_DATABASE_NAME,
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
+                LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
             },
@@ -807,9 +598,63 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
                 LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
                 LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
-                LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSsmParameter(openAiApiKeyParameter),
+                LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openAiApiKeySecret, 'api_key'),
+                LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
             },
         });
-
+        httpsAlbListener.addTargets('DecisionApiTargets', {
+            targets: [decision.service],
+            port: APP_CONTAINER_PORT,
+            protocol: elbv2.ApplicationProtocol.HTTP,
+            priority: 30,
+            conditions: [elbv2.ListenerCondition.pathPatterns(['/api/decision/*'])],
+            healthCheck: {
+                enabled: true,
+                port: APP_CONTAINER_PORT_TEXT,
+                path: '/health',
+                healthyHttpCodes: '200',
+            },
+        });
     }
+}
+
+function secretDynamicReference(secretName: string, jsonKey: 'username' | 'password'): string {
+    // EC2 user-data가 인스턴스 시작 시점에 해석하므로 CDK는 평문 값을 보지 않습니다.
+    // 반환값은 CloudFormation dynamic reference 문자열이며, 로그나 synth 결과에 secret value를 포함하지 않습니다.
+    return `{{resolve:secretsmanager:${secretName}:SecretString:${jsonKey}}}`;
+}
+
+function addUserDataScript(instance: ec2.Instance, scriptName: string, environment: Record<string, string>): void {
+    // 긴 shell 명령을 TypeScript 문자열로 관리하지 않고 assets/user-data/*.sh 파일로 둡니다.
+    // CDK는 파일을 인스턴스에 올리고, 인스턴스별 설정만 env로 주입해 스크립트를 재사용합니다.
+    const remotePath = `/opt/loop-ad/${scriptName}`;
+    const heredocMarker = `LOOP_AD_${scriptName.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_EOF`;
+    const scriptBody = readFileSync(join(USER_DATA_SCRIPT_DIR, scriptName), 'utf8').trimEnd();
+
+    if (scriptBody.split('\n').includes(heredocMarker)) {
+        throw new Error(`${scriptName} must not contain the generated heredoc marker ${heredocMarker}.`);
+    }
+
+    // 커밋된 스크립트 본문을 올리고 인스턴스별 설정은 실행 시점 환경 변수로 전달합니다.
+    instance.userData.addCommands(
+        'set -euo pipefail',
+        'mkdir -p /opt/loop-ad',
+        `cat > ${shellQuote(remotePath)} <<'${heredocMarker}'\n${scriptBody}\n${heredocMarker}`,
+        `chmod 700 ${shellQuote(remotePath)}`,
+        renderScriptExecutionCommand(remotePath, environment),
+    );
+}
+
+function renderScriptExecutionCommand(remotePath: string, environment: Record<string, string>): string {
+    // 각 env 값은 shellQuote를 거쳐 전달해 공백, 콜론, dynamic reference 문자가 shell에서 깨지지 않게 합니다.
+    return [
+        'env \\',
+        ...Object.entries(environment).map(([key, value]) => `  ${key}=${shellQuote(value)} \\`),
+        `  ${shellQuote(remotePath)}`,
+    ].join('\n');
+}
+
+function shellQuote(value: string): string {
+    // POSIX single quote escaping을 한곳에 모아 user-data 명령 생성 시 인자 주입 위험을 줄입니다.
+    return `'${value.replace(/'/g, String.raw`'\''`)}'`;
 }

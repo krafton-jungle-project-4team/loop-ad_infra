@@ -10,8 +10,7 @@
         "synth": "cdk -c environment=dev synth",
         "deploy": "cdk -c environment=dev deploy",
         "destroy": "cdk -c environment=dev destroy",
-        "cost": "node scripts/estimate-dev-monthly-cost.mjs",
-        "put-openai-api-key": "node scripts/put-openai-api-key.mjs",
+        "secrets:sync": "node scripts/sync-dev-secrets.mjs",
         "cdk": "cdk"
     },
     "devDependencies": {
@@ -26,6 +25,8 @@
     "dependencies": {
         "aws-cdk-lib": "^2.260.0",
         "constructs": "^10.5.0",
-        "dotenv": "^17.4.2"
+        "dotenv": "^17.4.2",
+        "ipaddr.js": "^2.4.0",
+        "zod": "^4.4.3"
     }
 }

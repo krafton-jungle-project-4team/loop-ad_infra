@@ -1,305 +1,85 @@
 # App Repository Guide
 
-이 문서는 loop-ad 애플리케이션 개발자가 각 앱 repo에서 지켜야 하는 repo 형식과 env contract입니다.
+이 문서는 loop-ad 앱 레포가 dev 인프라와 맞춰야 하는 repo 형식, deploy target, runtime env 계약을 정리한 how-to guide입니다.
 
-앱 repo는 인프라를 직접 구성하지 않습니다. 대신 앱은 이 문서의 env 이름을 정확히 읽고, 인프라 담당자는 ECS task definition 또는 FE build workflow에서 실제 값을 주입합니다.
+## 공통 규칙
 
-Public HTTPS endpoint와 private service discovery name은 env로 받지 않습니다. 고정 endpoint contract는 [service-endpoints.md](service-endpoints.md)에 둡니다.
-
-## 핵심 규칙
-
-- 애플리케이션 코드의 env 값에 fallback이나 기본값을 두지 않습니다.
-- 서버는 runtime 시작 시점에 필수 env를 즉시 검증합니다.
-- FE는 필수 public env가 있을 때 build 시작 시점에 즉시 검증합니다.
-- 검증된 env는 한 곳의 config 객체로 모읍니다.
-- 필수 env가 없거나 형식이 틀리면 빠르게 실패합니다.
-- secret은 repo, Docker image, GitHub Actions env, 로그, metric label, error response, FE bundle에 남기지 않습니다.
-- `.env`, `.env.local`, `.env.*.local`은 commit하지 않습니다.
-- 앱 코드는 SSM Parameter Store나 Secrets Manager를 직접 조회하지 않습니다.
-- 앱 코드는 Fargate 같은 ECS launch type이나 AWS 리소스 구현 방식에 의존하지 않습니다.
-
-금지 패턴:
-
-```ts
-const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-```
-
-권장 패턴:
-
-```ts
-function requiredEnv(name: string): string {
-    const value = process.env[name];
-    if (!value) {
-        throw new Error(`${name} is required`);
-    }
-    return value;
-}
-
-export const appConfig = Object.freeze({
-    env: requiredEnv('LOOPAD_ENV'),
-    serviceId: requiredEnv('LOOPAD_SERVICE_ID'),
-    port: Number(requiredEnv('PORT')),
-});
-```
-
-## Repo Type
-
-| Repo type | 배포 단위 | 앱 repo가 준비할 것 |
-|---|---|---|
-| Server | ECS service | Dockerfile, config loader, health check, deploy workflow |
-| Frontend Static Site | 정적 파일 | npm build script, public env 검증, deploy workflow |
-
-## Server Repo
-
-서버 repo는 Docker image로 빌드되어 ECS service에서 실행됩니다.
-
-필수 구성:
-
-```text
-Dockerfile
-.github/workflows/deploy.yml
-config loader
-```
-
-Dockerfile 규칙:
-
-- `linux/arm64`에서 실행 가능해야 합니다.
+- 앱 코드는 필수 env에 fallback/default를 두지 않습니다.
+- 서버는 시작 시점에 필수 env를 검증하고 실패 시 빠르게 종료합니다.
+- secret, token, password, API key는 repo, Docker image, GitHub Actions plain env, 로그, metric label, FE bundle에 남기지 않습니다.
+- 앱 코드는 Secrets Manager나 SSM Parameter Store를 직접 조회하지 않습니다.
 - 서버는 `PORT` env를 읽고 `0.0.0.0:${PORT}`로 listen합니다.
-- Dockerfile에서 기본 listen port metadata 또는 env 기본값을 선언한다면 `EXPOSE 8080`, `ENV PORT=8080`을 사용합니다.
-- DB endpoint, password, token, API key를 build arg나 image 안에 넣지 않습니다.
-- HTTP 서버는 `/health`에서 정상 상태일 때 HTTP status `200`을 반환합니다. 인프라 health check는 `200`만 정상으로 봅니다.
-- Dockerfile `HEALTHCHECK`, compose, local 실행 설정이 내부 앱 포트를 직접 적는다면 모두 `8080`을 사용합니다. 로컬 host port mapping은 필요에 따라 달라도 container target port는 `8080`입니다.
+- 모든 서버는 `/health`에서 정상 상태일 때 HTTP `200`을 반환합니다.
+- 앱은 자신에게 주입된 env와 secret 중 필요한 값만 시작 시점에 검증하고 사용합니다.
 
-Server deploy workflow 규칙:
+## Server Deploy Target
 
-- 각 서버 repo의 `.github/workflows/deploy.yml`은 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
-- workflow 파일을 앱 repo로 복사하지 않고 `krafton-jungle-project-4team/loop-ad_infra/.github/workflows/ecs-deploy.yml@main`을 참조합니다.
-- 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
-- workflow는 image build/push와 ECS service image 교체만 담당합니다.
-- runtime env와 secret은 workflow에서 정의하지 않습니다.
-- 앱 repo의 deploy workflow는 organization Actions variable `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`을 `role_arn` input으로 인프라 repo reusable workflow에 전달합니다.
-- 이 ECS deploy role은 ECR image push와 ECS service update 권한만 있으면 됩니다. CloudFormation, Route53, RDS 같은 인프라 전반 권한은 infra repo action 역할에만 둡니다.
-- ECR repository, ECS cluster, ECS service, container 이름은 아래 dev deploy target 값을 그대로 사용합니다.
-- 최초 개발 환경 구성 시에는 인프라 repo에서 ECR repository를 먼저 만든 뒤, 각 서버 repo가 image를 push합니다.
-- ECS service가 아직 없을 때는 reusable ECS deploy workflow를 사용할 수 없습니다. 이 workflow는 현재 ECS task definition을 조회한 뒤 image만 교체하기 때문입니다.
-- 최초 seed image는 각 서버 repo에서 직접 ECR에 push하고, 최소 `latest` tag를 포함해야 합니다. 이후 runtime stack이 배포된 뒤에는 reusable ECS deploy workflow를 사용합니다.
-
-Dev server deploy target:
+서버 repo는 Docker image로 빌드되어 ECS/Fargate service에서 실행됩니다. 각 서버 repo의 deploy workflow는 인프라 repo reusable workflow를 호출하고, runtime env와 secret은 앱 workflow에서 정의하지 않습니다.
 
 | Service | `service_name` | `ecr_repository` | `ecs_cluster` | `ecs_service` | `container_name` |
 |---|---|---|---|---|---|
 | Event Collector | `event-collector` | `loop-ad/event-collector` | `dev-loop-ad-cluster` | `dev-event-collector` | `event-collector` |
-| Advertisement API | `advertisement-api` | `loop-ad/advertisement-api` | `dev-loop-ad-cluster` | `dev-advertisement-api` | `advertisement-api` |
 | Dashboard API | `dashboard-api` | `loop-ad/dashboard-api` | `dev-loop-ad-cluster` | `dev-dashboard-api` | `dashboard-api` |
 | Decision API | `decision-api` | `loop-ad/decision-api` | `dev-loop-ad-cluster` | `dev-decision-api` | `decision-api` |
 
-## Server Env Contract
+`advertisement-api`는 dev 인프라 대상이 아닙니다.
 
-아래 env는 서버 코드가 실제로 읽는 값입니다. Plain env와 secret env 모두 앱에서는 일반 환경변수처럼 읽지만, secret env는 절대 출력하지 않습니다.
+## Public API Paths
 
-공통 서버 env:
+Public HTTPS entrypoint는 하나입니다.
 
-| Env | 값 또는 주입 방식 | 설명 |
-|---|---|---|
-| `LOOPAD_ENV` | `dev` | dev ECS에서 고정으로 주입되는 실행 환경 이름입니다. |
-| `LOOPAD_SERVICE_ID` | 서비스별 고정값 | 서비스 식별자입니다. 아래 service ID 값을 그대로 사용합니다. |
-| `PORT` | `8080` | dev ECS에서 고정으로 주입되는 listen 포트입니다. |
-
-서비스별 `LOOPAD_SERVICE_ID`:
-
-| Service | `LOOPAD_SERVICE_ID` |
+| Path | Target service |
 |---|---|
-| Event Collector | `event-collector` |
-| Advertisement API | `advertisement-api` |
-| Dashboard API | `dashboard-api` |
-| Decision API | `decision-api` |
+| `/api/event/*` | `event-collector` |
+| `/api/dashboard/*` | `dashboard-api` |
+| `/api/decision/*` | `decision-api` |
 
-앱 언어와 런타임은 Dockerfile, package manifest, repo 구조가 결정합니다. 앱 코드는 `LOOPAD_RUNTIME` 같은 env를 읽어 런타임을 판단하지 않습니다.
+`/api/*/internal/*` 요청은 앱이 `X-Loop-Ad-Internal-Key` header를 검증합니다. 인프라는 같은 key 값을 `LOOPAD_INTERNAL_API_KEY` secret env로 주입합니다. 별도 EventBridge scheduler나 internal-only load balancer는 없습니다.
 
-Data env:
+## Common Server Env
 
-| Env | 종류 | 값 또는 주입 방식 | 설명 |
-|---|---|---|---|
-| `LOOPAD_AURORA_HOST` | Plain | 인프라 주입 | Aurora PostgreSQL hostname입니다. |
-| `LOOPAD_AURORA_PORT` | Plain | `5432` | Aurora PostgreSQL port입니다. |
-| `LOOPAD_AURORA_DATABASE` | Plain | `loopad` | 기본 database 이름입니다. |
-| `LOOPAD_AURORA_USERNAME` | Secret | secret 주입 | Aurora username입니다. |
-| `LOOPAD_AURORA_PASSWORD` | Secret | secret 주입 | Aurora password입니다. |
-| `LOOPAD_CLICKHOUSE_URL` | Plain | 인프라 주입 | ClickHouse HTTP endpoint입니다. `http://...:8123` 형식입니다. |
-| `LOOPAD_CLICKHOUSE_USERNAME` | Secret | secret 주입 | ClickHouse username입니다. |
-| `LOOPAD_CLICKHOUSE_PASSWORD` | Secret | secret 주입 | ClickHouse password입니다. |
-| `LOOPAD_REDIS_URL` | Plain | 인프라 주입 | Redis 호환 Valkey endpoint입니다. TLS 연결을 위해 `rediss://...:6379` 형식을 사용합니다. |
-| `LOOPAD_KAFKA_BOOTSTRAP_BROKERS` | Plain | 인프라 주입 | Kafka bootstrap broker 목록입니다. |
-| `LOOPAD_KAFKA_SECURITY_PROTOCOL` | Plain | `SASL_PLAINTEXT` | Kafka client security protocol입니다. |
-| `LOOPAD_KAFKA_SASL_MECHANISM` | Plain | `SCRAM-SHA-512` | Kafka client SASL mechanism입니다. |
-| `LOOPAD_KAFKA_USERNAME` | Secret | secret 주입 | Kafka SCRAM username입니다. |
-| `LOOPAD_KAFKA_PASSWORD` | Secret | secret 주입 | Kafka SCRAM password입니다. |
-| `LOOPAD_EVENT_TOPIC` | Plain | `loop-ad.events.raw` | raw event topic 이름입니다. |
-
-DataStorage env:
-
-| Env | 종류 | 값 또는 주입 방식 | 설명 |
-|---|---|---|---|
-| `LOOPAD_DATA_STORAGE_BUCKET` | Plain | 인프라 주입 | GenAI 생성물을 저장하는 S3 bucket 이름입니다. |
-| `LOOPAD_GENAI_GENERATED_ASSETS_PREFIX` | Plain | `genai/generated/` | GenAI 생성물 S3 prefix입니다. |
-
-External secret env:
-
-| Env | 사용하는 서비스 | 설명 |
-|---|---|---|
-| `LOOPAD_OPENAI_API_KEY` | Decision API | OpenAI API key입니다. |
-
-OpenAI API key는 앱 repo workflow에서 다루지 않습니다. Infra repo 배포 환경의 `LOOP_AD_OPENAI_API_KEY` 값을 `/loop-ad/dev/external/openai/api-key` SSM SecureString으로 주입하고, ECS task에는 `LOOPAD_OPENAI_API_KEY` secret env로 전달합니다.
-
-서비스별 필수 env:
-
-| Service | 필수 env |
+| Env | 값 또는 주입 방식 |
 |---|---|
-| Event Collector | 공통 서버 env, Kafka env, `LOOPAD_EVENT_TOPIC` |
-| Advertisement API | 공통 서버 env, `LOOPAD_REDIS_URL`, Aurora env |
-| Dashboard API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env |
-| Decision API | 공통 서버 env, Aurora env, ClickHouse env, DataStorage env, `LOOPAD_OPENAI_API_KEY` |
+| `LOOPAD_ENV` | `dev` |
+| `LOOPAD_SERVICE_ID` | 서비스별 고정값 |
+| `PORT` | `8080` |
+| `LOOPAD_INTERNAL_API_KEY` | Secrets Manager `{ "api_key": "..." }`의 `api_key` |
 
-내부 service discovery name은 env로 받지 않습니다. Dashboard API가 Decision API를 호출할 때는 [service-endpoints.md](service-endpoints.md)의 private service discovery contract를 사용합니다.
+## Data Env
 
-Redis client를 사용하는 서비스는 `LOOPAD_REDIS_URL`의 `rediss://` endpoint에 TLS로 연결해야 합니다. fallback으로 local Redis나 임의 주소를 붙이면 안 됩니다.
-
-## Server Logging Contract
-
-서버는 파일 로그를 직접 관리하지 않고 stdout/stderr로만 로그를 남깁니다. 인프라는 ECS service별 CloudWatch LogGroup을 분리해 보관합니다.
-
-Dev CloudWatch LogGroup 이름:
-
-| Service | LogGroup |
+| Env | 값 또는 주입 방식 |
 |---|---|
-| Event Collector | `/loop-ad/dev/ecs/event-collector` |
-| Advertisement API | `/loop-ad/dev/ecs/advertisement-api` |
-| Dashboard API | `/loop-ad/dev/ecs/dashboard-api` |
-| Decision API | `/loop-ad/dev/ecs/decision-api` |
+| `LOOPAD_AURORA_HOST` | Aurora endpoint |
+| `LOOPAD_AURORA_PORT` | `5432` |
+| `LOOPAD_AURORA_DATABASE` | `loopad` |
+| `LOOPAD_AURORA_USERNAME` | Aurora secret `username` |
+| `LOOPAD_AURORA_PASSWORD` | Aurora secret `password` |
+| `LOOPAD_CLICKHOUSE_URL` | `http://<public-dns>:8123` |
+| `LOOPAD_CLICKHOUSE_DATABASE` | `loopad` |
+| `LOOPAD_CLICKHOUSE_USERNAME` | ClickHouse secret `username` |
+| `LOOPAD_CLICKHOUSE_PASSWORD` | ClickHouse secret `password` |
+| `LOOPAD_KAFKA_BOOTSTRAP_BROKERS` | `<public-dns>:9094` |
+| `LOOPAD_KAFKA_SECURITY_PROTOCOL` | `SASL_PLAINTEXT` |
+| `LOOPAD_KAFKA_SASL_MECHANISM` | `SCRAM-SHA-512` |
+| `LOOPAD_KAFKA_USERNAME` | Kafka app user secret `username` |
+| `LOOPAD_KAFKA_PASSWORD` | Kafka app user secret `password` |
+| `LOOPAD_EVENT_TOPIC` | `loop-ad.events.raw` |
 
-로그 규칙:
+## Storage and External Env
 
-- 로그는 JSON structured log를 권장합니다.
-- 권장 필드는 `timestamp`, `level`, `service`, `message`입니다. 인프라는 로그 필드 존재 여부를 시스템적으로 검증하지 않습니다.
-- 요청 단위 로그에는 가능하면 `requestId` 또는 `traceId`를 포함합니다. trace id 전파 방식은 아직 고정하지 않습니다.
-- secret, token, password, API key, DB credential, 개인 식별 정보는 로그에 남기지 않습니다.
-- dev 로그 보존 기간은 인프라에서 3개월로 관리합니다.
+| Env | 값 또는 주입 방식 |
+|---|---|
+| `LOOPAD_DATA_STORAGE_BUCKET` | DataStorage bucket name |
+| `LOOPAD_GENAI_GENERATED_ASSETS_PREFIX` | `genai/generated/` |
+| `LOOPAD_OPENAI_API_KEY` | OpenAI secret `api_key` |
 
 ## Frontend Static Site Repo
 
-FE repo는 Docker image가 아니라 정적 파일을 빌드해서 배포합니다. Dashboard FE와 demo-shoppingmall FE 모두 같은 규칙을 따릅니다.
+Frontend repo는 정적 파일을 빌드해서 S3와 CloudFront로 배포합니다.
 
-필수 구성:
+| Site | Public domain | `s3_bucket` | `s3_prefix` |
+|---|---|---|---|
+| Dashboard Web | `https://dashboard.dev.loop-ad.org` | `loop-ad-dev-dashboard-web` | `.` |
+| Demo shoppingmall Web | `https://demo-shoppingmall.dev.loop-ad.org` | `loop-ad-dev-demo-shoppingmall-web` | `.` |
 
-```text
-package.json
-.github/workflows/deploy.yml
-public env validator, if needed
-```
-
-npm 규칙:
-
-- 기본 install 명령은 `npm ci`입니다.
-- 기본 build 명령은 `npm run build`입니다.
-- 기본 build output directory는 `dist`입니다.
-- 다른 값이 필요하면 FE repo의 deploy workflow input으로 명시합니다.
-
-FE env 규칙:
-
-- FE env는 build 결과물에 포함될 수 있습니다.
-- 꼭 필요한 public 값만 사용합니다.
-- secret, DB credential, webhook URL, private service discovery name을 FE env에 넣지 않습니다.
-- Vite를 쓴다면 public env는 `VITE_` prefix를 사용합니다.
-- FE도 env를 사용한다면 fallback 없이 build 시작 시점에 검증합니다.
-- loop-ad public domain은 [service-endpoints.md](service-endpoints.md)의 고정 contract를 사용하고 `VITE_API_BASE_URL` 같은 env로 다시 빼지 않습니다.
-
-금지 패턴:
-
-```text
-VITE_API_BASE_URL=https://api.dev.loop-ad.org
-VITE_INGEST_BASE_URL=https://ingest.dev.loop-ad.org
-VITE_OPENAI_API_KEY=...
-VITE_AURORA_PASSWORD=...
-```
-
-Frontend deploy workflow 규칙:
-
-- 각 FE repo의 `.github/workflows/deploy.yml`은 인프라 repo의 reusable deploy workflow를 `uses:`로 호출합니다.
-- workflow 파일을 FE repo로 복사하지 않고 `krafton-jungle-project-4team/loop-ad_infra/.github/workflows/frontend-deploy.yml@main`을 참조합니다.
-- 인프라 workflow를 release tag로 고정하기 전까지는 `@main`을 사용하고, 나중에 `v1` 같은 tag를 만들면 그 tag로 바꿉니다.
-- workflow는 정적 파일 업로드와 CDN invalidation만 담당합니다.
-- bucket, CDN distribution 같은 deploy target 값은 아래 dev frontend deploy target 값을 사용합니다.
-- FE repo의 deploy workflow는 organization Actions variable `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`을 `role_arn` input으로 인프라 repo reusable workflow에 전달합니다.
-- CloudFront distribution ID는 ARN이 아니므로 secret이 아니라 GitHub Actions variable로 관리할 수 있습니다.
-- FE build env 값은 꼭 필요할 때만 GitHub Environment variables 등으로 관리할 수 있지만, secret과 고정 loop-ad domain은 넣지 않습니다.
-
-Dev frontend deploy target:
-
-| Site | Public domain | `s3_bucket` | `s3_prefix` | CloudFront distribution ID |
-|---|---|---|---|---|
-| Dashboard Web | `https://dashboard.dev.loop-ad.org` | `loop-ad-dev-dashboard-web` | `.` | 인프라 output 또는 `/loop-ad/dev/frontend/dashboard-web/cloudfront-distribution-id` |
-| Demo shoppingmall Web | `https://demo-shoppingmall.dev.loop-ad.org` | `loop-ad-dev-demo-shoppingmall-web` | `.` | 인프라 output 또는 `/loop-ad/dev/frontend/demo-shoppingmall-web/cloudfront-distribution-id` |
-
-권장 frontend workflow input:
-
-| Input | 값 |
-|---|---|
-| `aws_region` | `ap-northeast-2` |
-| `role_arn` | `${{ vars.LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN }}` |
-| `install_command` | `npm ci` |
-| `build_command` | `npm run build` |
-| `build_output_dir` | `dist` |
-| `cloudfront_invalidation_paths` | `/*` |
-| `asset_cache_control` | `public,max-age=31536000,immutable` |
-| `html_cache_control` | `no-cache,no-store,must-revalidate` |
-
-## Local Development
-
-- `.env.example`은 필요한 env 이름과 형식을 알려주는 용도로만 둡니다.
-- 실제 local 값은 `.env.local` 또는 개인 shell 환경에서 관리하고 commit하지 않습니다.
-- local 개발에서도 fallback/default를 넣지 않습니다.
-- local에서 필요한 DB/cache/broker 주소도 명시적으로 env에 넣고 실행합니다.
-- local compose나 Docker 실행에서 host port를 다르게 열 수는 있지만 container 내부 앱 포트는 `8080`으로 맞춥니다.
-
-로컬 `.env.local` 형태:
-
-```text
-LOOPAD_ENV=local
-LOOPAD_SERVICE_ID=dashboard-api
-PORT=8080
-LOOPAD_AURORA_HOST=localhost
-LOOPAD_AURORA_PORT=15432
-LOOPAD_AURORA_DATABASE=loopad
-```
-
-## 개발자가 몰라도 되는 세부 구현
-
-아래 값은 앱 코드가 직접 의존하지 않습니다. 필요한 경우 인프라 담당자가 deploy workflow input이나 runtime env로 제공합니다.
-
-- AWS resource ARN
-- SSM parameter path
-- Secrets Manager secret 이름
-- ALB/NLB listener rule
-- ECS launch type
-
-앱 repo는 값의 출처보다 "어떤 env가 필요하고, 없으면 실패한다"는 contract를 정확히 지키면 됩니다.
-
-## Review Checklist
-
-- 필수 env에 fallback/default가 없는가?
-- env 검증이 서버 시작 또는 FE build 시작 시점에 실행되는가?
-- 검증된 값이 config 객체로 모이는가?
-- 앱 코드가 SSM/Secrets Manager를 직접 조회하지 않는가?
-- secret이 repo, image, workflow env, 로그, FE bundle에 들어가지 않는가?
-- 서버 repo는 Dockerfile과 deploy workflow를 갖고 있는가?
-- Dockerfile `EXPOSE`, `ENV PORT`, health check, compose/local 실행 설정의 내부 앱 포트가 `8080`인가?
-- 최초 seed image를 `latest` tag로 ECR에 push할 수 있는가?
-- deploy workflow input이 dev server deploy target 표와 일치하는가?
-- 서버 deploy workflow가 organization variable `LOOP_AD_DEV_ECS_DEPLOY_ROLE_ARN`으로 OIDC assume role ARN을 참조하는가?
-- 서버 `/health`가 정상 상태에서 정확히 `200`을 반환하는가?
-- 서버 로그가 stdout/stderr로 출력되고 secret을 포함하지 않는가?
-- FE repo는 `npm ci`, `npm run build`, `dist` 기본 규칙을 따르는가?
-- FE deploy workflow input이 dev frontend deploy target 표와 일치하는가?
-- FE deploy workflow가 organization variable `LOOP_AD_DEV_FRONTEND_DEPLOY_ROLE_ARN`으로 OIDC assume role ARN을 참조하는가?
-- FE env는 public 값만 사용하는가?
-- deploy workflow가 인프라 repo reusable workflow를 `uses:`로 호출하는가?
+CloudFront distribution ID와 bucket name은 인프라가 일반 SSM Parameter Store metadata로 제공합니다. FE env에는 secret, DB credential, OpenAI key, private endpoint를 넣지 않습니다.

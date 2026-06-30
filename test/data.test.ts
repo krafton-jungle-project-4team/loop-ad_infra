@@ -14,7 +14,7 @@ describe('data architecture', () => {
             DatabaseName: 'loopad',
             ServerlessV2ScalingConfiguration: {
                 MinCapacity: 0,
-                MaxCapacity: 4,
+                MaxCapacity: 2,
                 SecondsUntilAutoPause: 600,
             },
         });
@@ -36,12 +36,15 @@ describe('data architecture', () => {
         template.resourceCountIs('AWS::CloudFront::Distribution', 1);
     });
 
-    it('runs ClickHouse and Kafka on public t4g.medium EC2 instances with non-retained gp3 EBS', () => {
+    it('runs ClickHouse and Kafka on public EC2 instances with non-retained gp3 EBS', () => {
         const template = Template.fromStack(synthData());
 
         template.resourcePropertiesCountIs('AWS::EC2::Instance', {
             InstanceType: 't4g.medium',
-        }, 2);
+        }, 1);
+        template.resourcePropertiesCountIs('AWS::EC2::Instance', {
+            InstanceType: 't4g.small',
+        }, 1);
         template.resourcePropertiesCountIs('AWS::EC2::Instance', {
             NetworkInterfaces: [
                 {
@@ -94,6 +97,7 @@ describe('data architecture', () => {
         expect(templateText).toContain('loop-ad.events.raw');
         expect(templateText).toContain('/opt/loop-ad/clickhouse.sh');
         expect(templateText).toContain('/opt/loop-ad/kafka.sh');
+        expect(templateText).toContain('-Xms256m -Xmx1024m');
         expect(templateText).toContain(testSecretNames.kafkaAppUserSecretName);
         expect(templateText).toContain(testSecretNames.kafkaBrokerUserSecretName);
         expect(templateText).toContain('APP_USER_SECRET_NAME');

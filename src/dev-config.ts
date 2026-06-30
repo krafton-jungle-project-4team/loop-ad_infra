@@ -5,18 +5,34 @@ import { normalizeSecretPrefix } from './config-validation';
 // 스택 곳곳에 숫자/이름을 흩어 두면 비용과 앱 env 계약 변경 범위를 추적하기 어려워 한 파일에 모읍니다.
 export const LOOP_AD_REGION = 'ap-northeast-2';
 
-export const DEV_SERVICE_DESIRED_TASKS = 1;
-export const DEV_SERVICE_MIN_TASKS = 1;
-export const DEV_SERVICE_MAX_TASKS = 2;
-export const DEV_FARGATE_TASK_CPU = 512;
-export const DEV_FARGATE_TASK_MEMORY_MIB = 1024;
+export const DEV_EVENT_COLLECTOR_FARGATE_CAPACITY = {
+    cpu: 256,
+    memoryLimitMiB: 512,
+    desiredTasks: 1,
+    minTasks: 1,
+    maxTasks: 4,
+} as const;
+export const DEV_DASHBOARD_API_FARGATE_CAPACITY = {
+    cpu: 512,
+    memoryLimitMiB: 1024,
+    desiredTasks: 1,
+    minTasks: 1,
+    maxTasks: 2,
+} as const;
+export const DEV_DECISION_API_FARGATE_CAPACITY = {
+    cpu: 1024,
+    memoryLimitMiB: 2048,
+    desiredTasks: 1,
+    minTasks: 1,
+    maxTasks: 1,
+} as const;
 export const SERVICE_CPU_SCALE_TARGET_PERCENT = 70;
 export const DEV_AURORA_MIN_ACU = 0;
-export const DEV_AURORA_MAX_ACU = 4;
+export const DEV_AURORA_MAX_ACU = 2;
 export const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 export const DEV_CLICKHOUSE_INSTANCE_TYPE = 't4g.medium';
 export const DEV_CLICKHOUSE_VOLUME_GIB = 100;
-export const DEV_KAFKA_INSTANCE_TYPE = 't4g.medium';
+export const DEV_KAFKA_INSTANCE_TYPE = 't4g.small';
 export const DEV_KAFKA_VOLUME_GIB = 40;
 export const DEV_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
 export const DEV_AL2023_ARM64_AMI_SSM_PARAMETER = '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64';

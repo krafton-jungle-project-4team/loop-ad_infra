@@ -32,6 +32,9 @@ import {
     DEV_CLICKHOUSE_IMAGE,
     DEV_CLICKHOUSE_INSTANCE_TYPE,
     DEV_CLICKHOUSE_VOLUME_GIB,
+    DEV_DASHBOARD_API_FARGATE_CAPACITY,
+    DEV_DECISION_API_FARGATE_CAPACITY,
+    DEV_EVENT_COLLECTOR_FARGATE_CAPACITY,
     DEV_KAFKA_INSTANCE_TYPE,
     DEV_KAFKA_SCRAM_PORT,
     DEV_KAFKA_SCALA_VERSION,
@@ -77,7 +80,7 @@ const CLICKHOUSE_HTTP_PORT_TEXT = String(DEV_CLICKHOUSE_HTTP_PORT);
 const KAFKA_SCRAM_PORT_TEXT = String(DEV_KAFKA_SCRAM_PORT);
 const KAFKA_SECURITY_PROTOCOL = 'SASL_PLAINTEXT';
 const KAFKA_SASL_MECHANISM = 'SCRAM-SHA-512';
-const KAFKA_HEAP_OPTS = '-Xms512m -Xmx1536m';
+const KAFKA_HEAP_OPTS = '-Xms256m -Xmx1024m';
 const USER_DATA_SCRIPT_DIR = join(__dirname, '..', 'assets', 'user-data');
 
 type DevApplicationRepositories = [ecr.IRepository, ecr.IRepository, ecr.IRepository];
@@ -508,6 +511,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             cluster,
             securityGroup: serverSecurityGroup,
             vpcSubnets: publicSubnets,
+            capacity: DEV_EVENT_COLLECTOR_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
             environment: {
                 LOOPAD_ENV: 'dev',
@@ -551,6 +555,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             cluster,
             securityGroup: serverSecurityGroup,
             vpcSubnets: publicSubnets,
+            capacity: DEV_DASHBOARD_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
             grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {
@@ -601,6 +606,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             cluster,
             securityGroup: serverSecurityGroup,
             vpcSubnets: publicSubnets,
+            capacity: DEV_DECISION_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
             grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
             environment: {

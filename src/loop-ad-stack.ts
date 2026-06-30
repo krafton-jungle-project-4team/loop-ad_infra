@@ -42,6 +42,7 @@ import {
     EVENT_TOPIC_NAME,
     GENAI_GENERATED_ASSETS_PREFIX,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
+    LOOP_AD_REGION,
     type DeveloperAllowlistConfig,
     type LoopAdDevCertificateArns,
     type LoopAdDevDataSecretNames,
@@ -203,6 +204,7 @@ export class LoopAdDevDataStack extends Stack {
         const auroraCredentialsSecret = secretsmanager.Secret.fromSecretNameV2(this, 'AuroraCredentialsSecret', props.secretNames.auroraCredentialsSecretName);
         const clickHouseCredentialsSecret = secretsmanager.Secret.fromSecretNameV2(this, 'ClickHouseCredentialsSecret', props.secretNames.clickHouseCredentialsSecretName);
         const kafkaAppUserSecret = secretsmanager.Secret.fromSecretNameV2(this, 'KafkaAppUserSecret', props.secretNames.kafkaAppUserSecretName);
+        const kafkaBrokerUserSecret = secretsmanager.Secret.fromSecretNameV2(this, 'KafkaBrokerUserSecret', props.secretNames.kafkaBrokerUserSecretName);
 
         // DataStorage는 앱이 만든 원천/생성 산출물을 담는 장기 저장소입니다.
         // dev stack을 재생성해도 데이터 손실을 피하려고 RETAIN을 쓰며, multipart 미완료 업로드만 정리합니다.
@@ -301,17 +303,19 @@ export class LoopAdDevDataStack extends Stack {
                 },
             ],
             requireImdsv2: true,
+            userDataCausesReplacement: true,
             associatePublicIpAddress: true,
         });
         clickHouseInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
-        // user-data에는 시크릿 값을 직접 넣지 않고 Secrets Manager dynamic reference 문자열만 전달합니다.
-        // CloudFormation이 인스턴스 시작 시점에 해석하므로 CDK synth 결과에 평문이 남지 않습니다.
+        clickHouseCredentialsSecret.grantRead(clickHouseInstance.role);
+        // EC2 UserData는 Secrets Manager dynamic reference를 해석하지 않으므로 secret name만 전달합니다.
+        // 인스턴스 role이 런타임에 값을 읽고, CDK synth/deploy 결과에는 평문 secret을 남기지 않습니다.
         addUserDataScript(clickHouseInstance, 'clickhouse.sh', {
             CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
+            CLICKHOUSE_CREDENTIALS_SECRET_NAME: props.secretNames.clickHouseCredentialsSecretName,
             CLICKHOUSE_HTTP_PORT: CLICKHOUSE_HTTP_PORT_TEXT,
             CLICKHOUSE_IMAGE: DEV_CLICKHOUSE_IMAGE,
-            CLICKHOUSE_USER: secretDynamicReference(props.secretNames.clickHouseCredentialsSecretName, 'username'),
-            CLICKHOUSE_PASSWORD: secretDynamicReference(props.secretNames.clickHouseCredentialsSecretName, 'password'),
+            AWS_REGION: LOOP_AD_REGION,
         });
 
         // Kafka도 dev용 단일 broker로 고정합니다.
@@ -334,14 +338,16 @@ export class LoopAdDevDataStack extends Stack {
                 },
             ],
             requireImdsv2: true,
+            userDataCausesReplacement: true,
             associatePublicIpAddress: true,
         });
         kafkaInstance.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+        kafkaAppUserSecret.grantRead(kafkaInstance.role);
+        kafkaBrokerUserSecret.grantRead(kafkaInstance.role);
         addUserDataScript(kafkaInstance, 'kafka.sh', {
-            APP_USERNAME: secretDynamicReference(props.secretNames.kafkaAppUserSecretName, 'username'),
-            APP_PASSWORD: secretDynamicReference(props.secretNames.kafkaAppUserSecretName, 'password'),
-            BROKER_USERNAME: secretDynamicReference(props.secretNames.kafkaBrokerUserSecretName, 'username'),
-            BROKER_PASSWORD: secretDynamicReference(props.secretNames.kafkaBrokerUserSecretName, 'password'),
+            APP_USER_SECRET_NAME: props.secretNames.kafkaAppUserSecretName,
+            AWS_REGION: LOOP_AD_REGION,
+            BROKER_USER_SECRET_NAME: props.secretNames.kafkaBrokerUserSecretName,
             EVENT_TOPIC_NAME,
             KAFKA_HEAP_OPTS,
             KAFKA_SASL_MECHANISM,
@@ -634,12 +640,6 @@ export class LoopAdDevRuntimeStack extends Stack {
     }
 }
 
-function secretDynamicReference(secretName: string, jsonKey: 'username' | 'password'): string {
-    // EC2 user-data가 인스턴스 시작 시점에 해석하므로 CDK는 평문 값을 보지 않습니다.
-    // 반환값은 CloudFormation dynamic reference 문자열이며, 로그나 synth 결과에 secret value를 포함하지 않습니다.
-    return `{{resolve:secretsmanager:${secretName}:SecretString:${jsonKey}}}`;
-}
-
 function addUserDataScript(instance: ec2.Instance, scriptName: string, environment: Record<string, string>): void {
     // 긴 shell 명령을 TypeScript 문자열로 관리하지 않고 assets/user-data/*.sh 파일로 둡니다.
     // CDK는 파일을 인스턴스에 올리고, 인스턴스별 설정만 env로 주입해 스크립트를 재사용합니다.
@@ -662,7 +662,7 @@ function addUserDataScript(instance: ec2.Instance, scriptName: string, environme
 }
 
 function renderScriptExecutionCommand(remotePath: string, environment: Record<string, string>): string {
-    // 각 env 값은 shellQuote를 거쳐 전달해 공백, 콜론, dynamic reference 문자가 shell에서 깨지지 않게 합니다.
+    // 각 env 값은 shellQuote를 거쳐 전달해 공백, 콜론 같은 문자가 shell에서 깨지지 않게 합니다.
     return [
         'env \\',
         ...Object.entries(environment).map(([key, value]) => `  ${key}=${shellQuote(value)} \\`),

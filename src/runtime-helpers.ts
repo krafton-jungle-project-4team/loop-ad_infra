@@ -12,12 +12,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import {
     DEV_ECS_LOG_GROUP_PREFIX,
-    DEV_FARGATE_TASK_CPU,
-    DEV_FARGATE_TASK_MEMORY_MIB,
     DEV_LOG_RETENTION,
-    DEV_SERVICE_DESIRED_TASKS,
-    DEV_SERVICE_MAX_TASKS,
-    DEV_SERVICE_MIN_TASKS,
     SERVICE_CPU_SCALE_TARGET_PERCENT,
 } from './dev-config';
 
@@ -46,10 +41,19 @@ export interface FargateHttpServiceConfig {
     readonly cluster: ecs.ICluster;
     readonly securityGroup: ec2.ISecurityGroup;
     readonly vpcSubnets: ec2.SubnetSelection;
+    readonly capacity: FargateHttpServiceCapacity;
     readonly environment: Record<string, string>;
     readonly secrets?: Record<string, ecs.Secret>;
     readonly healthCheckGracePeriod?: Duration;
     readonly grantTaskRole?: (taskDefinition: ecs.FargateTaskDefinition) => void;
+}
+
+export interface FargateHttpServiceCapacity {
+    readonly cpu: number;
+    readonly memoryLimitMiB: number;
+    readonly desiredTasks: number;
+    readonly minTasks: number;
+    readonly maxTasks: number;
 }
 
 export interface FargateHttpService {
@@ -60,10 +64,10 @@ export interface FargateHttpService {
 
 export function createFargateHttpService(scope: Construct, config: FargateHttpServiceConfig): FargateHttpService {
     // 작업 정의는 컨테이너가 사용할 CPU, 메모리, 런타임 아키텍처의 비용 단위입니다.
-    // 개발 환경의 모든 서비스는 같은 ARM64 작업 크기를 공유해 Fargate 비용 상한을 예측 가능하게 둡니다.
+    // 서비스별 용량만 호출부에서 넘겨 비용 조정 범위를 작게 유지합니다.
     const taskDefinition = new ecs.FargateTaskDefinition(scope, config.taskDefinitionId, {
-        cpu: DEV_FARGATE_TASK_CPU,
-        memoryLimitMiB: DEV_FARGATE_TASK_MEMORY_MIB,
+        cpu: config.capacity.cpu,
+        memoryLimitMiB: config.capacity.memoryLimitMiB,
         runtimePlatform: {
             cpuArchitecture: ecs.CpuArchitecture.ARM64,
             operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
@@ -97,7 +101,7 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         cluster: config.cluster,
         taskDefinition,
         serviceName: `dev-${config.serviceId}`,
-        desiredCount: DEV_SERVICE_DESIRED_TASKS,
+        desiredCount: config.capacity.desiredTasks,
         assignPublicIp: true,
         securityGroups: [config.securityGroup],
         vpcSubnets: config.vpcSubnets,
@@ -107,9 +111,9 @@ export function createFargateHttpService(scope: Construct, config: FargateHttpSe
         healthCheckGracePeriod: config.healthCheckGracePeriod,
     });
 
-    // Auto Scaling 대상은 최소 1개, 최대 2개 작업으로 고정해 개발 환경의 가용성과 비용 상한을 함께 관리합니다.
+    // Auto Scaling 대상은 서비스별 비용 상한과 가용성 요구에 맞춥니다.
     // CPU 목표치만 공통으로 걸어 두고, 더 복잡한 스케일링 정책은 실제 트래픽 검증 뒤 서비스별로 분리합니다.
-    service.autoScaleTaskCount({ minCapacity: DEV_SERVICE_MIN_TASKS, maxCapacity: DEV_SERVICE_MAX_TASKS }).scaleOnCpuUtilization(config.cpuScalingId, {
+    service.autoScaleTaskCount({ minCapacity: config.capacity.minTasks, maxCapacity: config.capacity.maxTasks }).scaleOnCpuUtilization(config.cpuScalingId, {
         targetUtilizationPercent: SERVICE_CPU_SCALE_TARGET_PERCENT,
     });
 

@@ -24,16 +24,25 @@ describe('runtime architecture', () => {
         expect(JSON.stringify(template.toJSON())).not.toContain('ingest.dev');
     });
 
-    it('keeps exactly the three public Fargate services with public IP assignment', () => {
+    it('keeps exactly the three public Fargate services with service-specific capacity', () => {
         const template = Template.fromStack(synthRuntime());
 
         template.resourceCountIs('AWS::ECS::Service', 3);
         template.resourceCountIs('AWS::Logs::LogGroup', 3);
         template.resourcePropertiesCountIs('AWS::ECS::TaskDefinition', {
+            Cpu: '256',
+            Memory: '512',
+        }, 1);
+        template.resourcePropertiesCountIs('AWS::ECS::TaskDefinition', {
             Cpu: '512',
             Memory: '1024',
-        }, 3);
+        }, 1);
+        template.resourcePropertiesCountIs('AWS::ECS::TaskDefinition', {
+            Cpu: '1024',
+            Memory: '2048',
+        }, 1);
         template.resourcePropertiesCountIs('AWS::ECS::Service', {
+            DesiredCount: 1,
             LaunchType: 'FARGATE',
             NetworkConfiguration: {
                 AwsvpcConfiguration: {
@@ -41,6 +50,18 @@ describe('runtime architecture', () => {
                 },
             },
         }, 3);
+        template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
+            MinCapacity: 1,
+            MaxCapacity: 1,
+        }, 1);
+        template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
+            MinCapacity: 1,
+            MaxCapacity: 2,
+        }, 1);
+        template.resourcePropertiesCountIs('AWS::ApplicationAutoScaling::ScalableTarget', {
+            MinCapacity: 1,
+            MaxCapacity: 4,
+        }, 1);
         for (const serviceId of ['event-collector', 'dashboard-api', 'decision-api']) {
             template.hasResourceProperties('AWS::ECS::Service', {
                 ServiceName: `dev-${serviceId}`,

@@ -145,6 +145,10 @@ describe('runtime architecture', () => {
         expect(templateText).toContain('loop-ad.events.raw');
         expect(templateText).toContain('LOOPAD_CLICKHOUSE_DATABASE');
         expect(templateText).toContain('loopad');
+        expect(templateText).toContain('LOOPAD_GENAI_ASSETS_BASE_PREFIX');
+        expect(templateText).toContain('genai/');
+        expect(templateText).not.toContain('LOOPAD_GENAI_GENERATED_ASSETS_PREFIX');
+        expect(templateText).not.toContain('genai/generated/');
         expect(templateText).not.toContain('LOOPAD_REDIS_URL');
         expect(templateText).not.toContain('EventBridge');
     });

@@ -1,4 +1,4 @@
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { resourcesOf, synthData, testSecretNames } from './helpers';
 
 describe('data architecture', () => {
@@ -25,7 +25,7 @@ describe('data architecture', () => {
         expect(JSON.stringify(template.toJSON())).toContain(testSecretNames.auroraCredentialsSecretName);
     });
 
-    it('keeps DataStorage and GenAI generated assets storage retained', () => {
+    it('keeps DataStorage and GenAI assets storage retained under the base prefix', () => {
         const template = Template.fromStack(synthData());
         const resources = resourcesOf(template);
         const buckets = Object.values(resources).filter((resource) => resource.Type === 'AWS::S3::Bucket');
@@ -33,7 +33,17 @@ describe('data architecture', () => {
         expect(buckets).toHaveLength(1);
         expect(buckets[0]?.DeletionPolicy).toBe('Retain');
         expect(buckets[0]?.UpdateReplacePolicy).toBe('Retain');
+        template.hasResourceProperties('AWS::S3::Bucket', {
+            LifecycleConfiguration: {
+                Rules: Match.arrayWith([
+                    Match.objectLike({
+                        Prefix: 'genai/',
+                    }),
+                ]),
+            },
+        });
         template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+        expect(JSON.stringify(template.toJSON())).toContain('/genai');
     });
 
     it('runs ClickHouse and Kafka on public EC2 instances with non-retained gp3 EBS', () => {

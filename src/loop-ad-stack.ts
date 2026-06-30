@@ -43,7 +43,7 @@ import {
     DEV_VPC_AVAILABILITY_ZONES,
     EVENT_COLLECTOR_API_RECORD_NAME,
     EVENT_TOPIC_NAME,
-    GENAI_GENERATED_ASSETS_PREFIX,
+    GENAI_ASSETS_BASE_PREFIX,
     GENAI_PUBLIC_ASSETS_RECORD_NAME,
     LOOP_AD_REGION,
     type DeveloperAllowlistConfig,
@@ -212,7 +212,7 @@ export class LoopAdDevDataStack extends Stack {
         const kafkaAppUserSecret = secretsmanager.Secret.fromSecretNameV2(this, 'KafkaAppUserSecret', props.secretNames.kafkaAppUserSecretName);
         const kafkaBrokerUserSecret = secretsmanager.Secret.fromSecretNameV2(this, 'KafkaBrokerUserSecret', props.secretNames.kafkaBrokerUserSecretName);
 
-        // DataStorage는 앱이 만든 원천/생성 산출물을 담는 장기 저장소입니다.
+        // DataStorage는 앱이 만든 원천/GenAI 산출물을 담는 장기 저장소입니다.
         // dev stack을 재생성해도 데이터 손실을 피하려고 RETAIN을 쓰며, multipart 미완료 업로드만 정리합니다.
         this.dataStorageBucket = new s3.Bucket(this, 'DataStorageBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -224,7 +224,7 @@ export class LoopAdDevDataStack extends Stack {
             lifecycleRules: [
                 {
                     id: 'AbortIncompleteGenAiGeneratedUploads',
-                    prefix: GENAI_GENERATED_ASSETS_PREFIX,
+                    prefix: GENAI_ASSETS_BASE_PREFIX,
                     abortIncompleteMultipartUploadAfter: Duration.days(7),
                 },
             ],
@@ -240,16 +240,16 @@ export class LoopAdDevDataStack extends Stack {
             'GenAiGeneratedAssetsCertificate',
             props.genAiGeneratedAssetsCertificateArn,
         );
-        // GenAI 생성 asset은 DataStorage 안의 prefix만 CloudFront로 공개합니다.
+        // GenAI asset은 DataStorage 안의 base prefix만 CloudFront로 공개합니다.
         // 버킷 전체를 origin으로 열지 않고 originPath를 고정해 앱 산출물 공개 범위를 좁힙니다.
         const genAiGeneratedAssetsDistribution = new cloudfront.Distribution(this, 'GenAiGeneratedAssetsDistribution', {
             domainNames: [genAiPublicAssetsDomainName],
             certificate: genAiGeneratedAssetsCertificate,
-            comment: `Dev GenAI generated assets for ${genAiPublicAssetsDomainName}`,
+            comment: `Dev GenAI assets for ${genAiPublicAssetsDomainName}`,
             priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
             defaultBehavior: {
                 origin: origins.S3BucketOrigin.withOriginAccessControl(this.dataStorageBucket, {
-                    originPath: `/${GENAI_GENERATED_ASSETS_PREFIX.replace(/\/$/, '')}`,
+                    originPath: `/${GENAI_ASSETS_BASE_PREFIX.replace(/\/$/, '')}`,
                 }),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
@@ -545,8 +545,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // dashboard-api는 Aurora/ClickHouse 조회와 생성 asset 읽기만 필요합니다.
-        // S3 권한도 생성 asset prefix read로 제한해 dashboard가 임의 객체를 쓰지 못하게 합니다.
+        // dashboard-api는 Aurora/ClickHouse 조회와 GenAI asset 읽기만 필요합니다.
+        // S3 권한도 GenAI asset base prefix read로 제한해 dashboard가 임의 객체를 쓰지 못하게 합니다.
         const dashboard = createFargateHttpService(this, {
             taskDefinitionId: 'DashboardApiTaskDefinition',
             logGroupId: 'DashboardApiLogGroup',
@@ -560,7 +560,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: publicSubnets,
             capacity: DEV_DASHBOARD_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
-            grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
+            grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
@@ -571,7 +571,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
                 LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
-                LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
+                LOOPAD_GENAI_ASSETS_BASE_PREFIX: GENAI_ASSETS_BASE_PREFIX,
                 LOOPAD_DECISION_API_BASE_URL: `https://${decisionApiDomainName}`,
             },
             secrets: {
@@ -611,7 +611,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: publicSubnets,
             capacity: DEV_DECISION_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
-            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_GENERATED_ASSETS_PREFIX}*`),
+            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
@@ -622,7 +622,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_URL: clickHouseUrl,
                 LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
-                LOOPAD_GENAI_GENERATED_ASSETS_PREFIX: GENAI_GENERATED_ASSETS_PREFIX,
+                LOOPAD_GENAI_ASSETS_BASE_PREFIX: GENAI_ASSETS_BASE_PREFIX,
             },
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),

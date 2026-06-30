@@ -72,6 +72,7 @@ Public HTTPS entrypoint는 ALB 하나를 공유하고, host-header로 서비스�
 | `LOOPAD_DATA_STORAGE_BUCKET` | DataStorage bucket name |
 | `LOOPAD_GENAI_ASSETS_BASE_PREFIX` | `genai/` |
 | `LOOPAD_OPENAI_API_KEY` | OpenAI secret `api_key` |
+| `LOOPAD_GEMINI_API_KEY` | Gemini secret `api_key` |
 
 ## Frontend Static Site Repo
 

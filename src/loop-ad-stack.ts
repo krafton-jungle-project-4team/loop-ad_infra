@@ -153,6 +153,9 @@ export class LoopAdDevNetworkStack extends Stack {
             this.dataSourceSecurityGroup.addIngressRule(this.serverSecurityGroup, ec2.Port.tcp(dataSource.port), `Servers may enter ${dataSource.name}.`);
         }
 
+        this.dataSourceSecurityGroup.addEgressRule(this.dataSourceSecurityGroup, ec2.Port.allTcp(), 'Data source nodes may reach each other.');
+        this.dataSourceSecurityGroup.addIngressRule(this.dataSourceSecurityGroup, ec2.Port.allTcp(), 'Data source nodes may enter each other.');
+
         for (const cidr of props.developerAllowlist.ipv4Cidrs) {
             this.addDeveloperDataSourceIngress(ec2.Peer.ipv4(cidr), cidr);
         }

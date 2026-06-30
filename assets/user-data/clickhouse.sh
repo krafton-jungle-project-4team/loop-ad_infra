@@ -66,6 +66,7 @@ cat > "${CLICKHOUSE_USER_CONFIG}" <<EOF
       <profile>default</profile>
       <quota>default</quota>
       <access_management>1</access_management>
+      <named_collection_control>1</named_collection_control>
     </${CLICKHOUSE_USER}>
   </users>
 </clickhouse>

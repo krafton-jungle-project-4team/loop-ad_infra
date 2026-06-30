@@ -113,6 +113,7 @@ describe('data architecture', () => {
         expect(templateText).toContain('CLICKHOUSE_CREDENTIALS_SECRET_NAME');
         expect(templateText).toContain('get-secret-value');
         expect(templateText).toContain('password_sha256_hex');
+        expect(templateText).toContain('named_collection_control');
         expect(templateText).toContain('CREATE DATABASE IF NOT EXISTS');
         expect(templateText).toContain('/etc/clickhouse-server/users.d/loopad-user.xml:ro');
         expect(templateText).not.toContain('-e CLICKHOUSE_PASSWORD=');

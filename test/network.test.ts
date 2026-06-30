@@ -56,6 +56,22 @@ describe('network architecture', () => {
         expect(serverEgressRules.map((rule) => rule.Properties?.FromPort).sort()).toEqual([5432, 8123, 9094]);
         expect(serverEgressRules.every((rule) => JSON.stringify(rule.Properties?.DestinationSecurityGroupId ?? '').includes(dataSourceSecurityGroupId))).toBe(true);
         expect(JSON.stringify(serverEgressRules)).not.toContain('0.0.0.0/0');
+
+        const dataSourceIngressRules = ingressRules(resources).filter((rule) => (
+            JSON.stringify(rule.GroupId ?? '').includes(dataSourceSecurityGroupId) &&
+            JSON.stringify(rule.SourceSecurityGroupId ?? '').includes(dataSourceSecurityGroupId)
+        ));
+        expect(dataSourceIngressRules).toEqual(expect.arrayContaining([
+            expect.objectContaining({ IpProtocol: 'tcp', FromPort: 0, ToPort: 65535 }),
+        ]));
+
+        const dataSourceEgressRules = egressRules(resources).filter((rule) => (
+            JSON.stringify(rule.GroupId ?? '').includes(dataSourceSecurityGroupId) &&
+            JSON.stringify(rule.DestinationSecurityGroupId ?? '').includes(dataSourceSecurityGroupId)
+        ));
+        expect(dataSourceEgressRules).toEqual(expect.arrayContaining([
+            expect.objectContaining({ IpProtocol: 'tcp', FromPort: 0, ToPort: 65535 }),
+        ]));
     });
 
     it('adds developer data source ingress only when CIDR allowlists are provided', () => {
@@ -95,5 +111,19 @@ function ingressRules(resources: ReturnType<typeof resourcesOf>): Record<string,
         }
 
         return (resource.Properties?.SecurityGroupIngress as Record<string, unknown>[] | undefined) ?? [];
+    });
+}
+
+function egressRules(resources: ReturnType<typeof resourcesOf>): Record<string, unknown>[] {
+    return Object.values(resources).flatMap((resource) => {
+        if (resource.Type === 'AWS::EC2::SecurityGroupEgress') {
+            return [resource.Properties ?? {}];
+        }
+
+        if (resource.Type !== 'AWS::EC2::SecurityGroup') {
+            return [];
+        }
+
+        return (resource.Properties?.SecurityGroupEgress as Record<string, unknown>[] | undefined) ?? [];
     });
 }

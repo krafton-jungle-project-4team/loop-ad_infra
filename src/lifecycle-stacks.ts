@@ -111,6 +111,11 @@ export class LoopAdDevSecretsStack extends Stack {
                 description: 'loop-ad dev OpenAI API credential.',
             },
             {
+                id: 'GeminiApiKeySecret',
+                name: props.secretNames.geminiApiKeySecretName,
+                description: 'loop-ad dev Gemini API credential for external consumer services.',
+            },
+            {
                 id: 'InternalApiKeySecret',
                 name: props.secretNames.internalApiKeySecretName,
                 description: 'loop-ad dev internal endpoint shared credential.',

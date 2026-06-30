@@ -87,6 +87,7 @@ export interface LoopAdDevDataSecretNames {
 
 export interface LoopAdDevRuntimeSecretNames {
     readonly openAiApiKeySecretName: string;
+    readonly geminiApiKeySecretName: string;
     readonly internalApiKeySecretName: string;
 }
 
@@ -104,6 +105,7 @@ export function buildDevSecretNames(secretPrefix: string): LoopAdDevSecretNames 
         kafkaAppUserSecretName: `${prefix}/kafka/app-user`,
         kafkaBrokerUserSecretName: `${prefix}/kafka/broker-user`,
         openAiApiKeySecretName: `${prefix}/openai/api-key`,
+        geminiApiKeySecretName: `${prefix}/gemini/api-key`,
         internalApiKeySecretName: `${prefix}/internal/api-key`,
     };
 }

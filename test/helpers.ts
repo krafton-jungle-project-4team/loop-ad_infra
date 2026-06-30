@@ -30,6 +30,7 @@ export const testSecretNames = {
     kafkaAppUserSecretName: '/loop-ad/dev/kafka/app-user',
     kafkaBrokerUserSecretName: '/loop-ad/dev/kafka/broker-user',
     openAiApiKeySecretName: '/loop-ad/dev/openai/api-key',
+    geminiApiKeySecretName: '/loop-ad/dev/gemini/api-key',
     internalApiKeySecretName: '/loop-ad/dev/internal/api-key',
 };
 export const emptyDeveloperAllowlist = {

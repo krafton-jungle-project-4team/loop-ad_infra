@@ -37,6 +37,10 @@ const secretSpecs = [
         value: apiKeyValue(envValues, 'LOOP_AD_OPENAI_API_KEY'),
     },
     {
+        name: `${secretPrefix}/gemini/api-key`,
+        value: apiKeyValue(envValues, 'LOOP_AD_GEMINI_API_KEY'),
+    },
+    {
         name: `${secretPrefix}/internal/api-key`,
         value: apiKeyValue(envValues, 'LOOP_AD_INTERNAL_API_KEY'),
     },

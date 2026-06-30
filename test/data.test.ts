@@ -82,7 +82,12 @@ describe('data architecture', () => {
     });
 
     it('configures Kafka auth and the single infra-owned topic without storing auth method in secrets', () => {
-        const templateText = JSON.stringify(Template.fromStack(synthData()).toJSON());
+        const template = Template.fromStack(synthData());
+        const templateText = JSON.stringify(template.toJSON());
+        const ec2UserDataText = Object.values(resourcesOf(template))
+            .filter((resource) => resource.Type === 'AWS::EC2::Instance')
+            .map((resource) => JSON.stringify(resource.Properties?.UserData))
+            .join('\n');
 
         expect(templateText).toContain('SASL_PLAINTEXT');
         expect(templateText).toContain('SCRAM-SHA-512');
@@ -91,8 +96,22 @@ describe('data architecture', () => {
         expect(templateText).toContain('/opt/loop-ad/kafka.sh');
         expect(templateText).toContain(testSecretNames.kafkaAppUserSecretName);
         expect(templateText).toContain(testSecretNames.kafkaBrokerUserSecretName);
-        expect(templateText).not.toContain('get-secret-value');
+        expect(templateText).toContain('APP_USER_SECRET_NAME');
+        expect(templateText).toContain('BROKER_USER_SECRET_NAME');
+        expect(templateText).toContain('secretsmanager:GetSecretValue');
+        expect(ec2UserDataText).not.toContain('{{resolve:secretsmanager');
         expect(templateText).not.toContain('auto.create.topics.enable=true');
+    });
+
+    it('builds ClickHouse credentials config without Docker entrypoint XML interpolation', () => {
+        const templateText = JSON.stringify(Template.fromStack(synthData()).toJSON());
+
+        expect(templateText).toContain('CLICKHOUSE_CREDENTIALS_SECRET_NAME');
+        expect(templateText).toContain('get-secret-value');
+        expect(templateText).toContain('password_sha256_hex');
+        expect(templateText).toContain('CREATE DATABASE IF NOT EXISTS');
+        expect(templateText).toContain('/etc/clickhouse-server/users.d/loopad-user.xml:ro');
+        expect(templateText).not.toContain('-e CLICKHOUSE_PASSWORD=');
     });
 
     it('does not synthesize removed managed data resources or endpoint SSM parameters', () => {

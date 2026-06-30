@@ -1,10 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-: "${APP_PASSWORD:?}"
-: "${APP_USERNAME:?}"
-: "${BROKER_PASSWORD:?}"
-: "${BROKER_USERNAME:?}"
+: "${APP_USER_SECRET_NAME:?}"
+: "${AWS_REGION:?}"
+: "${BROKER_USER_SECRET_NAME:?}"
 : "${EVENT_TOPIC_NAME:?}"
 : "${KAFKA_HEAP_OPTS:?}"
 : "${KAFKA_SASL_MECHANISM:?}"
@@ -16,7 +15,24 @@ set -euo pipefail
 # Kafka는 JVM만 필요하므로 headless Corretto와 압축 도구만 설치합니다.
 # broker binary 버전은 CDK env로 고정해 인스턴스 재생성 시에도 같은 Kafka 버전이 올라가게 합니다.
 dnf update -y
-dnf install -y java-17-amazon-corretto-headless tar gzip
+dnf install -y awscli java-17-amazon-corretto-headless tar gzip
+
+secret_json_field() {
+    local secret_name="$1"
+    local field_name="$2"
+
+    aws secretsmanager get-secret-value \
+        --region "${AWS_REGION}" \
+        --secret-id "${secret_name}" \
+        --query SecretString \
+        --output text |
+        python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "${field_name}"
+}
+
+APP_USERNAME="$(secret_json_field "${APP_USER_SECRET_NAME}" username)"
+APP_PASSWORD="$(secret_json_field "${APP_USER_SECRET_NAME}" password)"
+BROKER_USERNAME="$(secret_json_field "${BROKER_USER_SECRET_NAME}" username)"
+BROKER_PASSWORD="$(secret_json_field "${BROKER_USER_SECRET_NAME}" password)"
 
 # Kafka 프로세스를 전용 system user로 실행해 broker 파일 권한과 서비스 권한을 분리합니다.
 useradd --system --home-dir /opt/kafka --shell /sbin/nologin kafka || true

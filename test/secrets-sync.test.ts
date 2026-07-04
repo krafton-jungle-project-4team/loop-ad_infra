@@ -17,6 +17,7 @@ describe('secret sync script', () => {
         expect(result.stdout).toContain('/loop-ad/dev/aurora/credentials');
         expect(result.stdout).toContain('/loop-ad/dev/gemini/api-key');
         expect(result.stdout).toContain('/loop-ad/dev/internal/api-key');
+        expect(result.stdout).toContain('/loop-ad/dev/dashboard-api/demo-dispatch-recipients');
         expect(result.stdout).not.toContain('replace-me');
         expect(result.stderr).toBe('');
     });

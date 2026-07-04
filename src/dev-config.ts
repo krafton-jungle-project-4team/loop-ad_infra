@@ -48,6 +48,8 @@ export const AURORA_DATABASE_NAME = 'loopad';
 export const CLICKHOUSE_DATABASE_NAME = 'loopad';
 export const EVENT_TOPIC_NAME = 'loop-ad.events.raw';
 export const GENAI_ASSETS_BASE_PREFIX = 'genai/';
+export const DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME = 'loop-ad.org';
+export const DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS = 'noreply@loop-ad.org';
 export const EVENT_COLLECTOR_API_RECORD_NAME = 'event.api.dev';
 export const DASHBOARD_API_RECORD_NAME = 'dashboard.api.dev';
 export const DECISION_API_RECORD_NAME = 'decision.api.dev';
@@ -89,6 +91,7 @@ export interface LoopAdDevRuntimeSecretNames {
     readonly openAiApiKeySecretName: string;
     readonly geminiApiKeySecretName: string;
     readonly internalApiKeySecretName: string;
+    readonly demoDispatchRecipientsSecretName: string;
 }
 
 // Data stack과 Runtime stack이 같은 prefix에서 secret 이름을 파생하므로 하나의 타입으로 묶어 전달합니다.
@@ -107,5 +110,6 @@ export function buildDevSecretNames(secretPrefix: string): LoopAdDevSecretNames 
         openAiApiKeySecretName: `${prefix}/openai/api-key`,
         geminiApiKeySecretName: `${prefix}/gemini/api-key`,
         internalApiKeySecretName: `${prefix}/internal/api-key`,
+        demoDispatchRecipientsSecretName: `${prefix}/dashboard-api/demo-dispatch-recipients`,
     };
 }

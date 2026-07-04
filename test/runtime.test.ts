@@ -109,8 +109,10 @@ describe('runtime architecture', () => {
 
         expect(templateText).toContain('LOOPAD_INTERNAL_API_KEY');
         expect(templateText).toContain('LOOPAD_OPENAI_API_KEY');
+        expect(templateText).toContain('LOOPAD_DEMO_DISPATCH_RECIPIENTS');
         expect(templateText).toContain(testSecretNames.openAiApiKeySecretName);
         expect(templateText).toContain(testSecretNames.internalApiKeySecretName);
+        expect(templateText).toContain(testSecretNames.demoDispatchRecipientsSecretName);
         expect(templateText).toContain('api_key');
         expect(templateText).not.toContain('LOOPAD_GEMINI_API_KEY');
         expect(templateText).not.toContain(testSecretNames.geminiApiKeySecretName);
@@ -153,6 +155,17 @@ describe('runtime architecture', () => {
         expect(templateText).not.toContain('genai/generated/');
         expect(templateText).not.toContain('LOOPAD_REDIS_URL');
         expect(templateText).not.toContain('EventBridge');
+    });
+
+    it('grants dashboard API only the dispatch provider actions it needs', () => {
+        const templateText = JSON.stringify(Template.fromStack(synthRuntime()).toJSON());
+
+        expect(templateText).toContain('ses:SendEmail');
+        expect(templateText).toContain('identity/loop-ad.org');
+        expect(templateText).toContain('ses:FromAddress');
+        expect(templateText).toContain('noreply@loop-ad.org');
+        expect(templateText).toContain('sms-voice:SendTextMessage');
+        expect(templateText).not.toContain('sns:Publish');
     });
 
     it('destroys static frontend buckets while retaining app data buckets in the data stack only', () => {

@@ -120,6 +120,11 @@ export class LoopAdDevSecretsStack extends Stack {
                 name: props.secretNames.internalApiKeySecretName,
                 description: 'loop-ad dev internal endpoint shared credential.',
             },
+            {
+                id: 'DemoDispatchRecipientsSecret',
+                name: props.secretNames.demoDispatchRecipientsSecretName,
+                description: 'loop-ad dev dashboard API demo dispatch recipients JSON array.',
+            },
         ] as const) {
             const cfnSecret = new secretsmanager.CfnSecret(this, secret.id, {
                 name: secret.name,

@@ -32,6 +32,7 @@ export const testSecretNames = {
     openAiApiKeySecretName: '/loop-ad/dev/openai/api-key',
     geminiApiKeySecretName: '/loop-ad/dev/gemini/api-key',
     internalApiKeySecretName: '/loop-ad/dev/internal/api-key',
+    demoDispatchRecipientsSecretName: '/loop-ad/dev/dashboard-api/demo-dispatch-recipients',
 };
 export const emptyDeveloperAllowlist = {
     ipv4Cidrs: [],

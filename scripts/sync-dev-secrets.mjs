@@ -44,6 +44,10 @@ const secretSpecs = [
         name: `${secretPrefix}/internal/api-key`,
         value: apiKeyValue(envValues, 'LOOP_AD_INTERNAL_API_KEY'),
     },
+    {
+        name: `${secretPrefix}/dashboard-api/demo-dispatch-recipients`,
+        value: demoDispatchRecipientsValue(envValues),
+    },
 ];
 
 if (options.dryRun) {
@@ -145,6 +149,57 @@ function apiKeyValue(values, apiKeyName) {
     return {
         api_key: requiredValue(values, apiKeyName),
     };
+}
+
+function demoDispatchRecipientsValue(values) {
+    const source = requiredValue(values, 'LOOP_AD_DEMO_DISPATCH_RECIPIENTS');
+    let parsed;
+
+    try {
+        parsed = JSON.parse(source);
+    } catch {
+        throw new Error('LOOP_AD_DEMO_DISPATCH_RECIPIENTS must be a valid JSON array.');
+    }
+
+    if (!Array.isArray(parsed)) {
+        throw new Error('LOOP_AD_DEMO_DISPATCH_RECIPIENTS must be a JSON array.');
+    }
+
+    const seenUserIds = new Set();
+    for (const [index, recipient] of parsed.entries()) {
+        if (!recipient || typeof recipient !== 'object' || Array.isArray(recipient)) {
+            throw new Error(`LOOP_AD_DEMO_DISPATCH_RECIPIENTS[${index}] must be an object.`);
+        }
+
+        const userId = requiredRecipientString(recipient, index, 'userId');
+        const email = requiredRecipientString(recipient, index, 'email');
+        const phoneNumber = requiredRecipientString(recipient, index, 'phoneNumber');
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            throw new Error(`LOOP_AD_DEMO_DISPATCH_RECIPIENTS[${index}].email must be a valid email address.`);
+        }
+
+        if (!/^\+[1-9]\d{1,14}$/.test(phoneNumber)) {
+            throw new Error(`LOOP_AD_DEMO_DISPATCH_RECIPIENTS[${index}].phoneNumber must be an E.164 phone number.`);
+        }
+
+        if (seenUserIds.has(userId)) {
+            throw new Error(`LOOP_AD_DEMO_DISPATCH_RECIPIENTS has duplicated userId '${userId}'.`);
+        }
+
+        seenUserIds.add(userId);
+    }
+
+    return parsed;
+}
+
+function requiredRecipientString(recipient, index, key) {
+    const value = typeof recipient[key] === 'string' ? recipient[key].trim() : '';
+    if (!value) {
+        throw new Error(`LOOP_AD_DEMO_DISPATCH_RECIPIENTS[${index}].${key} is required.`);
+    }
+
+    return value;
 }
 
 function requiredValue(values, key) {

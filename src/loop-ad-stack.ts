@@ -1,4 +1,4 @@
-import { Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import {
     AURORA_DATABASE_NAME,
     CLICKHOUSE_DATABASE_NAME,
+    DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
+    DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME,
     DASHBOARD_API_RECORD_NAME,
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
@@ -407,6 +409,11 @@ export class LoopAdDevRuntimeStack extends Stack {
         // internal key는 /api/*/internal/* 같은 내부성 API를 앱 레벨에서 검증하기 위한 공유 키입니다.
         const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenAiApiKeySecret', props.runtimeSecretNames.openAiApiKeySecretName);
         const internalApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'InternalApiKeySecret', props.runtimeSecretNames.internalApiKeySecretName);
+        const demoDispatchRecipientsSecret = secretsmanager.Secret.fromSecretNameV2(
+            this,
+            'DemoDispatchRecipientsSecret',
+            props.runtimeSecretNames.demoDispatchRecipientsSecretName,
+        );
 
         // 하나의 ECS cluster에 세 API 서비스를 모읍니다.
         // Container Insights는 dev 장애 분석에 필요한 최소 관측성을 제공하므로 켜 둡니다.
@@ -545,8 +552,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // dashboard-api는 Aurora/ClickHouse 조회와 GenAI asset 읽기만 필요합니다.
-        // S3 권한도 GenAI asset base prefix read로 제한해 dashboard가 임의 객체를 쓰지 못하게 합니다.
+        // dashboard-api는 Aurora/ClickHouse 조회, GenAI asset 읽기, demo 광고 발송을 담당합니다.
+        // S3 권한은 GenAI asset base prefix read로 제한하고, 발송 권한은 필요한 provider API만 task role에 둡니다.
         const dashboard = createFargateHttpService(this, {
             taskDefinitionId: 'DashboardApiTaskDefinition',
             logGroupId: 'DashboardApiLogGroup',
@@ -560,7 +567,29 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: publicSubnets,
             capacity: DEV_DASHBOARD_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
-            grantTaskRole: (taskDefinition) => dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`),
+            grantTaskRole: (taskDefinition) => {
+                dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`);
+                taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+                    actions: ['ses:SendEmail'],
+                    resources: [
+                        Stack.of(this).formatArn({
+                            service: 'ses',
+                            resource: 'identity',
+                            resourceName: DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME,
+                            arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+                        }),
+                    ],
+                    conditions: {
+                        StringEquals: {
+                            'ses:FromAddress': DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
+                        },
+                    },
+                }));
+                taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+                    actions: ['sms-voice:SendTextMessage'],
+                    resources: ['*'],
+                }));
+            },
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'dashboard-api',
@@ -579,7 +608,9 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_AURORA_PASSWORD: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'password'),
                 LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
                 LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
+                LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openAiApiKeySecret, 'api_key'),
                 LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
+                LOOPAD_DEMO_DISPATCH_RECIPIENTS: ecs.Secret.fromSecretsManager(demoDispatchRecipientsSecret),
             },
         });
         httpsAlbListener.addTargets('DashboardApiTargets', {

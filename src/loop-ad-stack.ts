@@ -407,6 +407,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         // 런타임 task는 평문 환경 변수가 아니라 ECS 시크릿 주입으로 시크릿 필드를 받습니다.
         // internal key는 /api/*/internal/* 같은 내부성 API를 앱 레벨에서 검증하기 위한 공유 키입니다.
         const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenAiApiKeySecret', props.runtimeSecretNames.openAiApiKeySecretName);
+        const geminiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'GeminiApiKeySecret', props.runtimeSecretNames.geminiApiKeySecretName);
         const internalApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'InternalApiKeySecret', props.runtimeSecretNames.internalApiKeySecretName);
         const demoDispatchRecipientsSecret = secretsmanager.Secret.fromSecretNameV2(
             this,
@@ -655,6 +656,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_USERNAME: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'username'),
                 LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
                 LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openAiApiKeySecret, 'api_key'),
+                LOOPAD_GEMINI_API_KEY: ecs.Secret.fromSecretsManager(geminiApiKeySecret, 'api_key'),
                 LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
             },
         });

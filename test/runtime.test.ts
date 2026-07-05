@@ -113,9 +113,9 @@ describe('runtime architecture', () => {
         expect(templateText).toContain(testSecretNames.openAiApiKeySecretName);
         expect(templateText).toContain(testSecretNames.internalApiKeySecretName);
         expect(templateText).toContain(testSecretNames.demoDispatchRecipientsSecretName);
+        expect(templateText).toContain(testSecretNames.geminiApiKeySecretName);
         expect(templateText).toContain('api_key');
-        expect(templateText).not.toContain('LOOPAD_GEMINI_API_KEY');
-        expect(templateText).not.toContain(testSecretNames.geminiApiKeySecretName);
+        expect(templateText).toContain('LOOPAD_GEMINI_API_KEY');
         expect(templateText).toContain('LOOPAD_KAFKA_USERNAME');
         expect(templateText).toContain('LOOPAD_AURORA_PASSWORD');
         expect(templateText).toContain('LOOPAD_CLICKHOUSE_PASSWORD');

@@ -1,4 +1,4 @@
-import { ArnFormat, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -19,7 +19,6 @@ import {
     AURORA_DATABASE_NAME,
     CLICKHOUSE_DATABASE_NAME,
     DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
-    DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME,
     DASHBOARD_API_RECORD_NAME,
     DASHBOARD_WEB_RECORD_NAME,
     DEMO_SHOPPINGMALL_WEB_RECORD_NAME,
@@ -571,20 +570,9 @@ export class LoopAdDevRuntimeStack extends Stack {
                 dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`);
                 taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
                     actions: ['ses:SendEmail'],
-                    resources: [
-                        Stack.of(this).formatArn({
-                            service: 'ses',
-                            resource: 'identity',
-                            resourceName: DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME,
-                            arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
-                        }),
-                        Stack.of(this).formatArn({
-                            service: 'ses',
-                            resource: 'identity',
-                            resourceName: DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
-                            arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
-                        }),
-                    ],
+                    // SES v2 SendEmail is evaluated against "*" in this runtime path;
+                    // keep the permission scoped by the verified sender address.
+                    resources: ['*'],
                     conditions: {
                         StringEquals: {
                             'ses:FromAddress': DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,

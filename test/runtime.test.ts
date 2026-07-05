@@ -161,8 +161,6 @@ describe('runtime architecture', () => {
         const templateText = JSON.stringify(Template.fromStack(synthRuntime()).toJSON());
 
         expect(templateText).toContain('ses:SendEmail');
-        expect(templateText).toContain('identity/loop-ad.org');
-        expect(templateText).toContain('identity/noreply@loop-ad.org');
         expect(templateText).toContain('ses:FromAddress');
         expect(templateText).toContain('noreply@loop-ad.org');
         expect(templateText).toContain('sms-voice:SendTextMessage');

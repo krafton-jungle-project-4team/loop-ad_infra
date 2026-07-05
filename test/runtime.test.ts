@@ -162,6 +162,7 @@ describe('runtime architecture', () => {
 
         expect(templateText).toContain('ses:SendEmail');
         expect(templateText).toContain('identity/loop-ad.org');
+        expect(templateText).toContain('identity/noreply@loop-ad.org');
         expect(templateText).toContain('ses:FromAddress');
         expect(templateText).toContain('noreply@loop-ad.org');
         expect(templateText).toContain('sms-voice:SendTextMessage');

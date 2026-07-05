@@ -578,6 +578,12 @@ export class LoopAdDevRuntimeStack extends Stack {
                             resourceName: DASHBOARD_DISPATCH_EMAIL_IDENTITY_NAME,
                             arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
                         }),
+                        Stack.of(this).formatArn({
+                            service: 'ses',
+                            resource: 'identity',
+                            resourceName: DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
+                            arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+                        }),
                     ],
                     conditions: {
                         StringEquals: {

@@ -14,7 +14,7 @@ describe('data architecture', () => {
             DatabaseName: 'loopad',
             ServerlessV2ScalingConfiguration: {
                 MinCapacity: 0,
-                MaxCapacity: 2,
+                MaxCapacity: 4,
                 SecondsUntilAutoPause: 600,
             },
         });

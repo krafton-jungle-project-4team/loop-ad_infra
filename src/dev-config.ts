@@ -28,7 +28,7 @@ export const DEV_DECISION_API_FARGATE_CAPACITY = {
 } as const;
 export const SERVICE_CPU_SCALE_TARGET_PERCENT = 70;
 export const DEV_AURORA_MIN_ACU = 0;
-export const DEV_AURORA_MAX_ACU = 2;
+export const DEV_AURORA_MAX_ACU = 4;
 export const DEV_AURORA_AUTO_PAUSE_MINUTES = 10;
 export const DEV_CLICKHOUSE_INSTANCE_TYPE = 't4g.medium';
 export const DEV_CLICKHOUSE_VOLUME_GIB = 100;

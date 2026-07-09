@@ -19,6 +19,7 @@ export const ENVIRONMENT_NAMES = [
     'dev-network',
     'dev-data',
     'dev-runtime',
+    'perf-phase0',
 ] as const;
 
 export type EnvironmentName = typeof ENVIRONMENT_NAMES[number];
@@ -176,6 +177,8 @@ function parseEnvironmentEnv(environmentName: EnvironmentName): ParsedEnvValues 
 
 function envSchemaFor(environmentName: EnvironmentName) {
     switch (environmentName) {
+        case 'perf-phase0':
+            return baseEnvSchema;
         case 'dev-certificate':
             return baseEnvSchema.merge(publicHostedZoneEnvSchema);
         case 'dev-repositories':

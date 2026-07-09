@@ -82,7 +82,10 @@ describe('local repository contracts', () => {
     it('removes stale docs and keeps the new document set focused', () => {
         expect(readdirSync(DOCS_DIR).sort()).toEqual([
             'app-repository-guide.md',
+            'guide_aws_event_pipeline_performance_test.md',
+            'process_aws_perf_test_result_recording.md',
             'secrets-setup.md',
+            'template_aws_perf_test_run_report.md',
         ]);
         expect(readFileSync(join(DOCS_DIR, 'app-repository-guide.md'), 'utf8')).not.toContain('사용하는 서비스');
     });

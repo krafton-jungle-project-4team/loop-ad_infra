@@ -13,6 +13,7 @@ import {
     type CdkAppConfig,
     type EnvironmentName,
 } from './cdk-app-config';
+import { LoopAdPerfPhase0Stack } from './perf-phase0-stack';
 
 type StackGroupFactory = (app: cdk.App, config: CdkAppConfig) => void;
 
@@ -32,6 +33,7 @@ const STACK_GROUP_FACTORIES: Record<EnvironmentName, StackGroupFactory> = {
     'dev-network': createNetworkStack,
     'dev-data': createDataAssembly,
     'dev-runtime': createRuntimeAssembly,
+    'perf-phase0': createPerfPhase0Stack,
 };
 
 export function main(): void {
@@ -127,6 +129,12 @@ function createRuntimeAssembly(app: cdk.App, config: CdkAppConfig): LoopAdDevRun
     runtimeStack.addDependency(secretsStack);
 
     return runtimeStack;
+}
+
+function createPerfPhase0Stack(app: cdk.App, config: CdkAppConfig): void {
+    new LoopAdPerfPhase0Stack(app, 'LoopAdPerfPhase0Stack', {
+        env: config.stackEnv,
+    });
 }
 
 function requireConfig<T>(value: T | undefined, name: string): T {

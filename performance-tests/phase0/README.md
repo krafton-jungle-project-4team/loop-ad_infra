@@ -5,6 +5,7 @@ Phase 0은 collector와 Kafka 없이 load generator와 ALB 한계만 본다.
 구성:
 
 - `perf-phase0` CDK stack이 internal ALB와 Artillery Fargate worker용 subnet/security group을 만든다.
+- 같은 stack이 Artillery runner role과 worker task role을 만든다.
 - Artillery CLI의 `run-fargate`가 테스트 실행 시점에 Fargate worker를 만든다.
 - 기본 목표는 worker 20개, worker당 2,500 rps, 총 50,000 rps다.
 - Fargate Spot을 사용한다.
@@ -20,6 +21,19 @@ npm run cdk -- -c environment=perf-phase0 deploy LoopAdPerfPhase0Stack
 - `Phase0ArtilleryTargetBaseUrl`
 - `Phase0ArtillerySubnetIds`
 - `Phase0ArtillerySecurityGroupId`
+- `Phase0ArtilleryClusterName`
+- `Phase0ArtilleryRunnerRoleArn`
+- `Phase0ArtilleryWorkerRoleName`
+
+Artillery 실행 전에 runner role을 assume한다.
+
+```bash
+aws sts assume-role \
+  --role-arn "<Phase0ArtilleryRunnerRoleArn>" \
+  --role-session-name loop-ad-perf-phase0
+```
+
+반환된 임시 credential을 shell 또는 AWS profile에 설정한 뒤 테스트를 실행한다.
 
 run 폴더를 만든다.
 
@@ -32,10 +46,12 @@ Artillery를 실행한다.
 ```bash
 artillery run-fargate \
   --region ap-northeast-2 \
+  --cluster "<Phase0ArtilleryClusterName>" \
   --count 20 \
   --spot \
   --cpu 4 \
   --memory 8 \
+  --task-role-name "<Phase0ArtilleryWorkerRoleName>" \
   --subnet-ids "<Phase0ArtillerySubnetIds>" \
   --security-group-ids "<Phase0ArtillerySecurityGroupId>" \
   --target "<Phase0ArtilleryTargetBaseUrl>" \

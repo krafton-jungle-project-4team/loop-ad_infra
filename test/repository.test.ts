@@ -33,7 +33,7 @@ describe('repository and certificate stacks', () => {
     it('manages dev Secrets Manager resources without embedding secret values', () => {
         const template = Template.fromStack(synthSecrets());
 
-        template.resourceCountIs('AWS::SecretsManager::Secret', 8);
+        template.resourceCountIs('AWS::SecretsManager::Secret', 9);
         for (const secretName of Object.values(testSecretNames)) {
             template.hasResourceProperties('AWS::SecretsManager::Secret', {
                 Name: secretName,

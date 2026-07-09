@@ -409,6 +409,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenAiApiKeySecret', props.runtimeSecretNames.openAiApiKeySecretName);
         const geminiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'GeminiApiKeySecret', props.runtimeSecretNames.geminiApiKeySecretName);
         const internalApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'InternalApiKeySecret', props.runtimeSecretNames.internalApiKeySecretName);
+        const openPixelSigningSecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenPixelSigningSecret', props.runtimeSecretNames.openPixelSigningSecretName);
         const demoDispatchRecipientsSecret = secretsmanager.Secret.fromSecretNameV2(
             this,
             'DemoDispatchRecipientsSecret',
@@ -605,6 +606,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseCredentialsSecret, 'password'),
                 LOOPAD_OPENAI_API_KEY: ecs.Secret.fromSecretsManager(openAiApiKeySecret, 'api_key'),
                 LOOPAD_INTERNAL_API_KEY: ecs.Secret.fromSecretsManager(internalApiKeySecret, 'api_key'),
+                LOOPAD_OPEN_PIXEL_SIGNING_SECRET: ecs.Secret.fromSecretsManager(openPixelSigningSecret),
                 LOOPAD_DEMO_DISPATCH_RECIPIENTS: ecs.Secret.fromSecretsManager(demoDispatchRecipientsSecret),
             },
         });

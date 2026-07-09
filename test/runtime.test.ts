@@ -108,10 +108,12 @@ describe('runtime architecture', () => {
         const templateText = JSON.stringify(Template.fromStack(synthRuntime()).toJSON());
 
         expect(templateText).toContain('LOOPAD_INTERNAL_API_KEY');
+        expect(templateText).toContain('LOOPAD_OPEN_PIXEL_SIGNING_SECRET');
         expect(templateText).toContain('LOOPAD_OPENAI_API_KEY');
         expect(templateText).toContain('LOOPAD_DEMO_DISPATCH_RECIPIENTS');
         expect(templateText).toContain(testSecretNames.openAiApiKeySecretName);
         expect(templateText).toContain(testSecretNames.internalApiKeySecretName);
+        expect(templateText).toContain(testSecretNames.openPixelSigningSecretName);
         expect(templateText).toContain(testSecretNames.demoDispatchRecipientsSecretName);
         expect(templateText).toContain(testSecretNames.geminiApiKeySecretName);
         expect(templateText).toContain('api_key');

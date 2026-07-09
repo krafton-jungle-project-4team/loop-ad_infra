@@ -45,6 +45,10 @@ const secretSpecs = [
         value: apiKeyValue(envValues, 'LOOP_AD_INTERNAL_API_KEY'),
     },
     {
+        name: `${secretPrefix}/dashboard-api/open-pixel-signing-secret`,
+        value: requiredValue(envValues, 'LOOP_AD_OPEN_PIXEL_SIGNING_SECRET'),
+    },
+    {
         name: `${secretPrefix}/dashboard-api/demo-dispatch-recipients`,
         value: demoDispatchRecipientsValue(envValues),
     },

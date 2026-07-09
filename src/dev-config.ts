@@ -91,6 +91,7 @@ export interface LoopAdDevRuntimeSecretNames {
     readonly openAiApiKeySecretName: string;
     readonly geminiApiKeySecretName: string;
     readonly internalApiKeySecretName: string;
+    readonly openPixelSigningSecretName: string;
     readonly demoDispatchRecipientsSecretName: string;
 }
 
@@ -110,6 +111,7 @@ export function buildDevSecretNames(secretPrefix: string): LoopAdDevSecretNames 
         openAiApiKeySecretName: `${prefix}/openai/api-key`,
         geminiApiKeySecretName: `${prefix}/gemini/api-key`,
         internalApiKeySecretName: `${prefix}/internal/api-key`,
+        openPixelSigningSecretName: `${prefix}/dashboard-api/open-pixel-signing-secret`,
         demoDispatchRecipientsSecretName: `${prefix}/dashboard-api/demo-dispatch-recipients`,
     };
 }

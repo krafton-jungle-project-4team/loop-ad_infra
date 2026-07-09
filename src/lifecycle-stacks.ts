@@ -121,6 +121,11 @@ export class LoopAdDevSecretsStack extends Stack {
                 description: 'loop-ad dev internal endpoint shared credential.',
             },
             {
+                id: 'OpenPixelSigningSecret',
+                name: props.secretNames.openPixelSigningSecretName,
+                description: 'loop-ad dev dashboard API open pixel signing credential.',
+            },
+            {
                 id: 'DemoDispatchRecipientsSecret',
                 name: props.secretNames.demoDispatchRecipientsSecretName,
                 description: 'loop-ad dev dashboard API demo dispatch recipients JSON array.',

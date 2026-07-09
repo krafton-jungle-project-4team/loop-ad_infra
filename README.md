@@ -48,3 +48,9 @@ LOOP_AD_DEVELOPER_IPV6_CIDRS=2001:db8::10/128
 앱 레포는 인프라를 직접 만들지 않습니다. Docker image, health check, env 검증, reusable workflow 호출만 준비합니다.
 
 deploy target과 runtime env 계약은 [docs/app-repository-guide.md](docs/app-repository-guide.md)를 봅니다.
+
+## 성능 테스트
+
+AWS 성능 테스트 계획은 [docs/guide_aws_event_pipeline_performance_test.md](docs/guide_aws_event_pipeline_performance_test.md)를 봅니다.
+
+실행 결과는 [performance-tests](performance-tests)에 `run_<id>` 폴더로 남기고, 실패/중단된 실험도 삭제하지 않습니다.

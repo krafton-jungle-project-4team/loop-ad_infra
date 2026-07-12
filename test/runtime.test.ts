@@ -146,6 +146,23 @@ describe('runtime architecture', () => {
             ]));
         }
 
+        const eventCollectorTask = taskDefinitions.find((taskDefinition) => {
+            const containers = taskDefinition.Properties?.ContainerDefinitions as Array<{ Name?: string }>;
+            return containers.some((container) => container.Name === 'event-collector');
+        });
+        expect(eventCollectorTask).toBeDefined();
+        const eventCollectorContainers = eventCollectorTask?.Properties?.ContainerDefinitions as Array<{
+            Name?: string;
+            Environment?: Array<{ Name?: string; Value?: string }>;
+        }>;
+        const eventCollectorContainer = eventCollectorContainers.find((container) => container.Name === 'event-collector');
+        expect(eventCollectorContainer?.Environment).toEqual(expect.arrayContaining([
+            {
+                Name: 'LOOPAD_ALLOWED_ORIGINS',
+                Value: 'https://demo-shoppingmall.dev.loop-ad.org',
+            },
+        ]));
+
         const templateText = JSON.stringify(template.toJSON());
         expect(templateText).toContain('LOOPAD_EVENT_TOPIC');
         expect(templateText).toContain('loop-ad.events.raw');

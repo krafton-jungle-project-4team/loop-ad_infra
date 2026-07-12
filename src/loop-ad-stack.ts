@@ -532,6 +532,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_KAFKA_SECURITY_PROTOCOL: KAFKA_SECURITY_PROTOCOL,
                 LOOPAD_KAFKA_SASL_MECHANISM: KAFKA_SASL_MECHANISM,
                 LOOPAD_EVENT_TOPIC: EVENT_TOPIC_NAME,
+                LOOPAD_ALLOWED_ORIGINS: 'https://demo-shoppingmall.dev.loop-ad.org',
             },
             secrets: {
                 LOOPAD_KAFKA_USERNAME: ecs.Secret.fromSecretsManager(kafkaAppUserSecret, 'username'),

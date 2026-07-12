@@ -7,6 +7,7 @@
     "scripts": {
         "build": "tsc --noEmit",
         "test": "jest --runInBand",
+        "verify": "npm run build && npm test",
         "synth": "cdk -c environment=dev synth",
         "deploy": "cdk -c environment=dev deploy",
         "destroy": "cdk -c environment=dev destroy",

@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import {
     LoopAdDevCertificateStack,
+    LoopAdDevBrandContextStack,
     LoopAdDevDataStack,
     LoopAdDevNetworkStack,
     LoopAdDevRepositoryStack,
@@ -20,6 +21,7 @@ interface DataAssembly {
     readonly secretsStack: LoopAdDevSecretsStack;
     readonly networkStack: LoopAdDevNetworkStack;
     readonly dataStack: LoopAdDevDataStack;
+    readonly brandContextStack: LoopAdDevBrandContextStack;
 }
 
 // CDK context의 environment 값이 곧 합성 단위입니다.
@@ -31,6 +33,7 @@ const STACK_GROUP_FACTORIES: Record<EnvironmentName, StackGroupFactory> = {
     'dev-secrets': createSecretsStack,
     'dev-network': createNetworkStack,
     'dev-data': createDataAssembly,
+    'dev-brand-context': createBrandContextStack,
     'dev-runtime': createRuntimeAssembly,
 };
 
@@ -81,6 +84,12 @@ function createNetworkStack(app: cdk.App, config: CdkAppConfig): void {
     });
 }
 
+function createBrandContextStack(app: cdk.App, config: CdkAppConfig): void {
+    new LoopAdDevBrandContextStack(app, 'LoopAdDevBrandContextStack', {
+        env: config.stackEnv,
+    });
+}
+
 function createDataAssembly(app: cdk.App, config: CdkAppConfig): DataAssembly {
     const secretNames = requireConfig(config.secretNames, 'secretNames');
     // Data 리소스가 시크릿 이름을 가져오므로 소유자인 Secrets 스택을 같은 합성 범위에 둡니다.
@@ -101,11 +110,15 @@ function createDataAssembly(app: cdk.App, config: CdkAppConfig): DataAssembly {
         secretNames,
     });
     dataStack.addDependency(secretsStack);
+    const brandContextStack = new LoopAdDevBrandContextStack(app, 'LoopAdDevBrandContextStack', {
+        env: config.stackEnv,
+    });
 
     return {
         secretsStack,
         networkStack,
         dataStack,
+        brandContextStack,
     };
 }
 

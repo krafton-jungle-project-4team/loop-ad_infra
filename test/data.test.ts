@@ -1,5 +1,5 @@
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { resourcesOf, synthData, testSecretNames } from './helpers';
+import { resourcesOf, synthBrandContext, synthData, testSecretNames } from './helpers';
 
 describe('data architecture', () => {
     it('creates Aurora Serverless v2 as a public single-writer cluster using imported credentials', () => {
@@ -14,7 +14,7 @@ describe('data architecture', () => {
             DatabaseName: 'loopad',
             ServerlessV2ScalingConfiguration: {
                 MinCapacity: 0,
-                MaxCapacity: 4,
+                MaxCapacity: 8,
                 SecondsUntilAutoPause: 600,
             },
         });
@@ -46,11 +46,75 @@ describe('data architecture', () => {
         expect(JSON.stringify(template.toJSON())).toContain('/genai');
     });
 
+    it('keeps brand context private and denies writes outside the infra uploader role', () => {
+        const template = Template.fromStack(synthData());
+        const templateJson = template.toJSON();
+
+        template.resourcePropertiesCountIs('AWS::IAM::Role', {
+            RoleName: 'loop-ad-dev-brand-context-uploader',
+        }, 0);
+        template.hasResourceProperties('AWS::S3::BucketPolicy', {
+            PolicyDocument: {
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: 's3:PutObject',
+                        Effect: 'Deny',
+                        Sid: 'DenyBrandContextWritesOutsideInfraUploader',
+                        Condition: {
+                            ArnNotEquals: {
+                                'aws:PrincipalArn': Match.anyValue(),
+                            },
+                        },
+                    }),
+                    Match.objectLike({
+                        Action: 's3:GetObject',
+                        Effect: 'Deny',
+                        Principal: {
+                            Service: 'cloudfront.amazonaws.com',
+                        },
+                        Sid: 'DenyCloudFrontBrandContextReads',
+                    }),
+                ]),
+            },
+        });
+
+        const bucketPolicy = Object.values(resourcesOf(template)).find((resource) => resource.Type === 'AWS::S3::BucketPolicy');
+        const statements = bucketPolicy?.Properties?.PolicyDocument as { Statement?: Array<Record<string, unknown>> } | undefined;
+        const cloudFrontStatements = (statements?.Statement ?? []).filter((statement) => JSON.stringify(statement.Principal).includes('cloudfront.amazonaws.com'));
+        expect(cloudFrontStatements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                Effect: 'Deny',
+                Sid: 'DenyCloudFrontBrandContextReads',
+            }),
+        ]));
+        expect(JSON.stringify(templateJson)).toContain('brand-context/*');
+    });
+
+    it('creates only the scoped brand context uploader in its independent stack', () => {
+        const template = Template.fromStack(synthBrandContext());
+
+        template.resourceCountIs('AWS::S3::Bucket', 0);
+        template.hasResourceProperties('AWS::IAM::Role', {
+            RoleName: 'loop-ad-dev-brand-context-uploader',
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: {
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: ['s3:GetObject', 's3:PutObject'],
+                        Effect: 'Allow',
+                    }),
+                ]),
+            },
+        });
+        expect(JSON.stringify(template.toJSON())).toContain('brand-context/*');
+    });
+
     it('runs ClickHouse and Kafka on public EC2 instances with non-retained gp3 EBS', () => {
         const template = Template.fromStack(synthData());
 
         template.resourcePropertiesCountIs('AWS::EC2::Instance', {
-            InstanceType: 't4g.medium',
+            InstanceType: 't4g.large',
         }, 1);
         template.resourcePropertiesCountIs('AWS::EC2::Instance', {
             InstanceType: 't4g.small',
@@ -124,6 +188,9 @@ describe('data architecture', () => {
         expect(templateText).toContain('get-secret-value');
         expect(templateText).toContain('password_sha256_hex');
         expect(templateText).toContain('named_collection_control');
+        expect(templateText).toContain('stream_poll_timeout_ms');
+        expect(templateText).toContain('CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS');
+        expect(templateText).toContain('1000');
         expect(templateText).toContain('CREATE DATABASE IF NOT EXISTS');
         expect(templateText).toContain('/etc/clickhouse-server/users.d/loopad-user.xml:ro');
         expect(templateText).not.toContain('-e CLICKHOUSE_PASSWORD=');

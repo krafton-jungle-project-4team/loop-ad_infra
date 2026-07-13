@@ -18,6 +18,7 @@ export const ENVIRONMENT_NAMES = [
     'dev-secrets',
     'dev-network',
     'dev-data',
+    'dev-brand-context',
     'dev-runtime',
 ] as const;
 
@@ -179,6 +180,7 @@ function envSchemaFor(environmentName: EnvironmentName) {
         case 'dev-certificate':
             return baseEnvSchema.merge(publicHostedZoneEnvSchema);
         case 'dev-repositories':
+        case 'dev-brand-context':
             return baseEnvSchema;
         case 'dev-secrets':
             return baseEnvSchema.merge(secretEnvSchema);

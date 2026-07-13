@@ -170,10 +170,29 @@ describe('runtime architecture', () => {
         expect(templateText).toContain('loopad');
         expect(templateText).toContain('LOOPAD_GENAI_ASSETS_BASE_PREFIX');
         expect(templateText).toContain('genai/');
+        expect(templateText).toContain('LOOPAD_BRAND_CONTEXT_BASE_PREFIX');
+        expect(templateText).toContain('brand-context/');
         expect(templateText).not.toContain('LOOPAD_GENAI_GENERATED_ASSETS_PREFIX');
         expect(templateText).not.toContain('genai/generated/');
         expect(templateText).not.toContain('LOOPAD_REDIS_URL');
         expect(templateText).not.toContain('EventBridge');
+    });
+
+    it('grants Decision API read-only access to private brand context objects', () => {
+        const template = Template.fromStack(synthRuntime());
+        const resources = resourcesOf(template);
+        const policies = Object.values(resources).filter((resource) => resource.Type === 'AWS::IAM::Policy');
+        const brandContextStatements = policies.flatMap((policy) => {
+            const document = policy.Properties?.PolicyDocument as { Statement?: Array<Record<string, unknown>> } | undefined;
+            return (document?.Statement ?? []).filter((statement) => JSON.stringify(statement.Resource).includes('brand-context/*'));
+        });
+
+        expect(brandContextStatements).toHaveLength(1);
+        expect(brandContextStatements[0]).toEqual(expect.objectContaining({
+            Action: 's3:GetObject',
+            Effect: 'Allow',
+        }));
+        expect(JSON.stringify(brandContextStatements)).not.toContain('s3:PutObject');
     });
 
     it('grants dashboard API only the dispatch provider actions it needs', () => {

@@ -1,4 +1,4 @@
-import { Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
     AURORA_DATABASE_NAME,
+    BRAND_CONTEXT_BASE_PREFIX,
     CLICKHOUSE_DATABASE_NAME,
     DASHBOARD_DISPATCH_EMAIL_FROM_ADDRESS,
     DASHBOARD_API_RECORD_NAME,
@@ -29,9 +30,11 @@ import {
     DEV_AURORA_MIN_ACU,
     DEV_AURORA_PORT,
     DEV_AL2023_ARM64_AMI_SSM_PARAMETER,
+    DEV_BRAND_CONTEXT_UPLOADER_ROLE_NAME,
     DEV_CLICKHOUSE_HTTP_PORT,
     DEV_CLICKHOUSE_IMAGE,
     DEV_CLICKHOUSE_INSTANCE_TYPE,
+    DEV_CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS,
     DEV_CLICKHOUSE_VOLUME_GIB,
     DEV_DASHBOARD_API_FARGATE_CAPACITY,
     DEV_DECISION_API_FARGATE_CAPACITY,
@@ -231,6 +234,35 @@ export class LoopAdDevDataStack extends Stack {
             ],
         });
 
+        // Brand context는 DataStorage 안에 두되 GenAI CloudFront origin 범위와 분리합니다.
+        // 업로더 role은 독립 스택이 소유하며, 이 bucket policy는 해당 role 외 쓰기를 거부합니다.
+        const brandContextObjectArn = this.dataStorageBucket.arnForObjects(`${BRAND_CONTEXT_BASE_PREFIX}*`);
+        const brandContextUploaderRoleArn = this.formatArn({
+            service: 'iam',
+            region: '',
+            resource: 'role',
+            resourceName: DEV_BRAND_CONTEXT_UPLOADER_ROLE_NAME,
+            arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+        });
+        this.dataStorageBucket.addToResourcePolicy(new iam.PolicyStatement({
+            sid: 'DenyBrandContextWritesOutsideInfraUploader',
+            effect: iam.Effect.DENY,
+            principals: [new iam.AnyPrincipal()],
+            actions: ['s3:PutObject'],
+            resources: [brandContextObjectArn],
+            conditions: {
+                ArnNotEquals: {
+                    'aws:PrincipalArn': brandContextUploaderRoleArn,
+                },
+            },
+        }));
+        this.dataStorageBucket.addToResourcePolicy(new iam.PolicyStatement({
+            sid: 'DenyCloudFrontBrandContextReads',
+            effect: iam.Effect.DENY,
+            principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+            actions: ['s3:GetObject'],
+            resources: [brandContextObjectArn],
+        }));
         const publicHostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicHostedZone', {
             hostedZoneId: props.publicHostedZone.hostedZoneId,
             zoneName: props.publicHostedZone.domainName,
@@ -322,6 +354,7 @@ export class LoopAdDevDataStack extends Stack {
             CLICKHOUSE_CREDENTIALS_SECRET_NAME: props.secretNames.clickHouseCredentialsSecretName,
             CLICKHOUSE_HTTP_PORT: CLICKHOUSE_HTTP_PORT_TEXT,
             CLICKHOUSE_IMAGE: DEV_CLICKHOUSE_IMAGE,
+            CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS: String(DEV_CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS),
             AWS_REGION: LOOP_AD_REGION,
         });
 
@@ -373,6 +406,40 @@ export class LoopAdDevDataStack extends Stack {
         this.clickHouseCredentialsSecret = clickHouseCredentialsSecret;
         this.kafkaScramBootstrapBrokerString = Fn.join('', [kafkaInstance.instancePublicDnsName, ':', KAFKA_SCRAM_PORT_TEXT]);
         this.kafkaAppUserSecret = kafkaAppUserSecret;
+    }
+}
+
+export class LoopAdDevBrandContextStack extends Stack {
+    public constructor(scope: Construct, id: string, props: StackProps) {
+        super(scope, id, props);
+
+        // 기존 DataStack의 generated bucket을 import하거나 변경하지 않도록 배포 시 물리 이름만 받습니다.
+        // 이 스택은 IAM role만 소유하므로 데이터 스택과 독립적으로 안전하게 배포할 수 있습니다.
+        const dataStorageBucketName = new CfnParameter(this, 'DataStorageBucketName', {
+            type: 'String',
+            description: 'Existing retained DataStorage bucket name.',
+        });
+        const dataStorageBucket = s3.Bucket.fromBucketName(
+            this,
+            'ExistingDataStorageBucket',
+            dataStorageBucketName.valueAsString,
+        );
+        const uploaderRole = new iam.Role(this, 'BrandContextUploaderRole', {
+            roleName: DEV_BRAND_CONTEXT_UPLOADER_ROLE_NAME,
+            assumedBy: new iam.AccountPrincipal(this.account),
+            description: 'Uploads private brand context objects to the retained DataStorage bucket.',
+        });
+        uploaderRole.addToPrincipalPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject', 's3:PutObject'],
+            resources: [dataStorageBucket.arnForObjects(`${BRAND_CONTEXT_BASE_PREFIX}*`)],
+        }));
+
+        new CfnOutput(this, 'ExistingDataStorageBucketName', {
+            value: dataStorageBucketName.valueAsString,
+        });
+        new CfnOutput(this, 'BrandContextUploaderRoleArn', {
+            value: uploaderRole.roleArn,
+        });
     }
 }
 
@@ -626,7 +693,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
 
         // decision-api는 판단 요청 처리와 GenAI asset 생성을 담당합니다.
-        // OpenAI API key와 S3 read/write 권한은 이 서비스에만 주입해 blast radius를 줄입니다.
+        // GenAI 산출물은 read/write, private brand context 원본은 read-only로 prefix를 분리합니다.
         const decision = createFargateHttpService(this, {
             taskDefinitionId: 'DecisionApiTaskDefinition',
             logGroupId: 'DecisionApiLogGroup',
@@ -640,7 +707,13 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: publicSubnets,
             capacity: DEV_DECISION_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
-            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`),
+            grantTaskRole: (taskDefinition) => {
+                dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`);
+                taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+                    actions: ['s3:GetObject'],
+                    resources: [dataStorageBucket.arnForObjects(`${BRAND_CONTEXT_BASE_PREFIX}*`)],
+                }));
+            },
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',
@@ -652,6 +725,7 @@ export class LoopAdDevRuntimeStack extends Stack {
                 LOOPAD_CLICKHOUSE_DATABASE: CLICKHOUSE_DATABASE_NAME,
                 LOOPAD_DATA_STORAGE_BUCKET: dataStorageBucket.bucketName,
                 LOOPAD_GENAI_ASSETS_BASE_PREFIX: GENAI_ASSETS_BASE_PREFIX,
+                LOOPAD_BRAND_CONTEXT_BASE_PREFIX: BRAND_CONTEXT_BASE_PREFIX,
             },
             secrets: {
                 LOOPAD_AURORA_USERNAME: ecs.Secret.fromSecretsManager(auroraCredentialsSecret, 'username'),

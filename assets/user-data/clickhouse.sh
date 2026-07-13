@@ -5,6 +5,7 @@ set -euo pipefail
 : "${CLICKHOUSE_CREDENTIALS_SECRET_NAME:?}"
 : "${CLICKHOUSE_HTTP_PORT:?}"
 : "${CLICKHOUSE_IMAGE:?}"
+: "${CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS:?}"
 : "${AWS_REGION:?}"
 
 # 패키지와 Docker는 인스턴스 재생성 시마다 최신 AL2023 기준으로 준비합니다.
@@ -43,6 +44,11 @@ if [[ ! "${CLICKHOUSE_USER}" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
     exit 1
 fi
 
+if [[ ! "${CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS must be a positive integer." >&2
+    exit 1
+fi
+
 CLICKHOUSE_PASSWORD_SHA256="$(printf '%s' "${CLICKHOUSE_PASSWORD}" | sha256sum | awk '{ print $1 }')"
 CLICKHOUSE_USER_CONFIG=/opt/loop-ad/clickhouse/users.d/loopad-user.xml
 
@@ -51,6 +57,11 @@ CLICKHOUSE_USER_CONFIG=/opt/loop-ad/clickhouse/users.d/loopad-user.xml
 # only the hash so credentials containing XML metacharacters still boot cleanly.
 cat > "${CLICKHOUSE_USER_CONFIG}" <<EOF
 <clickhouse>
+  <profiles>
+    <default>
+      <stream_poll_timeout_ms>${CLICKHOUSE_KAFKA_POLL_TIMEOUT_MS}</stream_poll_timeout_ms>
+    </default>
+  </profiles>
   <users>
     <default>
       <networks replace="replace">

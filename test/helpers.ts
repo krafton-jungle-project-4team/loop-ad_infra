@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import {
     LOOP_AD_REGION,
+    LoopAdDevBrandContextStack,
     LoopAdDevCertificateStack,
     LoopAdDevDataStack,
     LoopAdDevNetworkStack,
@@ -60,6 +61,13 @@ export function synthData(): LoopAdDevDataStack {
         network,
         genAiGeneratedAssetsCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
         secretNames: testSecretNames,
+    });
+}
+
+export function synthBrandContext(): LoopAdDevBrandContextStack {
+    const app = new cdk.App();
+    return new LoopAdDevBrandContextStack(app, 'LoopAdDevBrandContextStack', {
+        env: testEnv,
     });
 }
 

@@ -176,6 +176,37 @@ describe('runtime architecture', () => {
         expect(templateText).not.toContain('EventBridge');
     });
 
+    it('grants dashboard and decision APIs read/write access to every DataStorage prefix', () => {
+        const template = Template.fromStack(synthRuntime());
+        const resources = resourcesOf(template);
+
+        for (const servicePrefix of ['DashboardApi', 'DecisionApi']) {
+            const taskRolePolicy = Object.values(resources).find((resource) => (
+                resource.Type === 'AWS::IAM::Policy'
+                && String(resource.Properties?.PolicyName).startsWith(`${servicePrefix}TaskDefinitionTaskRoleDefaultPolicy`)
+            ));
+            expect(taskRolePolicy).toBeDefined();
+
+            const policyDocument = taskRolePolicy?.Properties?.PolicyDocument as {
+                Statement?: Array<{ Action?: string | string[]; Resource?: unknown }>;
+            };
+            const s3Statement = policyDocument.Statement?.find((statement) => (
+                Array.isArray(statement.Action) && statement.Action.includes('s3:PutObject')
+            ));
+            expect(s3Statement).toBeDefined();
+            expect(s3Statement?.Action).toEqual(expect.arrayContaining([
+                's3:GetObject*',
+                's3:DeleteObject*',
+                's3:PutObject',
+            ]));
+
+            const serializedResources = JSON.stringify(s3Statement?.Resource);
+            expect(serializedResources).toContain('DataStorageBucket');
+            expect(serializedResources).toContain('"/*"');
+            expect(serializedResources).not.toContain('/genai/*');
+        }
+    });
+
     it('grants dashboard API only the dispatch provider actions it needs', () => {
         const templateText = JSON.stringify(Template.fromStack(synthRuntime()).toJSON());
 

@@ -554,8 +554,8 @@ export class LoopAdDevRuntimeStack extends Stack {
             },
         });
 
-        // dashboard-api는 Aurora/ClickHouse 조회, GenAI asset 읽기, demo 광고 발송을 담당합니다.
-        // S3 권한은 GenAI asset base prefix read로 제한하고, 발송 권한은 필요한 provider API만 task role에 둡니다.
+        // dashboard-api는 Aurora/ClickHouse 조회, DataStorage 객체 관리, demo 광고 발송을 담당합니다.
+        // DataStorage의 모든 prefix를 읽고 수정할 수 있게 하고, 발송 권한은 필요한 provider API만 task role에 둡니다.
         const dashboard = createFargateHttpService(this, {
             taskDefinitionId: 'DashboardApiTaskDefinition',
             logGroupId: 'DashboardApiLogGroup',
@@ -570,7 +570,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             capacity: DEV_DASHBOARD_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
             grantTaskRole: (taskDefinition) => {
-                dataStorageBucket.grantRead(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`);
+                dataStorageBucket.grantReadWrite(taskDefinition.taskRole);
                 taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
                     actions: ['ses:SendEmail'],
                     // SES v2 SendEmail is evaluated against "*" in this runtime path;
@@ -626,7 +626,7 @@ export class LoopAdDevRuntimeStack extends Stack {
         });
 
         // decision-api는 판단 요청 처리와 GenAI asset 생성을 담당합니다.
-        // OpenAI API key와 S3 read/write 권한은 이 서비스에만 주입해 blast radius를 줄입니다.
+        // DataStorage의 모든 prefix를 읽고 수정할 수 있게 하고, OpenAI API key는 이 서비스에만 주입합니다.
         const decision = createFargateHttpService(this, {
             taskDefinitionId: 'DecisionApiTaskDefinition',
             logGroupId: 'DecisionApiLogGroup',
@@ -640,7 +640,7 @@ export class LoopAdDevRuntimeStack extends Stack {
             vpcSubnets: publicSubnets,
             capacity: DEV_DECISION_API_FARGATE_CAPACITY,
             healthCheckGracePeriod: Duration.seconds(60),
-            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole, `${GENAI_ASSETS_BASE_PREFIX}*`),
+            grantTaskRole: (taskDefinition) => dataStorageBucket.grantReadWrite(taskDefinition.taskRole),
             environment: {
                 LOOPAD_ENV: 'dev',
                 LOOPAD_SERVICE_ID: 'decision-api',

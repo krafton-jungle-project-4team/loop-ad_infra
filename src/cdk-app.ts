@@ -122,6 +122,7 @@ function createRuntimeAssembly(app: cdk.App, config: CdkAppConfig): LoopAdDevRun
         network: networkStack,
         data: dataStack,
         runtimeSecretNames: requireConfig(config.secretNames, 'secretNames'),
+        openPixelSigningSecretArn: secretsStack.openPixelSigningSecretArn,
         certificateArns: requireConfig(config.certificateArns, 'certificateArns'),
     });
     runtimeStack.addDependency(secretsStack);

@@ -79,11 +79,14 @@ export interface LoopAdDevSecretsStackProps extends StackProps {
 }
 
 export class LoopAdDevSecretsStack extends Stack {
+    public readonly openPixelSigningSecretArn: string;
+
     public constructor(scope: Construct, id: string, props: LoopAdDevSecretsStackProps) {
         super(scope, id, props);
 
         // L2 Secret construct는 값이 없으면 GenerateSecretString을 넣으므로 여기서는 L1을 사용합니다.
         // 의도는 "이름과 수명은 CDK가 관리하고 값은 운영자가 동기화"하는 것이므로 SecretString을 절대 지정하지 않습니다.
+        let openPixelSigningSecretArn: string | undefined;
         for (const secret of [
             {
                 id: 'AuroraCredentialsSecret',
@@ -137,6 +140,11 @@ export class LoopAdDevSecretsStack extends Stack {
             });
             // 시크릿 값은 운영자가 관리하므로 stack 교체/삭제 후에도 유지합니다.
             cfnSecret.applyRemovalPolicy(RemovalPolicy.RETAIN);
+            if (secret.id === 'OpenPixelSigningSecret') {
+                openPixelSigningSecretArn = cfnSecret.ref;
+            }
         }
+
+        this.openPixelSigningSecretArn = openPixelSigningSecretArn!;
     }
 }

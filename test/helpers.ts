@@ -65,6 +65,10 @@ export function synthData(): LoopAdDevDataStack {
 
 export function synthRuntime(): LoopAdDevRuntimeStack {
     const app = new cdk.App();
+    const secrets = new LoopAdDevSecretsStack(app, 'LoopAdDevSecretsStack', {
+        env: testEnv,
+        secretNames: testSecretNames,
+    });
     const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
         env: testEnv,
         developerAllowlist: emptyDeveloperAllowlist,
@@ -83,6 +87,7 @@ export function synthRuntime(): LoopAdDevRuntimeStack {
         network,
         data,
         runtimeSecretNames: testSecretNames,
+        openPixelSigningSecretArn: secrets.openPixelSigningSecretArn,
     });
 }
 

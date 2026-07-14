@@ -69,7 +69,6 @@ on:
 permissions:
     contents: read
     id-token: write
-    packages: read
 
 jobs:
     deploy:
@@ -137,7 +136,6 @@ jobs:
               working-directory: ${{ inputs.working_directory }}
               env:
                   INSTALL_COMMAND: ${{ inputs.install_command }}
-                  NODE_AUTH_TOKEN: ${{ github.token }}
               run: |
                   set -euo pipefail
                   bash -lc "${INSTALL_COMMAND}"

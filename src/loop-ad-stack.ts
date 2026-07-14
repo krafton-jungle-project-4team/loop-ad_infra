@@ -382,6 +382,7 @@ export interface LoopAdDevRuntimeStackProps extends StackProps {
     readonly network: LoopAdDevNetworkStack;
     readonly data: LoopAdDevDataStack;
     readonly runtimeSecretNames: LoopAdDevRuntimeSecretNames;
+    readonly openPixelSigningSecretArn: string;
 }
 
 export class LoopAdDevRuntimeStack extends Stack {
@@ -409,7 +410,8 @@ export class LoopAdDevRuntimeStack extends Stack {
         const openAiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenAiApiKeySecret', props.runtimeSecretNames.openAiApiKeySecretName);
         const geminiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'GeminiApiKeySecret', props.runtimeSecretNames.geminiApiKeySecretName);
         const internalApiKeySecret = secretsmanager.Secret.fromSecretNameV2(this, 'InternalApiKeySecret', props.runtimeSecretNames.internalApiKeySecretName);
-        const openPixelSigningSecret = secretsmanager.Secret.fromSecretNameV2(this, 'OpenPixelSigningSecret', props.runtimeSecretNames.openPixelSigningSecretName);
+        // ECS에 secret name 기반 partial ARN이 아닌 Secrets stack의 complete ARN을 넘겨 IAM resource 매칭을 보장합니다.
+        const openPixelSigningSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'OpenPixelSigningSecret', props.openPixelSigningSecretArn);
         const demoDispatchRecipientsSecret = secretsmanager.Secret.fromSecretNameV2(
             this,
             'DemoDispatchRecipientsSecret',

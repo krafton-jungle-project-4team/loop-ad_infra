@@ -113,7 +113,7 @@ describe('runtime architecture', () => {
         expect(templateText).toContain('LOOPAD_DEMO_DISPATCH_RECIPIENTS');
         expect(templateText).toContain(testSecretNames.openAiApiKeySecretName);
         expect(templateText).toContain(testSecretNames.internalApiKeySecretName);
-        expect(templateText).toContain(testSecretNames.openPixelSigningSecretName);
+        expect(templateText).toContain('LoopAdDevSecretsStack:ExportsOutputRefOpenPixelSigningSecret');
         expect(templateText).toContain(testSecretNames.demoDispatchRecipientsSecretName);
         expect(templateText).toContain(testSecretNames.geminiApiKeySecretName);
         expect(templateText).toContain('api_key');

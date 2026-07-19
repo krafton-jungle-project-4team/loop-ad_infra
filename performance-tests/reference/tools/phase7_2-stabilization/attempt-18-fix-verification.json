@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 18,
+  "verifiedAt": "2026-07-19T08:17:39Z",
+  "failureDiagnosis": "The targeted-only EC2 user data blocked in systemctl restart ecs during cloud-init modules:final, preventing ECS registration before rollback.",
+  "fix": {
+    "commit": "3a1bc11fa3aa14b990ce4d0da7a2fe033b46c584",
+    "gitTree": "806fbae43790b13282498923ed687b16e8a89f4b",
+    "summary": "Remove the blocking restart and reuse the strict stack's ASG ResourceSignal plus exact capacity-provider registration WaitCondition before creating the targeted ClickHouse service."
+  },
+  "budgetReset": {
+    "path": "performance-tests/phase7_2-stabilization/budget-reset-20260719-after-attempt-18.json",
+    "sha256": "eedc2bdf691664dfa3878633dd5acccaad2c23d7f19fa69f776529315cd71f6b",
+    "activeEpochPriorUpperBoundUsd": "0.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "verification": {
+    "pythonCompile": "passed",
+    "targetedPythonToolingTests": "7/7 passed",
+    "targetedAndStrictCdkTests": "21/21 passed",
+    "typescriptBuild": "passed",
+    "exactContextSynth": "passed",
+    "decodedUserDataByteUpperBound": 8581,
+    "decodedUserDataMarginLimitBytes": 15360,
+    "blockingEcsRestartAbsent": true,
+    "asgResourceSignalExact": true,
+    "exactRegistrationWaitConditionPresent": true,
+    "serviceDependencyExact": true,
+    "cfnLintUnexpectedFindings": 0,
+    "awsRequests": 0,
+    "wholePhase7LocalDeferred": true,
+    "status": "passed"
+  },
+  "evidence": {
+    "synthSummary": "performance-tests/phase7_2-stabilization/attempt-18-fix-validation/synth-summary.json",
+    "cfnLintSummary": "performance-tests/phase7_2-stabilization/attempt-18-fix-validation/cfn-lint-summary.json",
+    "commands": "performance-tests/phase7_2-stabilization/attempt-18-fix-validation/commands.md"
+  },
+  "nextRequiredGate": "A fresh promotion-ineligible targeted AWS attempt must deploy once and prove real ECS registration, 15M archive equivalence, source retention and authoritative cleanup zero."
+}

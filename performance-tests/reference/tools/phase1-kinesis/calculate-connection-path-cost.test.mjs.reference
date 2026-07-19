@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./calculate-connection-path-cost.mjs', import.meta.url).pathname;
+const prices = {
+    asOf: '2026-07-14T00:00:00Z',
+    prices: {
+        collectorInstanceHour: .192, loadGeneratorInstanceHour: .1281, proxyInstanceHour: .2562, proxyCapacityInstanceHour: .5124,
+        kinesisProvisionedShardHour: .018, kinesisPutPayloadUnit: .000000014,
+        albHour: .0243, albLcuHour: .008, nlbHour: .0243, nlbLcuHour: .006,
+        ebsGp3GbMonth: .096, publicIpv4Hour: .005, cloudWatchMetricMonth: .3,
+        cloudWatchLogIngestGb: .5, cloudWatchLogStorageGbMonth: .03,
+        cloudWatchGetMetricDataMetric: .00001, ecrStorageGbMonth: .1,
+    },
+    fixedApiUpperBounds: { costExplorerRequestUsd: .01 },
+};
+
+function invoke(accrued, profile) {
+    const directory = mkdtempSync(join(tmpdir(), 'connection-path-cost-'));
+    const pricesPath = join(directory, 'prices.json');
+    writeFileSync(pricesPath, JSON.stringify(prices));
+    const args = [script, '--prices', pricesPath, '--parallel-wall-seconds', '14400', '--sequential-wall-seconds', '36000', '--requests-upper-bound', '100000000', '--accrued-upper-bound-usd', String(accrued)];
+    if (profile) args.push('--haproxy-profile', profile);
+    return spawnSync(process.execPath, args, { encoding: 'utf8' });
+}
+
+test('models the exact goal topology and protects the twelve-dollar cleanup reserve', () => {
+    const result = invoke(0);
+    assert.equal(result.status, 0, result.stderr);
+    const model = JSON.parse(result.stdout);
+    assert.deepEqual(model.topology, { collectors: 6, generators: 8, dedicatedHAProxy: 2, haproxyProfile: 'sampled-202', proxyInstanceType: 'c6in.xlarge', alb: 1, nlb: 2, kinesisShards: 120, publicIpv4UpperBound: 16, natGateways: 0 });
+    assert.equal(model.budget.cleanupReserveUsd, 12);
+    assert.equal(model.budget.hardCapUsd, 85);
+    assert.equal(model.budget.newDeployAccruedStopUsd, 73);
+    assert.equal(model.alternatives.parallel.selected, true);
+    assert.ok(model.alternatives.sequential.estimatedWallHours > model.alternatives.parallel.estimatedWallHours);
+    assert.ok(model.components.failedRollbackComputeWindow > 0);
+});
+
+test('prices E3 with c6in.2xlarge and fails closed at the accrued USD 73 deploy stop', () => {
+    const baseline = JSON.parse(invoke(0, 'baseline-full').stdout);
+    const capacity = JSON.parse(invoke(0, 'sampled-202-capacity').stdout);
+    assert.equal(capacity.topology.proxyInstanceType, 'c6in.2xlarge');
+    assert.equal(capacity.components.dedicatedHAProxy, baseline.components.dedicatedHAProxy * 2);
+    const result = invoke(73, 'sampled-202-capacity');
+    assert.equal(result.status, 2);
+    const model = JSON.parse(result.stdout);
+    assert.equal(model.budget.checks.accruedBelowNewDeployStop, false);
+    assert.equal(model.budget.mayStart, false);
+});

@@ -1,0 +1,70 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const OHA_IMAGE = 'ghcr.io/hatoo/oha@sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072';
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const nodeCount = requiredInteger('--node-count');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) || ![1, 2, 4].includes(nodeCount)) throw new Error('invalid deployment contract');
+const expectedWorkerSha = createHash('sha256').update(readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url))).digest('hex');
+const deadline = Date.now() + 15 * 60_000;
+let state;
+while (Date.now() < deadline) {
+    state = readState();
+    if (state.ready) break;
+    await new Promise((resolve) => setTimeout(resolve, 15_000));
+}
+if (!state?.ready) throw new Error('generator control deployment not ready');
+const hostChecks = state.instanceIds.map(checkHost);
+state.hostChecks = hostChecks;
+state.checks.hostBootstrap = hostChecks.every((host) => host.passed);
+state.ready = Object.values(state.checks).every(Boolean);
+writeFileSync(output, `${JSON.stringify(state, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+if (!state.ready) process.exitCode = 2;
+
+function readState() {
+    const stack = aws(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', 'LoopAdPerfPhase1KinesisGeneratorControlStack']).Stacks[0];
+    const outputs = Object.fromEntries((stack.Outputs ?? []).map((item) => [item.OutputKey, item.OutputValue]));
+    const asg = aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION, '--auto-scaling-group-names', 'perf-phase1-generator-control']).AutoScalingGroups[0];
+    const instanceIds = (asg?.Instances ?? []).filter((instance) => instance.LifecycleState === 'InService' && instance.HealthStatus === 'Healthy').map((instance) => instance.InstanceId).sort();
+    const instances = instanceIds.length ? aws(['ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...instanceIds, '--query', 'Reservations[].Instances[]']) : [];
+    const online = instanceIds.length ? aws(['ssm', 'describe-instance-information', '--region', REGION, '--filters', `Key=InstanceIds,Values=${instanceIds.join(',')}`]).InstanceInformationList : [];
+    const alb = aws(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-generator-control']).LoadBalancers[0];
+    const checks = {
+        stackComplete: stack.StackStatus === 'CREATE_COMPLETE',
+        outputsMatch: outputs.Phase1SessionId === sessionId && outputs.Phase1RunId === runId && outputs.Phase1TargetKind === 'fast-control',
+        exactAsg: asg?.MinSize === nodeCount && asg?.MaxSize === nodeCount && asg?.DesiredCapacity === nodeCount,
+        exactInstances: instanceIds.length === nodeCount && instances.every((instance) => instance.InstanceType === 'c6in.large' && instance.State.Name === 'running'),
+        allSsmOnline: online.length === nodeCount && online.every((item) => item.PingStatus === 'Online'),
+        albReady: alb?.Scheme === 'internal' && alb?.State?.Code === 'active' && outputs.Phase1TargetBaseUrl === `http://${alb.DNSName}`,
+    };
+    return { checkedAt: new Date().toISOString(), sessionId, runId, nodeCount, outputs, instanceIds, checks, ready: Object.values(checks).every(Boolean) };
+}
+function checkHost(instanceId) {
+    const commands = ['set -euo pipefail', `test "$(sha256sum /opt/loop-ad-phase1/run-ec2-oha-worker.sh | awk '{print $1}')" = '${expectedWorkerSha}'`,
+        `docker image inspect '${OHA_IMAGE}' --format '{{json .RepoDigests}}'`, 'ulimit -n', 'sysctl net.ipv4.ip_local_port_range', 'docker --version'];
+    const sent = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', instanceId,
+        '--parameters', JSON.stringify({ commands, executionTimeout: ['120'] })]);
+    const commandId = sent.Command.CommandId;
+    let invocation;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2_000);
+        try { invocation = aws(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]); } catch { continue; }
+        if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) break;
+    }
+    const stdout = invocation?.StandardOutputContent ?? '';
+    const stderr = invocation?.StandardErrorContent ?? '';
+    return { instanceId, commandId, status: invocation?.Status ?? null, responseCode: invocation?.ResponseCode ?? null,
+        stdout, stderr,
+        passed: invocation?.Status === 'Success' && invocation.ResponseCode === 0 && stderr.trim() === '' &&
+            stdout.includes('sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072') };
+}
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} integer required`); return value; }

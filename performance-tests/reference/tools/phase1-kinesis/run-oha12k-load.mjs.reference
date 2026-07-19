@@ -1,0 +1,125 @@
+#!/usr/bin/env node
+
+import { spawn } from 'node:child_process';
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { aggregateOha12k, parseCounterText } from './oha12k-aggregate.mjs';
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+import { PATH_EVIDENCE_EXPERIMENT_MODES } from './oha-load-contract.mjs';
+
+const scripts = dirname(fileURLToPath(import.meta.url));
+const instanceIds = requiredOption('--instance-ids').split(',').filter(Boolean);
+const targetBaseUrl = requiredOption('--target-base-url');
+const targetPath = optionValue('--target-path') ?? '/events';
+const targetIps = (optionValue('--target-ips') ?? '').split(',').filter(Boolean);
+const runId = requiredOption('--run-id');
+const targetRps = requiredInteger('--rps');
+const durationSeconds = requiredInteger('--duration-seconds');
+const nodeCount = requiredInteger('--node-count');
+const processesPerNode = integerOption('--processes-per-node', 1);
+const experimentMode = optionValue('--experiment-mode') ?? 'capacity-oha12k';
+const outputDir = requiredOption('--output-dir');
+const evidenceBucket = optionValue('--evidence-bucket');
+const evidencePrefix = optionValue('--evidence-prefix');
+const stageId = optionValue('--stage-id') ?? 'probe';
+const startEpoch = integerOption('--start-epoch', Math.ceil((Date.now() / 1_000 + 30) / 60) * 60);
+const plan = oha12kNodePlan({ nodeCount, processesPerNode, targetRps, experimentMode });
+const pathEvidenceMode = PATH_EVIDENCE_EXPERIMENT_MODES.includes(experimentMode);
+
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (pathEvidenceMode) {
+    if (![15, 30, 60, 120].includes(durationSeconds)) throw new Error('path-evidence duration must be 15, 30, 60, or 120 seconds');
+    if (!['/events', '/__generator_control'].includes(targetPath)) throw new Error('invalid path-evidence target path');
+    if (!evidenceBucket || !evidencePrefix) throw new Error('path-evidence mode requires run-scoped evidence bucket and prefix');
+    if (targetIps.length !== 0 && targetIps.length !== nodeCount) throw new Error('target IPs must be omitted or match node count');
+} else if (durationSeconds !== 15) throw new Error('capacity-oha12k probe duration must be exactly 15 seconds');
+if (instanceIds.length !== nodeCount || new Set(instanceIds).size !== nodeCount) throw new Error('instance IDs must be unique and match node count');
+if (!instanceIds.every((id) => /^i-[0-9a-f]+$/.test(id))) throw new Error('invalid instance ID');
+
+mkdirSync(outputDir, { recursive: true });
+const manifest = {
+    createdAt: new Date().toISOString(),
+    experimentMode, runId, nodeCount, processesPerNode, processCount: plan.processCount,
+    targetRps, durationSeconds, startEpoch, stageId, targetBaseUrl, targetPath,
+    evidenceBucket: evidenceBucket ?? null, evidencePrefix: evidencePrefix ?? null,
+    totalConnections: plan.totalConnections,
+    nodes: plan.nodes.map((node, index) => ({
+        ...node,
+        instanceId: instanceIds[index],
+        targetIp: targetIps[index] ?? null,
+        startEpoch,
+        outputDir: join(outputDir, node.nodeId),
+    })),
+};
+const manifestPath = join(outputDir, 'topology-manifest.json');
+writeJson(manifestPath, manifest);
+
+const results = await Promise.allSettled(manifest.nodes.map(runNode));
+const failures = results.flatMap((result, index) => result.status === 'rejected'
+    ? [{ nodeId: manifest.nodes[index].nodeId, error: String(result.reason) }] : []);
+writeJson(join(outputDir, 'orchestration-result.json'), {
+    completedAt: new Date().toISOString(),
+    failures,
+    passed: failures.length === 0,
+});
+if (failures.length > 0) throw new Error(`oha12k node execution failed: ${JSON.stringify(failures)}`);
+
+const aggregate = aggregateOha12k({ manifest, nodes: manifest.nodes.map(readEvidence) });
+writeJson(join(outputDir, 'oha12k-summary.json'), aggregate);
+process.stdout.write(`${JSON.stringify(aggregate, null, 2)}\n`);
+if (!aggregate.passed && !pathEvidenceMode) process.exitCode = 2;
+
+function runNode(node) {
+    mkdirSync(node.outputDir, { recursive: true });
+    const args = [join(scripts, 'invoke-oha.mjs'), '--experiment-mode', experimentMode,
+        '--instance-id', node.instanceId, '--target-base-url', targetBaseUrl, '--run-id', runId,
+        '--rps', `${node.offeredRps}`, '--duration-seconds', `${durationSeconds}`,
+        '--connections', `${node.connections}`, '--processes-per-node', `${processesPerNode}`,
+        '--start-epoch', `${startEpoch}`, '--node-id', node.nodeId,
+        '--target-path', targetPath, '--output-dir', node.outputDir];
+    if (node.targetIp) args.push('--target-ip', node.targetIp);
+    if (evidenceBucket) args.push('--evidence-bucket', evidenceBucket);
+    if (evidencePrefix) args.push('--evidence-prefix', `${evidencePrefix.replace(/\/$/, '')}/${stageId}`);
+    const stdout = createWriteStream(join(node.outputDir, 'invoke-stdout.log'));
+    const stderr = createWriteStream(join(node.outputDir, 'invoke-stderr.log'));
+    return new Promise((resolvePromise, rejectPromise) => {
+        const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.pipe(stdout);
+        child.stderr.pipe(stderr);
+        child.on('error', rejectPromise);
+        child.on('close', (code) => code === 0 ? resolvePromise() : rejectPromise(new Error(`${node.nodeId} exited ${code}`)));
+    });
+}
+
+function readEvidence(node) {
+    const commandDocument = json(join(node.outputDir, 'oha-command.json'));
+    return {
+        nodeId: node.nodeId,
+        summary: json(join(node.outputDir, 'oha-summary.json')),
+        report: json(join(node.outputDir, 'oha-report.json')),
+        command: commandDocument,
+        bootstrap: json(join(node.outputDir, 'load-generator-bootstrap.json')),
+        telemetryTsv: readFileSync(join(node.outputDir, 'load-generator-telemetry.tsv'), 'utf8'),
+        enaBefore: parseCounterText(readFileSync(join(node.outputDir, 'ena-allowance-before.txt'), 'utf8')),
+        enaAfter: parseCounterText(readFileSync(join(node.outputDir, 'ena-allowance-after.txt'), 'utf8')),
+        processes: node.processes.map((process) => {
+            const processDirectory = join(node.outputDir, process.processId);
+            const commandPlan = commandDocument.processes.find((candidate) => candidate.processId === process.processId);
+            if (!commandPlan) throw new Error(`missing command evidence ${process.processId}`);
+            return {
+                processId: process.processId,
+                summary: json(join(processDirectory, 'oha-summary.json')),
+                report: json(join(processDirectory, 'oha-report.json')),
+                command: commandPlan.command,
+            };
+        }),
+    };
+}
+
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function integerOption(name, fallback) { const index = process.argv.indexOf(name); if (index < 0) return fallback; const value = Number(process.argv[index + 1]); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }

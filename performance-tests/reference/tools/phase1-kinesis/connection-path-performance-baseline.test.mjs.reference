@@ -1,0 +1,84 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import {
+    CONNECTION_PATH_HAPROXY_PROFILES,
+    DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE,
+    PINNED_HAPROXY_IMAGE,
+} from './connection-path-haproxy-profile.mjs';
+import { P95_GOAL } from './p95-goal-contract.mjs';
+
+const baseline = JSON.parse(readFileSync(new URL('./connection-path-performance-baseline.json', import.meta.url), 'utf8'));
+
+test('reproducible baseline matches the adopted 50k automatic-thread topology', () => {
+    assert.equal(baseline.schemaVersion, 1);
+    assert.equal(baseline.status, 'adopted-performance-test-default');
+    assert.equal(baseline.route.responseSemantics, 'Kinesis final-ACK');
+    assert.equal(baseline.load.offeredRps, P95_GOAL.offeredRps);
+    assert.equal(baseline.load.physicalConnections, P95_GOAL.physicalConnections);
+    assert.equal(baseline.load.streamsPerConnection, P95_GOAL.streamsPerConnection);
+    assert.equal(baseline.load.warmupSeconds, P95_GOAL.warmupSecondsByRepetition[0]);
+    assert.equal(baseline.load.scoreSeconds, P95_GOAL.measurementSeconds);
+    assert.equal(baseline.generator.tool, P95_GOAL.loadGenerator);
+    assert.equal(baseline.generator.instanceCount, P95_GOAL.generators);
+    assert.equal(baseline.generator.processCount, P95_GOAL.generators * P95_GOAL.processesPerGenerator);
+    assert.equal(baseline.haproxy.profile, DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE);
+    assert.equal(baseline.haproxy.instanceCount, P95_GOAL.haproxyInstances);
+    assert.equal(baseline.haproxy.instanceType, P95_GOAL.haproxyInstanceType);
+    assert.equal(baseline.haproxy.vcpusPerInstance, P95_GOAL.haproxyVcpusPerInstance);
+    assert.equal(baseline.haproxy.threadMode, P95_GOAL.haproxyThreadMode);
+    assert.equal(baseline.haproxy.image, PINNED_HAPROXY_IMAGE);
+    assert.deepEqual(
+        {
+            instanceType: baseline.haproxy.instanceType,
+            vcpus: baseline.haproxy.vcpusPerInstance,
+            loggingPolicy: 'normal-202-deterministic-0.1-percent',
+            threadMode: baseline.haproxy.threadMode,
+        },
+        CONNECTION_PATH_HAPROXY_PROFILES[DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE],
+    );
+    assert.equal(baseline.collector.instanceCount, P95_GOAL.collectors);
+    assert.equal(baseline.kinesis.shardCount, P95_GOAL.kinesisShards);
+    assert.equal(baseline.acceptanceThresholds.minimumActualRps, P95_GOAL.offeredRps * P95_GOAL.minimumAchievedRatio);
+    assert.equal(baseline.acceptanceThresholds.maximumCorrectedP95Ms, P95_GOAL.serviceP95LimitMs);
+    assert.equal(baseline.acceptanceThresholds.maximumWorstWorkerP95Ms, P95_GOAL.worstWorkerP95LimitMs);
+    assert.equal(baseline.acceptanceThresholds.maximumTransportErrorRate, P95_GOAL.maximumTransportErrorRate);
+    assert.equal(baseline.acceptanceThresholds.maximumKinesisRetryRate, P95_GOAL.maximumKinesisRetryRate);
+});
+
+test('deployment, verification, and cost defaults share the sampled-202 constant', () => {
+    const stack = readFileSync(new URL('../../src/perf-phase1-kinesis-stack.ts', import.meta.url), 'utf8');
+    const verifier = readFileSync(new URL('./verify-connection-path-deployment.mjs', import.meta.url), 'utf8');
+    const cost = readFileSync(new URL('./calculate-connection-path-cost.mjs', import.meta.url), 'utf8');
+    assert.match(stack, /DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE: Phase1HAProxyProfile = 'sampled-202'/);
+    assert.match(stack, /CONNECTION_PATH_DEFAULT_COLLECTOR_COUNT = 6/);
+    assert.match(stack, /CONNECTION_PATH_DEFAULT_LOAD_GENERATOR_COUNT = 8/);
+    assert.match(stack, /experimentMode === 'connection-path-crossover' \? DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE : 'baseline-full'/);
+    assert.match(verifier, /optionValue\('--haproxy-profile'\) \?\? DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE/);
+    assert.match(verifier, /integerOption\('--expected-collector-count', 6\)/);
+    assert.match(verifier, /integerOption\('--expected-load-generator-count', 8\)/);
+    assert.match(cost, /enumOption\('--haproxy-profile', DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE/);
+    assert.match(cost, /integerOption\('--collector-count', 6\)/);
+    assert.match(cost, /integerOption\('--generator-count', 8\)/);
+    assert.match(cost, /integerOption\('--kinesis-shard-count', 120\)/);
+    assert.deepEqual(Object.keys(CONNECTION_PATH_HAPROXY_PROFILES), ['baseline-full', 'sampled-202', 'sampled-202-capacity']);
+});
+
+test('pinned HAProxy policy remains represented in the config and profile transform', () => {
+    const config = readFileSync(new URL('./haproxy-connection-path.cfg', import.meta.url), 'utf8');
+    const stack = readFileSync(new URL('../../src/perf-phase1-kinesis-stack.ts', import.meta.url), 'utf8');
+    for (const fragment of [
+        'maxconn 65536',
+        'ssl-min-ver TLSv1.2',
+        'alpn h2',
+        'balance leastconn',
+        'http-reuse always',
+        'retries 0',
+        'server-template collector 1-8 _collector._tcp.connection-path.internal proto h2 check',
+        'stats socket /tmp/haproxy-admin.sock',
+        'prometheus-exporter',
+    ]) assert.match(config, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(stack, /log stdout format raw sample 1:1000 local0/);
+    assert.match(stack, /http-after-response set-log-level err if error_status/);
+    assert.match(stack, /replaceExactlyOnce\(config, '  nbthread 4\\n', ''\)/);
+});

@@ -1,0 +1,144 @@
+const IMMEDIATE_FAILURE_PATTERNS = [
+    /AccessDenied/i,
+    /UnauthorizedOperation/i,
+    /ExpiredToken/i,
+    /RequestExpired/i,
+    /InvalidClientTokenId/i,
+    /UnrecognizedClientException/i,
+    /SignatureDoesNotMatch/i,
+    /Unable to locate credentials/i,
+    /NoCredentialsError/i,
+    /SSO session .* expired/i,
+    /Error loading SSO Token/i,
+    /CreateOAuth2Token[\s\S]*(?:invalid_grant|Unauthorized)/i,
+    /Validation(?:Exception|Error)/i,
+    /InvalidParameter/i,
+    /InvalidInstanceId/i,
+    /Malformed/i,
+];
+
+const THROTTLING_PATTERNS = [
+    /Throttl/i,
+    /TooManyRequests/i,
+    /RequestLimitExceeded/i,
+    /Rate exceeded/i,
+    /SlowDown/i,
+    /PriorRequestNotComplete/i,
+];
+
+const TRANSIENT_SERVICE_PATTERNS = [
+    /ServiceUnavailable(?:Exception)?/i,
+    /InternalServer(?:Error|Exception)/i,
+];
+
+const NETWORK_PATTERNS = [
+    /\bETIMEDOUT\b/i,
+    /\bECONNRESET\b/i,
+    /\bECONNREFUSED\b/i,
+    /\bEPIPE\b/i,
+    /\bENETUNREACH\b/i,
+    /\bEHOSTUNREACH\b/i,
+    /\bENOTFOUND\b/i,
+    /timed? out/i,
+    /timeout/i,
+    /Could not connect to the endpoint URL/i,
+    /Connection (?:was )?(?:closed|reset|aborted|refused)/i,
+    /Temporary failure in name resolution/i,
+    /Name or service not known/i,
+    /EndpointConnectionError/i,
+];
+
+export function classifyAwsObservationFailure(error, { invocationMayNotExist = false } = {}) {
+    const text = errorText(error);
+    const code = safeErrorCode(error, text);
+    if (IMMEDIATE_FAILURE_PATTERNS.some((pattern) => pattern.test(text))) {
+        return { retryable: false, category: 'immediate-failure', code };
+    }
+    if (/InvocationDoesNotExist/i.test(text)) {
+        return {
+            retryable: invocationMayNotExist,
+            category: invocationMayNotExist ? 'invocation-not-visible' : 'immediate-failure',
+            code: 'InvocationDoesNotExist',
+        };
+    }
+    if (THROTTLING_PATTERNS.some((pattern) => pattern.test(text))) {
+        return { retryable: true, category: 'throttling', code };
+    }
+    if (TRANSIENT_SERVICE_PATTERNS.some((pattern) => pattern.test(text))) {
+        return { retryable: true, category: 'transient-service', code };
+    }
+    if (NETWORK_PATTERNS.some((pattern) => pattern.test(text))) {
+        return { retryable: true, category: 'network-or-timeout', code };
+    }
+    return { retryable: false, category: 'immediate-failure', code };
+}
+
+export async function runBoundedAwsObservation({
+    operation,
+    deadlineEpochMs,
+    action,
+    transientRetries,
+    invocationMayNotExist = false,
+    now = Date.now,
+    sleep = defaultSleep,
+    random = Math.random,
+    baseDelayMs = 500,
+    maxDelayMs = 5_000,
+}) {
+    if (!Number.isFinite(deadlineEpochMs)) throw new Error('AWS observation requires an absolute deadline');
+    if (!Array.isArray(transientRetries)) throw new Error('AWS observation requires a transient retry evidence array');
+    let apiAttempt = 0;
+    while (now() < deadlineEpochMs) {
+        apiAttempt += 1;
+        try {
+            return await action({
+                apiAttempt,
+                remainingMs: Math.max(1, deadlineEpochMs - now()),
+            });
+        } catch (error) {
+            const failure = classifyAwsObservationFailure(error, { invocationMayNotExist });
+            if (!failure.retryable) throw error;
+            const observedAtMs = now();
+            const remainingMs = deadlineEpochMs - observedAtMs;
+            const exponentialDelayMs = Math.min(maxDelayMs, baseDelayMs * (2 ** Math.min(apiAttempt - 1, 16)));
+            const jitteredDelayMs = Math.max(1, Math.round(exponentialDelayMs * (0.5 + 0.5 * random())));
+            const retryDelayMs = remainingMs > jitteredDelayMs ? jitteredDelayMs : null;
+            transientRetries.push({
+                operation,
+                apiAttempt,
+                category: failure.category,
+                code: failure.code,
+                observedAt: new Date(observedAtMs).toISOString(),
+                retryDelayMs,
+                deadlineExhausted: retryDelayMs === null,
+            });
+            if (retryDelayMs === null) throw deadlineError(operation, error);
+            await sleep(retryDelayMs);
+        }
+    }
+    throw deadlineError(operation);
+}
+
+function errorText(error) {
+    return [error?.stderr, error?.stdout, error?.message, error?.code, error?.signal]
+        .filter((value) => value !== undefined && value !== null)
+        .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : String(value))
+        .join('\n');
+}
+
+function safeErrorCode(error, text) {
+    const awsCode = text.match(/An error occurred \(([^)]+)\)/)?.[1];
+    if (awsCode) return awsCode;
+    if (typeof error?.code === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(error.code)) return error.code;
+    return 'unclassified-transient';
+}
+
+function deadlineError(operation, cause) {
+    const error = new Error(`${operation} did not complete before its absolute observation deadline`, cause ? { cause } : undefined);
+    error.code = 'AWS_OBSERVATION_DEADLINE_EXCEEDED';
+    return error;
+}
+
+function defaultSleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

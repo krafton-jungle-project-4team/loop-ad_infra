@@ -1,0 +1,22 @@
+import * as cdk from 'aws-cdk-lib';
+import {
+    LoopAdPerfPhase7ArchiveDiagnosticImageStack,
+    LoopAdPerfPhase7ArchiveDiagnosticStack,
+} from '../../../src/perf-phase7-archive-diagnostic-stack';
+
+const app = new cdk.App();
+const env = {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.LOOP_AD_REGION,
+};
+const image = new LoopAdPerfPhase7ArchiveDiagnosticImageStack(
+    app,
+    'LoopAdPerfPhase7ArchiveDiagnosticImageStack',
+    { env },
+);
+const runtime = new LoopAdPerfPhase7ArchiveDiagnosticStack(
+    app,
+    'LoopAdPerfPhase7ArchiveDiagnosticStack',
+    { env, archiveRepository: image.archiveRepository },
+);
+runtime.addDependency(image);

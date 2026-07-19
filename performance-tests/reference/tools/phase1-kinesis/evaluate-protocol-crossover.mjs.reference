@@ -1,0 +1,193 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REQUIRED_REPETITIONS = 3;
+const PATH_LABELS = {
+    A0: 'ALB H1 frontend → H1 backend',
+    A1: 'ALB H2 frontend → H1 backend',
+    A2: 'ALB H2 frontend → H2 backend',
+    N2: 'NLB TCP passthrough → collector TLS H2',
+    N3: 'NLB QUIC passthrough → collector H3',
+};
+
+export function evaluateProtocolCrossover(input) {
+    const raw = {
+        A0: input.A0 ?? input.http1_12k ?? input.h1 ?? [],
+        A1: input.A1 ?? input.h2FrontendBackendH1 ?? [],
+        A2: input.A2 ?? input.h2EndToEnd ?? [],
+        N2: input.N2 ?? input.nlbTcp ?? input.nlb ?? [],
+        N3: input.N3 ?? input.http3 ?? [],
+    };
+    const paths = Object.fromEntries(Object.entries(raw).map(([name, stages]) => [name, summarize(stages)]));
+    const correctness = normalizeCorrectness(input.correctness);
+    const pass = Object.fromEntries(Object.entries(paths).map(([name, summary]) => [name, repeatablePass(summary)]));
+    const fail = Object.fromEntries(Object.entries(paths).map(([name, summary]) => [name, repeatableFailure(summary)]));
+    const stablePath = Object.keys(PATH_LABELS).find((name) => pass[name]) ?? null;
+    const cardinality = summarizeCardinality(input.cardinality ?? {});
+    const source = summarizeSource(input.sourceDiversity ?? {});
+    const capacity50k = summarize(input.capacity50k ?? []);
+    const thirtyKPassed = stablePath !== null && correctness.passed;
+    const fiftyKPassed = repeatablePass(capacity50k) && correctness.passed;
+
+    const hypotheses = {
+        frontendHttp2ProtocolEffect: causalVerdict({
+            positive: fail.A0 && pass.A1,
+            falsified: fail.A0 && fail.A1,
+            reasonPositive: 'A0 failed and A1 passed with the same 12,000 independent physical connections.',
+            reasonFalsified: 'A0 and A1 both failed under valid independent-device repetitions.',
+            incomplete: 'The A0-fail/A1-pass boundary lacks three valid repetitions on both sides.',
+        }),
+        albBackendHttp1Bottleneck: causalVerdict({
+            positive: fail.A1 && pass.A2,
+            falsified: fail.A1 && fail.A2,
+            reasonPositive: 'A1 failed and A2 passed; only the ALB-to-collector backend protocol changed.',
+            reasonFalsified: 'A1 and A2 both failed under valid repetitions.',
+            incomplete: 'The A1-fail/A2-pass boundary is incomplete.',
+        }),
+        albFrontendOrL7ProxyBottleneck: causalVerdict({
+            positive: fail.A1 && fail.A2 && pass.N2,
+            falsified: fail.A1 && fail.A2 && fail.N2,
+            reasonPositive: 'Both ALB H2 paths failed while NLB TCP passthrough succeeded.',
+            reasonFalsified: 'The NLB TCP bypass failed after both ALB H2 paths failed.',
+            incomplete: 'The A1/A2-fail and N2 result boundary is incomplete.',
+        }),
+        tcpSpecificHandshakeOrChurn: causalVerdict({
+            positive: fail.N2 && pass.N3,
+            falsified: fail.N2 && fail.N3,
+            reasonPositive: 'N2 failed and N3 passed at identical device and connection cardinality.',
+            reasonFalsified: 'N2 and N3 both failed under valid repetitions.',
+            incomplete: input.n3SkippedReason ?? 'The N2-fail/N3-pass boundary is incomplete.',
+        }),
+        collectorRuntimeConnectionCardinality: cardinality.collectorRuntimeVerdict,
+        sourceIpConcentration: source.verdict,
+    };
+
+    const unresolvedRisks = [
+        !input.cardinalityRiskResolved && 'connection-cardinality risk',
+        !input.sourceRiskResolved && 'source-IP concentration risk',
+        !correctness.passed && 'correctness',
+    ].filter(Boolean);
+    const productionEligible = thirtyKPassed && input.cardinalityRiskResolved === true && input.sourceRiskResolved === true;
+    return {
+        schemaVersion: 3,
+        requiredIndependentRepetitions: REQUIRED_REPETITIONS,
+        baseline: {
+            syntheticAggregation: input.baseline?.syntheticAggregation ?? {
+                physicalConnections: 120, streamsPerConnection: 100, medianRps: 29_992,
+                interpretation: 'synthetic aggregated-H2 control only',
+            },
+            independentDeviceDifference: input.baseline?.independentDeviceDifference ?? 'not measured',
+            artifact: input.baseline?.artifact ?? null,
+        },
+        correctness,
+        paths,
+        hypotheses,
+        comparisons: {
+            A0_A1: comparison(paths.A0, paths.A1),
+            A1_A2: comparison(paths.A1, paths.A2),
+            A2_N2: comparison(paths.A2, paths.N2),
+            N2_N3: comparison(paths.N2, paths.N3),
+        },
+        cardinality,
+        sourceDiversity: source,
+        capacity: {
+            rps30: capacityVerdict(thirtyKPassed, Object.values(paths).some(repeatableFailure), stablePath ? `${PATH_LABELS[stablePath]} passed three valid repetitions with correctness.` : 'No path passed three valid 30k repetitions with correctness.'),
+            rps50: capacityVerdict(fiftyKPassed, repeatableFailure(capacity50k), input.capacity50kSkippedReason ?? '50k is incomplete or was not selected by the time/cost gate.'),
+        },
+        connectionEvidence: input.connectionEvidence ?? 'not measured',
+        pilotFindings: input.pilotFindings ?? {},
+        stoppingCondition: input.stoppingCondition ?? null,
+        firstLatencyIncreaseLayer: input.firstLatencyIncreaseLayer ?? 'not measured',
+        firstConnectionChurnLayer: input.firstConnectionChurnLayer ?? 'not measured',
+        firstQueueIncreaseLayer: input.firstQueueIncreaseLayer ?? 'not measured',
+        kinesisServiceVsSdkLatency: input.kinesisServiceVsSdkLatency ?? 'not measured',
+        smallestReproduction: input.smallestReproduction ?? null,
+        smallestMitigation: input.smallestMitigation ?? null,
+        remainingInconclusive: Object.entries(hypotheses).filter(([, value]) => value.verdict === 'inconclusive').map(([name]) => name),
+        unresolvedRisks,
+        nextExperiment: input.nextExperiment ?? 'Complete the nearest valid fail/pass protocol boundary with three independent repetitions.',
+        productionRecommendation: productionEligible
+            ? `eligible for a canary of ${PATH_LABELS[stablePath]}; preserve the measured device-to-connection contract`
+            : 'none; independent-device 30k success, correctness, cardinality risk, and source concentration risk must all be resolved',
+    };
+}
+
+function summarize(stages) {
+    const valid = stages.filter((stage) => stage?.validForDecision === true && stage?.checks?.referenceDriverContract === true &&
+        stage?.checks?.collectorTelemetryComplete === true && stage?.checks?.traceBufferClean === true &&
+        stage?.evaluatorChecks?.evidenceComplete === true && stage?.evaluatorChecks?.fallbackCount === 0 &&
+        stage?.evaluatorChecks?.correctnessPassed === true);
+    const passing = valid.filter((stage) => stage.safetyPassed === true);
+    return {
+        attemptedRepetitions: stages.length,
+        validRepetitions: valid.length,
+        passRepetitions: passing.length,
+        failedRepetitions: valid.length - passing.length,
+        logicalDevices: unique(valid.map((stage) => stage.connections)),
+        targetPhysicalConnections: unique(valid.map((stage) => stage.aggregate?.configuredConnections ?? stage.connections)),
+        crossDevicePoolingViolations: sum(valid.map((stage) => stage.connectionContract?.crossDeviceReuseViolations ?? 0)),
+        concurrentStreamHighWater: maximum(valid.map((stage) => stage.connectionContract?.maxConcurrentStreamsPerConnection)),
+        medianActualRps: median(valid.map((stage) => stage.aggregate?.actualRps)),
+        medianTransportErrorRate: median(valid.map((stage) => stage.aggregate?.transportErrorRate)),
+        medianP95Ms: median(valid.map((stage) => stage.aggregate?.latencyMs?.p95)),
+        artifacts: valid.map((stage) => stage.evidence?.stageDir).filter(Boolean),
+        excludedRepetitions: stages.filter((stage) => !valid.includes(stage)).map((stage) => ({ repetition: stage?.repetition ?? null, reason: stage?.invalidReason ?? 'invalid-driver-contract' })),
+    };
+}
+
+function summarizeCardinality(value) {
+    const conditions = Object.fromEntries(Object.entries(value).filter(([, stages]) => Array.isArray(stages)).map(([connections, stages]) => [connections, summarize(stages)]));
+    const ordered = Object.entries(conditions).map(([connections, summary]) => [Number(connections), summary]).sort((a, b) => a[0] - b[0]);
+    const firstFailure = ordered.find(([, summary]) => repeatableFailure(summary))?.[0] ?? null;
+    const collectorEvidence = value.collectorEvidence === true;
+    return {
+        conditions,
+        firstRepeatableFailureConnections: firstFailure,
+        collectorRuntimeVerdict: firstFailure && collectorEvidence
+            ? { verdict: 'supported', reason: `Collector runtime evidence rises before the repeatable failure at ${firstFailure} connections.` }
+            : firstFailure ? { verdict: 'inconclusive', reason: 'A cardinality threshold exists, but its first limiting layer is not proven.' }
+                : { verdict: 'inconclusive', reason: 'No three-repetition connection-cardinality failure boundary was measured.' },
+    };
+}
+
+function summarizeSource(value) {
+    const concentrated = summarize(value.concentrated ?? []);
+    const distributed = summarize(value.distributed ?? []);
+    return {
+        concentrated, distributed,
+        verdict: repeatableFailure(concentrated) && repeatablePass(distributed)
+            ? { verdict: 'supported', reason: 'Four-source traffic failed and distributed-source traffic passed.' }
+            : repeatableFailure(concentrated) && repeatableFailure(distributed)
+                ? { verdict: 'not-supported', reason: 'Both source distributions failed.' }
+                : { verdict: 'inconclusive', reason: 'The source diversity crossover was not completed.' },
+    };
+}
+
+function comparison(left, right) {
+    return {
+        leftValidRepetitions: left.validRepetitions, rightValidRepetitions: right.validRepetitions,
+        actualRpsDelta: nullableDelta(right.medianActualRps, left.medianActualRps),
+        transportErrorRateDelta: nullableDelta(right.medianTransportErrorRate, left.medianTransportErrorRate),
+        p95MillisecondsDelta: nullableDelta(right.medianP95Ms, left.medianP95Ms),
+    };
+}
+function normalizeCorrectness(value) { const loss = value?.loss ?? null; const duplicates = value?.duplicates ?? null; return { passed: value?.passed === true && loss === 0 && duplicates === 0, loss, duplicates, artifact: value?.artifact ?? null }; }
+function causalVerdict({ positive, falsified, reasonPositive, reasonFalsified, incomplete }) { return { verdict: positive ? 'supported' : falsified ? 'not-supported' : 'inconclusive', reason: positive ? reasonPositive : falsified ? reasonFalsified : incomplete }; }
+function capacityVerdict(supported, disproved, reason) { return { verdict: supported ? 'supported' : disproved ? 'not-supported' : 'inconclusive', reason }; }
+function repeatablePass(summary) { return summary.validRepetitions >= REQUIRED_REPETITIONS && summary.passRepetitions >= REQUIRED_REPETITIONS; }
+function repeatableFailure(summary) { return summary.validRepetitions >= REQUIRED_REPETITIONS && summary.passRepetitions === 0; }
+function median(values) { const finite = values.filter(Number.isFinite).toSorted((a, b) => a - b); if (!finite.length) return null; const middle = Math.floor(finite.length / 2); return finite.length % 2 ? finite[middle] : (finite[middle - 1] + finite[middle]) / 2; }
+function maximum(values) { const finite = values.filter(Number.isFinite); return finite.length ? Math.max(...finite) : null; }
+function unique(values) { return [...new Set(values.filter(Number.isFinite))].toSorted((a, b) => a - b); }
+function sum(values) { return values.filter(Number.isFinite).reduce((total, value) => total + value, 0); }
+function nullableDelta(right, left) { return Number.isFinite(right) && Number.isFinite(left) ? right - left : null; }
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const input = JSON.parse(readFileSync(requiredOption('--input'), 'utf8'));
+    const output = requiredOption('--output');
+    const result = evaluateProtocolCrossover(input);
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

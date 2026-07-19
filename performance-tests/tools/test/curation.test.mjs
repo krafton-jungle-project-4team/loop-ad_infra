@@ -9,6 +9,7 @@ test("groups duplicate source copies under one run ID", () => {
 test("classifies explicit phases and non-experiment categories", () => {
   assert.equal(classifyPhase("run_20260717_phase7_2_aws_integration"), "phase7");
   assert.equal(classifyPhase("run_20260714_connection_path"), "phase1");
+  assert.equal(classifyPhase("run_20260712_capacity_go_sync_attempt1"), "phase1");
   assert.equal(classifyCategory("run_x_deployment_readiness"), "deployment_readiness");
   assert.equal(classifyCategory("run_x_final_cleanup"), "cleanup");
 });

@@ -23,6 +23,12 @@ for (const entry of index.experiments) {
 
 for (const source of inventory.sources) if (mappedPaths.get(source.path) !== 1) errors.push(`source path mapped ${mappedPaths.get(source.path) ?? 0} times: ${source.path}`);
 for (const [path, count] of mappedPaths) if (count !== 1 || !inventory.sources.some((source) => source.path === path)) errors.push(`unexpected or duplicate mapped path: ${path}`);
+const indexedFiles = new Set(index.experiments.flatMap((entry) => [entry.summaryPath, entry.reportPath]));
+for (const path of walk(join(evidenceRoot, "experiments"))) {
+  if (path.endsWith("/.gitkeep")) continue;
+  const relative = path.slice(evidenceRoot.length + 1).split("\\").join("/");
+  if (!indexedFiles.has(relative)) errors.push(`orphan experiment file: ${relative}`);
+}
 
 for (const path of walk(join(evidenceRoot, "incidents")).filter((path) => path.endsWith("summary.json"))) errors.push(...validateSchema(incidentSchema, JSON.parse(readFileSync(path, "utf8"))).map((error) => `${path}: ${error}`));
 for (const path of walk(evidenceRoot).filter((path) => path.endsWith(".json"))) try { JSON.parse(readFileSync(path, "utf8")); } catch (error) { errors.push(`invalid JSON ${path}: ${error.message}`); }

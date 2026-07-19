@@ -1,0 +1,159 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+
+const REGION = 'ap-northeast-2';
+const expectedCount = requiredInteger('--expected-count');
+const candidate = requiredOption('--candidate');
+const label = requiredOption('--label');
+const outputDir = requiredOption('--output-dir');
+if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(label)) throw new Error('invalid label');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+
+const instances = awsJson([
+    'ec2', 'describe-instances', '--region', REGION,
+    '--filters',
+    'Name=tag:Name,Values=perf-phase1-loop-ad-collector',
+    'Name=instance-state-name,Values=running',
+    '--query', 'Reservations[].Instances[].InstanceId',
+]).sort();
+if (instances.length !== expectedCount) {
+    throw new Error(`expected ${expectedCount} collector instances, found ${instances.length}`);
+}
+
+mkdirSync(outputDir, { recursive: true });
+const response = awsJson([
+    'ssm', 'send-command', '--region', REGION,
+    '--document-name', 'AWS-RunShellScript',
+    '--instance-ids', ...instances,
+    '--timeout-seconds', '60',
+    '--parameters', JSON.stringify({
+        commands: [
+            'curl -fsS --max-time 5 http://127.0.0.1:8080/debug/vars | gzip -9 | base64 -w 0',
+        ],
+        executionTimeout: ['30'],
+    }),
+    '--comment', `loop-ad phase1 debug-vars ${label}`,
+]);
+const commandId = response.Command.CommandId;
+const index = [];
+
+for (const [instanceIndex, instanceId] of instances.entries()) {
+    const invocation = await waitForInvocation(commandId, instanceId);
+    if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0) {
+        throw new Error(`debug vars failed on collector ${instanceIndex + 1}: ${invocation.Status}`);
+    }
+    const encodedSnapshot = invocation.StandardOutputContent.trim();
+    if (!/^[A-Za-z0-9+/=]+$/.test(encodedSnapshot)) {
+        throw new Error(`debug vars returned invalid base64 on collector ${instanceIndex + 1}`);
+    }
+    const snapshot = JSON.parse(gunzipSync(Buffer.from(encodedSnapshot, 'base64')).toString('utf8'));
+    validateSnapshot(snapshot, candidate);
+    const hostLabel = `collector-${(instanceIndex + 1).toString().padStart(2, '0')}`;
+    writeFileSync(`${outputDir}/${hostLabel}.json`, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+    index.push({ hostLabel, instanceId, commandId, collectedAt: new Date().toISOString() });
+}
+
+writeFileSync(`${outputDir}/index.json`, `${JSON.stringify({ label, candidate, collectors: index }, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ label, candidate, collectorCount: index.length, outputDir }, null, 2)}\n`);
+
+async function waitForInvocation(commandId, instanceId) {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+        await sleep(1_000);
+        try {
+            const invocation = awsJson([
+                'ssm', 'get-command-invocation', '--region', REGION,
+                '--command-id', commandId, '--instance-id', instanceId,
+            ]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`debug vars SSM command timed out for ${instanceId}`);
+}
+
+function validateSnapshot(snapshot, selectedCandidate) {
+    const requiredPaths = selectedCandidate === 'java-kpl' ? [
+        ['connections', 'current'],
+        ['connections', 'high_water'],
+        ['http', 'status_202'],
+        ['ack_latency', 'count'],
+        ['kpl', 'outstandingRecords'],
+        ['kpl', 'recordHighWater'],
+        ['kpl', 'successes'],
+        ['kpl', 'failures'],
+        ['jvm', 'heap_used_bytes'],
+        ['jvm', 'thread_count'],
+        ['native', 'live_children'],
+        ['native', 'restart_count'],
+    ] : [
+        ['admission', 'current_in_flight'],
+        ['admission', 'max_in_flight'],
+        ['admission', 'rejected_total'],
+        ['kinesis', 'put_record_attempts_total'],
+        ['kinesis', 'put_record_operations_total'],
+        ['kinesis', 'put_record_successes_total'],
+        ['kinesis', 'put_record_throttles_total'],
+        ['kinesis', 'put_record_failures_total'],
+        ['kinesis', 'put_record_retries_total'],
+        ['go', 'num_gc'],
+        ['go', 'goroutines'],
+    ];
+    if (selectedCandidate === 'go-batch') {
+        requiredPaths.push(
+            ['kinesis', 'put_records', 'queue_depth'],
+            ['kinesis', 'put_records', 'sender_queue_depth'],
+            ['kinesis', 'put_records', 'queue_high_water'],
+            ['kinesis', 'put_records', 'outstanding_records'],
+            ['kinesis', 'put_records', 'oldest_outstanding_age_nanoseconds'],
+            ['kinesis', 'put_records', 'api_calls_in_flight'],
+            ['kinesis', 'put_records', 'api_calls'],
+            ['kinesis', 'put_records', 'successes'],
+            ['kinesis', 'put_records', 'final_ack_latency', 'count'],
+            ['kinesis', 'put_records', 'final_ack_latency', 'cumulative_buckets', 'le_inf'],
+            ['kinesis', 'put_records', 'flush_reasons', 'timer'],
+            ['kinesis', 'put_records', 'flush_reasons', 'max_records'],
+            ['kinesis', 'put_records', 'flush_reasons', 'shutdown'],
+			['kinesis', 'diagnostic_put_records', 'ack_0ms', 'queue_depth'],
+			['kinesis', 'diagnostic_put_records', 'ack_20ms', 'queue_depth'],
+			['kinesis', 'diagnostic_put_records', 'ack_50ms', 'queue_depth'],
+			['trace', 'max_bytes'],
+			['trace', 'reserved_bytes'],
+			['trace', 'dropped'],
+			['trace', 'write_errors'],
+        );
+    }
+    for (const path of requiredPaths) {
+        let value = snapshot;
+        for (const key of path) value = value?.[key];
+        if (typeof value !== 'number') throw new Error(`debug snapshot missing ${path.join('.')}`);
+    }
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 8 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}
+
+function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

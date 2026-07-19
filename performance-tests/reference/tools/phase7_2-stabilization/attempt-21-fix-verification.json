@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "recordType": "focused-fix-verification",
+  "attemptOrdinal": 21,
+  "sourceRunId": "run_20260719_144544_phase7_integration",
+  "sourceSessionId": "phase7-integration-20260719T144544Z",
+  "verifiedAt": "2026-07-19T16:15:53Z",
+  "status": "passed",
+  "summary": "Allow the standard Phase 7 archive's 6 GiB query setting through the shared archive validator while preserving a 512 MiB server reserve, treat stopped ECS task tag mappings as immutable cleanup tombstones, and collect CloudWatch logs with bounded forward-token pagination.",
+  "fixCommit": "44776d309631b84f3d5b3c2b0d00baeea3914aa9",
+  "fixGitTree": "1e50f676790d46d46cd802ea4df5ba9f26e56ef5",
+  "failure": {
+    "firstFailingGate": "archive",
+    "rawAwsError": "ValueError: ClickHouse query memory must be at most 5 GiB",
+    "diagnosisPath": "performance-tests/phase7_2-stabilization/attempt-21-archive-memory-diagnosis.json",
+    "diagnosisSha256": "42460516b384cb71d307de22bbb748aa03293d729d5b05c47099903f342ebb7a",
+    "sourceDropExecuted": false
+  },
+  "changes": {
+    "archiveQueryMemory": {
+      "currentBytes": 6442450944,
+      "validatorMaximumBytes": 6979321856,
+      "serverBytes": 7516192768,
+      "containerBytes": 8589934592,
+      "minimumQueryToServerHeadroomBytes": 536870912,
+      "exactPointAcceptance": false,
+      "acceptanceMode": "positive value inside the documented operational safety envelope"
+    },
+    "cleanup": {
+      "stoppedTaskUntagUnsupported": true,
+      "behavior": "Do not retry ECS UntagResource for stopped tasks; preserve the exact stopped-task mapping as an immutable AWS tombstone until authoritative Tagging API polling reaches zero."
+    },
+    "failureEvidence": {
+      "cloudWatchPagination": "Manual nextForwardToken traversal with a fixed endTime avoids the unsupported get_log_events paginator and live-stream nontermination."
+    }
+  },
+  "focusedTests": {
+    "python": {
+      "suites": [
+        "test_full_stack_scoped_archive.py",
+        "test_phase7_cleanup_contract.py",
+        "test_phase7_archive_runtime.py",
+        "phase6-archive/tests/test_archive.py",
+        "phase7 AWS tooling focused tests"
+      ],
+      "passed": 99,
+      "failed": 0
+    }
+  },
+  "cleanup": {
+    "attemptFinalInventory": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/cleanup-post-terminal-final.json",
+      "sha256": "979574dce5ebf7a3af5639d977b05bd62ea9c49e0fae9d2be3e0f2620bfa9350",
+      "serviceClassCount": 35,
+      "allZero": true
+    },
+    "globalInventory": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/post-cleanup-global-inventory.json",
+      "sha256": "795b0779d37fd62a7735d4d3a7c99bd2ed3e1c1f2e7fea048559f59c2a6c4731",
+      "allZero": true
+    }
+  },
+  "cost": {
+    "activeEpochAccruedAfterAttemptUsd": "38.854862",
+    "nextRetryOperationalUpperBoundUsd": "11.227766",
+    "nextRetryActiveOperationalMaximumUsd": "50.082628",
+    "nextRetryMaximumIncludingCleanupUsd": "55.082628",
+    "newPaidWorkStopUsd": "55.000000",
+    "hardCapUsd": "60.000000",
+    "cleanupReserveUsd": "5.000000",
+    "passed": true
+  },
+  "strictGatesRetained": [
+    "performance baseline",
+    "count and fingerprint correctness",
+    "bidirectional archive equivalence",
+    "immutable COMMITTED re-read",
+    "source DROP safety",
+    "ownership",
+    "authoritative cleanup zero",
+    "budget"
+  ],
+  "nextAwsScope": {
+    "freshIdentityRequired": true,
+    "standardAttempt17StackOnly": true,
+    "stages": [
+      "deploy",
+      "minimal-verify",
+      "seed-15000000",
+      "retain-source-archive",
+      "collect",
+      "cleanup"
+    ],
+    "zeroAttemptStages": [
+      "correctness",
+      "replacement",
+      "warmup",
+      "score",
+      "source-drop"
+    ]
+  }
+}

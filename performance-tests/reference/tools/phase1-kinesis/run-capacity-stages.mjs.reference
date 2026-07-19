@@ -1,0 +1,260 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { evaluateCapacityInterval } from './capacity-evaluator.mjs';
+import { capacityRunPlan, CAPACITY_TIMING } from './capacity-run-contract.mjs';
+import { scoutRunPlan, SCOUT_TIMING } from './scout-run-contract.mjs';
+
+const scripts = dirname(fileURLToPath(import.meta.url));
+const runDir = requiredOption('--run-dir');
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const loadGeneratorId = requiredOption('--load-generator-id');
+const targetBaseUrl = requiredOption('--target-base-url');
+const imageDigest = requiredOption('--image-digest');
+const accruedCost = requiredOption('--accrued-cost');
+const projectedCost = requiredOption('--projected-cost');
+const experimentMode = optionValue('--experiment-mode') ?? 'capacity';
+const scoutMode = experimentMode === 'scout';
+if (!['capacity', 'scout'].includes(experimentMode)) throw new Error('invalid experiment mode');
+if (!scoutMode && basename(runDir) !== runId) throw new Error('--run-dir basename must equal --run-id');
+if (scoutMode && !basename(runDir).includes(`phase1_kinesis_capacity_scout_${candidate.replace('-', '_')}`)) throw new Error('scout artifact path must identify candidate');
+if (scoutMode ? !/^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) : !/^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid image digest');
+const plan = scoutMode ? scoutRunPlan(candidate) : capacityRunPlan(candidate);
+mkdirSync(runDir, { recursive: true });
+writeJson(join(runDir, scoutMode ? 'scout-plan.json' : 'capacity-plan.json'), plan);
+
+const correctness = json(join(runDir, 'correctness-summary.json'));
+if (correctness.passed !== true || correctness.fourTaskReplacementPassed !== true) {
+    throw new Error('capacity correctness must pass before performance stages');
+}
+const shardMetrics = json(join(runDir, 'shard-metrics.json'));
+if (shardMetrics.passed !== true || shardMetrics.sessionId !== sessionId) {
+    throw new Error('capacity shard-level metrics must be enabled and owned before performance stages');
+}
+
+const record = {
+    startedAt: new Date().toISOString(), runId, sessionId, candidate, imageDigest,
+    experimentMode, plan: scoutMode ? 'scout-plan.json' : 'capacity-plan.json', stages: [],
+    ...(scoutMode ? {} : { optional50k300Seconds: { status: 'not-run-optional' } }), commands: [],
+};
+writeRecord();
+gate('candidate', 1_800, join(runDir, 'candidate-start-gate.json'));
+
+let fullMeasurementAllowed = true;
+let higherProbeAllowed = true;
+for (const stage of plan.stages) {
+    const stageName = `${stage.targetRps / 1_000}k`;
+    const stageDir = join(runDir, 'stages', stageName);
+    mkdirSync(stageDir, { recursive: true });
+    const stageRecord = { targetRps: stage.targetRps, status: 'running', probe: null, ...(scoutMode ? {} : { measurements: [] }) };
+    record.stages.push(stageRecord);
+    writeRecord();
+    if (!higherProbeAllowed) {
+        stageRecord.status = scoutMode ? 'inconclusive' : 'not-run-safety-stop';
+        stageRecord.reason = 'previous stage did not recover bounded healthy state';
+        writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+        continue;
+    }
+    gate('stage', 600, join(stageDir, 'stage-start-gate.json'));
+    try {
+        stageRecord.probe = runInterval({ kind: 'probe', targetRps: stage.targetRps,
+            durationSeconds: scoutMode ? stage.durationSeconds : CAPACITY_TIMING.probeSeconds,
+            directory: join(stageDir, stage.kind === 'smoke' ? 'smoke' : 'probe') });
+    } catch (error) {
+        stageRecord.status = scoutMode ? 'inconclusive' : 'failed-safety-probe';
+        stageRecord.reason = error instanceof Error ? error.message : String(error);
+        higherProbeAllowed = false;
+        writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+        writeRecord();
+        continue;
+    }
+    if (scoutMode) {
+        stageRecord.status = stageRecord.probe.passed ? 'feasible' : 'unsafe';
+        higherProbeAllowed = stageRecord.probe.passed || safeRecovery(stageRecord.probe);
+        writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+        writeRecord();
+        continue;
+    }
+    if (!stageRecord.probe.passed) {
+        stageRecord.status = 'failed-safety-probe';
+        fullMeasurementAllowed = false;
+        higherProbeAllowed = safeRecovery(stageRecord.probe);
+        writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+        writeRecord();
+        continue;
+    }
+    if (!fullMeasurementAllowed) {
+        stageRecord.status = 'probe-only-after-lower-stage-failure';
+        writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+        writeRecord();
+        continue;
+    }
+
+    runLoad(join(stageDir, 'warmup'), stage.targetRps, CAPACITY_TIMING.warmupSeconds);
+    await sleep(CAPACITY_TIMING.cooldownSeconds * 1_000);
+    let catastrophic = false;
+    const pendingMeasurements = [];
+    for (const measurement of stage.measurements) {
+        const repetitionName = `repetition-${measurement.repetition.toString().padStart(2, '0')}`;
+        gate('repetition', 240, join(stageDir, repetitionName, 'start-gate.json'));
+        const pending = captureInterval({ kind: 'measurement', targetRps: stage.targetRps,
+            durationSeconds: measurement.durationSeconds, directory: join(stageDir, repetitionName) });
+        pendingMeasurements.push(pending);
+        catastrophic ||= pending.taskAfter.passed !== true;
+        if (catastrophic) break;
+    }
+    if (pendingMeasurements.length > 0) {
+        awaitSleep(CAPACITY_TIMING.cloudWatchDelaySeconds);
+        for (const pending of pendingMeasurements) {
+            const decision = finalizeInterval(pending);
+            stageRecord.measurements.push(decision);
+            catastrophic ||= !safeRecovery(decision);
+        }
+    }
+    stageRecord.status = stageRecord.measurements.length === 3 && stageRecord.measurements.every((item) => item.passed)
+        ? 'passed' : 'failed';
+    stageRecord.distribution = summarizeDecisions(stageRecord.measurements);
+    if (stageRecord.status !== 'passed') fullMeasurementAllowed = false;
+    if (catastrophic) higherProbeAllowed = false;
+    writeJson(join(stageDir, 'stage-summary.json'), stageRecord);
+    writeRecord();
+}
+
+record.finishedAt = new Date().toISOString();
+record.completed = true;
+writeRecord();
+writeJson(join(runDir, scoutMode ? 'scout-summary.json' : 'capacity-summary.json'), {
+    candidate, runId, sessionId, stages: record.stages,
+    optional50k300Seconds: record.optional50k300Seconds,
+});
+
+function runInterval({ kind, targetRps, durationSeconds, directory }) {
+    const pending = captureInterval({ kind, targetRps, durationSeconds, directory });
+    awaitSleep(CAPACITY_TIMING.cloudWatchDelaySeconds);
+    return finalizeInterval(pending);
+}
+
+function captureInterval({ kind, targetRps, durationSeconds, directory }) {
+    mkdirSync(directory, { recursive: true });
+    runNode('collect-capacity-task-state.mjs', ['--image-digest', imageDigest, '--output', join(directory, 'task-state-before.json')]);
+    runNode('collect-debug-vars.mjs', ['--expected-count', '4', '--candidate', candidate,
+        '--label', `${kind}-pre`, '--output-dir', join(directory, 'debug-vars', 'before')]);
+    runNode('collect-runtime-state.mjs', ['--expected-count', '4', '--candidate', candidate,
+        '--label', `${kind}-pre`, '--output-dir', join(directory, 'runtime', 'before')]);
+    const load = runLoad(directory, targetRps, durationSeconds);
+    awaitSleep(scoutMode ? SCOUT_TIMING.cooldownSeconds : CAPACITY_TIMING.cooldownSeconds);
+    runNode('collect-debug-vars.mjs', ['--expected-count', '4', '--candidate', candidate,
+        '--label', `${kind}-post`, '--output-dir', join(directory, 'debug-vars', 'after')]);
+    runNode('collect-runtime-state.mjs', ['--expected-count', '4', '--candidate', candidate,
+        '--label', `${kind}-post`, '--output-dir', join(directory, 'runtime', 'after')]);
+    runNode('collect-capacity-task-state.mjs', ['--image-digest', imageDigest, '--output', join(directory, 'task-state-after.json')]);
+    return {
+        kind, targetRps, durationSeconds, directory, load,
+        taskAfter: json(join(directory, 'task-state-after.json')),
+    };
+}
+
+function finalizeInterval({ kind, targetRps, durationSeconds, directory, load }) {
+    const metricArgs = ['--expected-collector-count', '4', '--include-shards', '--start-time', load.startedAt, '--end-time', load.endedAt,
+        '--output-dir', join(directory, 'metrics')];
+    runNode('collect-metrics.mjs', metricArgs);
+    if (!requiredMetricsReady(json(join(directory, 'metrics', 'cloudwatch-summary.json')))) {
+        awaitSleep(60);
+        runNode('collect-metrics.mjs', metricArgs);
+    }
+    if (!requiredMetricsReady(json(join(directory, 'metrics', 'cloudwatch-summary.json')))) {
+        throw new Error(`required CloudWatch samples did not arrive for ${directory}`);
+    }
+    runNode('collect-logs.mjs', ['--start-time', load.startedAt, '--end-time', load.endedAt,
+        '--output-dir', join(directory, 'logs')]);
+    const input = {
+        candidate, kind, targetRps, durationSeconds, oha: load,
+        beforeHosts: snapshots(join(directory, 'debug-vars', 'before')),
+        afterHosts: snapshots(join(directory, 'debug-vars', 'after')),
+        cloudwatch: json(join(directory, 'metrics', 'cloudwatch-summary.json')),
+        taskBefore: json(join(directory, 'task-state-before.json')),
+        taskAfter: json(join(directory, 'task-state-after.json')),
+        logs: json(join(directory, 'logs', 'collector-error-logs.json')),
+    };
+    writeJson(join(directory, 'evaluation-input.json'), input);
+    const decision = evaluateCapacityInterval(input);
+    writeJson(join(directory, 'decision.json'), decision);
+    return decision;
+}
+
+function runLoad(directory, rps, durationSeconds) {
+    mkdirSync(directory, { recursive: true });
+    const startEpoch = Math.ceil((Date.now() / 1_000 + 20) / 60) * 60;
+    runNode('invoke-oha.mjs', ['--instance-id', loadGeneratorId, '--target-base-url', targetBaseUrl,
+        '--run-id', runId, '--rps', `${rps}`, '--duration-seconds', `${durationSeconds}`,
+        '--start-epoch', `${startEpoch}`, '--output-dir', join(directory, 'load')]);
+    return json(join(directory, 'load', 'oha-summary.json'));
+}
+
+function requiredMetricsReady(summary) {
+    const required = ['kinesis_incoming_records_sum', 'alb_requests_sum',
+        ...Array.from({ length: 80 }, (_, index) => `shard_${index.toString().padStart(3, '0')}_incoming_records_sum`)];
+    return required.every((id) => (summary.metrics?.[id]?.sampleCount ?? 0) > 0);
+}
+
+function gate(action, estimate, output) {
+    mkdirSync(dirname(output), { recursive: true });
+    runNode('capacity-start-gate.mjs', ['--session-id', sessionId, '--candidate', candidate,
+        '--action', action, '--estimated-work-seconds', `${estimate}`, '--accrued-cost', accruedCost,
+        '--projected-cost', projectedCost, '--output', output]);
+}
+
+function safeRecovery(decision) {
+    return decision.checks.producerRecovered && decision.checks.exactFourTaskStateAfter &&
+        decision.checks.noRestartOomPanicFatal && decision.checks.kinesisWriteThrottleZero;
+}
+
+function summarizeDecisions(decisions) {
+    const fields = ['actualRps', 'p95', 'p99'];
+    const values = {
+        actualRps: decisions.map((item) => item.http.actualRps),
+        p95: decisions.map((item) => item.http.latencyMs.p95),
+        p99: decisions.map((item) => item.http.latencyMs.p99),
+    };
+    return Object.fromEntries(fields.map((field) => [field, distribution(values[field])]));
+}
+
+function distribution(values) {
+    if (values.length === 0) return { count: 0 };
+    const sorted = [...values].sort((a, b) => a - b);
+    const q = (p) => {
+        const index = (sorted.length - 1) * p;
+        const lower = Math.floor(index);
+        return sorted[lower] + (sorted[lower + 1] === undefined ? 0 : (index - lower) * (sorted[lower + 1] - sorted[lower]));
+    };
+    const q1 = q(0.25); const q3 = q(0.75);
+    return { count: sorted.length, min: sorted[0], median: q(0.5), max: sorted.at(-1), range: sorted.at(-1) - sorted[0], q1, q3, iqr: q3 - q1 };
+}
+
+function snapshots(directory) {
+    return readdirSync(directory).filter((name) => /^collector-[0-9]{2}\.json$/.test(name)).sort()
+        .map((name) => json(join(directory, name)));
+}
+
+function runNode(script, args) {
+    record.commands.push({ at: new Date().toISOString(), script, args });
+    writeRecord();
+    execFileSync('node', [join(scripts, script), ...args], { stdio: 'inherit' });
+}
+
+function awaitSleep(seconds) {
+    execFileSync('sleep', [`${seconds}`]);
+}
+
+function writeRecord() { writeJson(join(runDir, scoutMode ? 'scout-run-record.json' : 'capacity-run-record.json'), record); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function requiredOption(name) { const i = process.argv.indexOf(name); const v = i >= 0 ? process.argv[i + 1] : undefined; if (!v) throw new Error(`${name} is required.`); return v; }
+function optionValue(name) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; }
+function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }

@@ -59,7 +59,7 @@ export function classifyPhase(runId, sourcePaths = [], explicitPhase) {
   const text = `${runId} ${sourcePaths.join(" ")}`.toLowerCase();
   const named = text.match(/phase[_-]?([0-8])/);
   if (named) return `phase${named[1]}`;
-  if (/(kinesis|latency_tcp|fanout_crossover|protocol_crossover|independent_crossover|connection_path|t3_e2e|oha_p95|haproxy_auto)/.test(text)) return "phase1";
+  if (/(kinesis|capacity_|latency_tcp|fanout_crossover|protocol_crossover|independent_crossover|connection_path|t3_e2e|oha_p95|haproxy_auto)/.test(text)) return "phase1";
   return "phase0";
 }
 

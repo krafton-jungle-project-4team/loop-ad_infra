@@ -1,0 +1,20 @@
+{
+  "estimated": true,
+  "queriedAt": "2026-07-18T03:47:13Z",
+  "query": {
+    "endExclusive": "2026-07-19",
+    "granularity": "DAILY",
+    "metric": "UnblendedCost",
+    "startInclusive": "2026-07-18",
+    "tagKey": "RunId",
+    "tagValue": "run_20260718_025510_phase7_integration"
+  },
+  "runId": "run_20260718_025510_phase7_integration",
+  "schemaVersion": 1,
+  "sessionId": "phase7-integration-20260718T025510Z",
+  "unblendedCost": {
+    "amount": "0.000000",
+    "unit": "USD"
+  },
+  "warning": "Current-day Cost Explorer data is estimated and delayed. The zero observation is not used as a zero-cost assumption."
+}

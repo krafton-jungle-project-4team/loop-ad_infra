@@ -1,0 +1,297 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { buildConnectionPathCrossoverPlan, deterministicShuffle, HAPROXY_IMAGE, workload } from './connection-path-crossover-contract.mjs';
+import { evaluateConnectionPathDeadlineGate } from './connection-path-deadline-gate.mjs';
+import {
+    isConnectionPathDestinationUrl,
+    isPhase7InternalProxyNlbDestinationUrl,
+    isPhase7InternalProxyNlbDnsName,
+} from './connection-path-destination.mjs';
+import { renderHAProxyConfig } from './render-haproxy-config.mjs';
+
+test('connection-path destinations preserve existing endpoints and admit internal NLB endpoints', () => {
+    for (const url of [
+        'https://internal-perf-p1-conn-alb-123.ap-northeast-2.elb.amazonaws.com',
+        'https://perf-p1-conn-direct-123.elb.ap-northeast-2.amazonaws.com',
+        'https://perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com',
+        'https://internal-perf-p1-conn-direct-123.elb.ap-northeast-2.amazonaws.com',
+        'https://internal-perf-p1-conn-proxy-60717180000-0123456789abcdef.elb.ap-northeast-2.amazonaws.com',
+    ]) assert.equal(isConnectionPathDestinationUrl(url), true, url);
+
+    for (const url of [
+        'http://internal-perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com',
+        'https://internal-perf-p1-conn-proxy-123.elb.us-east-1.amazonaws.com',
+        'https://internal-unrelated-123.elb.ap-northeast-2.amazonaws.com',
+        'https://internal-perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com/',
+        'https://internal-perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com:443',
+    ]) assert.equal(isConnectionPathDestinationUrl(url), false, url);
+});
+
+test('Phase 7 accepts only exact ap-northeast-2 proxy NLB hostname forms', () => {
+    for (const dnsName of [
+        'internal-perf-p1-conn-proxy-60717180000-0123456789abcdef.elb.ap-northeast-2.amazonaws.com',
+        'perf-p1-conn-proxy-60718210703-381db1c0bfbf645a.elb.ap-northeast-2.amazonaws.com',
+    ]) {
+        assert.equal(isPhase7InternalProxyNlbDnsName(dnsName), true, dnsName);
+        assert.equal(isPhase7InternalProxyNlbDestinationUrl(`https://${dnsName}`), true, dnsName);
+    }
+    for (const invalid of [
+        'perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com',
+        'perf-p1-conn-proxy-60718210703.elb.ap-northeast-2.amazonaws.com',
+        'perf-p1-conn-direct-60718210703-381db1c0bfbf645a.elb.ap-northeast-2.amazonaws.com',
+        'perf-p1-conn-proxy-60718210703-381db1c0bfbf645a.elb.us-east-1.amazonaws.com',
+        'internal-perf-p1-conn-proxy-123.elb.ap-northeast-2.amazonaws.com',
+        'internal-perf-p1-conn-proxy-60717180000.elb.ap-northeast-2.amazonaws.com',
+        'internal-perf-p1-conn-direct-123.elb.ap-northeast-2.amazonaws.com',
+        'internal-perf-p1-conn-proxy-123.elb.us-east-1.amazonaws.com',
+        'internal-other-proxy-123.elb.ap-northeast-2.amazonaws.com',
+        'internal-perf-p1-conn-proxy-unrelated-123.elb.ap-northeast-2.amazonaws.com',
+    ]) assert.equal(isPhase7InternalProxyNlbDnsName(invalid), false, invalid);
+});
+
+test('preserves exact 30k and 50k oha arithmetic over 12000 physical connections', () => {
+    const plan = buildConnectionPathCrossoverPlan();
+    assert.deepEqual(plan.workload30k, {
+        totalRps: 30_000, totalPhysicalConnections: 12_000,
+        perNodeRps: 7_500, perNodeConnections: 3_000,
+        perProcessRps: 3_750, perProcessConnections: 1_500, ohaParallel: 1,
+    });
+    assert.deepEqual(plan.workload50k, {
+        totalRps: 50_000, totalPhysicalConnections: 12_000,
+        perNodeRps: 12_500, perNodeConnections: 3_000,
+        perProcessRps: 6_250, perProcessConnections: 1_500, ohaParallel: 1,
+    });
+    assert.equal(plan.physicalConnectionContract.streamsPerConnection, 1);
+    assert.equal(plan.physicalConnectionContract.minimumObservedFraction, .99);
+    assert.throws(() => workload(30_001, 12_000), /divide exactly/);
+});
+
+test('defines parallel T0 through T3 without weakening final ACK or protocol correctness', () => {
+    const plan = buildConnectionPathCrossoverPlan();
+    assert.deepEqual(Object.keys(plan.topologies), ['T0', 'T1', 'T2', 'T3']);
+    assert.equal(plan.immutable.acknowledgement, 'kinesis-final-ack');
+    assert.equal(plan.topologies.T1.targetProtocol, 'HTTP2');
+    assert.equal(plan.topologies.T2.targetProtocol, 'TLS_H2');
+    assert.equal(plan.topologies.T2.crossZone, true);
+    assert.equal(plan.topologies.T3.proxy.backendProtocol, 'H2C');
+    assert.equal(plan.topologies.T3.proxy.backendAlgorithm, 'leastconn');
+    assert.equal(plan.topologies.T3.proxy.requestBuffering, false);
+    assert.equal(plan.topologies.T3.proxy.image, HAPROXY_IMAGE);
+    assert.match(HAPROXY_IMAGE, /^haproxy:3\.2\.4-alpine@sha256:[0-9a-f]{64}$/);
+    assert.equal(plan.warmup.durationSeconds, 900);
+    assert.equal(plan.measured.durationSeconds, 300);
+    assert.equal(plan.measured.independentRepetitions, 3);
+});
+
+test('topology order is deterministic and contains each actual topology once', () => {
+    assert.deepEqual(deterministicShuffle(['T1', 'T2', 'T3'], 42), deterministicShuffle(['T1', 'T2', 'T3'], 42));
+    assert.deepEqual([...deterministicShuffle(['T1', 'T2', 'T3'], 42)].sort(), ['T1', 'T2', 'T3']);
+});
+
+test('HAProxy config is fail-closed h2, no-buffer, leastconn, and four h2c backends', () => {
+    const config = renderHAProxyConfig({
+        backends: ['10.0.1.10', '10.0.2.10', '10.0.1.11', '10.0.2.11'].map((address) => ({ address, port: 8080 })),
+    });
+    assert.match(config, /bind :8443 ssl crt \/tmp\/haproxy-secrets\/haproxy\.pem alpn h2/);
+    assert.match(config, /http-request deny status 421 unless negotiated_h2/);
+    assert.match(config, /http-request return status 202.*\/__proxy_control|acl proxy_control path -i \/__proxy_control/);
+    assert.match(config, /balance leastconn/);
+    assert.equal((config.match(/server collector-/g) ?? []).length, 4);
+    assert.equal((config.match(/:8080 proto h2 check/g) ?? []).length, 4);
+    assert.match(config, /retries 0/);
+    assert.doesNotMatch(config, /redispatch|http-buffer-request/);
+    assert.match(config, /prometheus-exporter/);
+});
+
+test('HAProxy renderer rejects incomplete or ambiguous backend topology', () => {
+    assert.throws(() => renderHAProxyConfig({}), /exactly one/);
+    assert.throws(() => renderHAProxyConfig({ backends: [], discoveryName: '_collector._tcp.connection-path.internal' }), /exactly one/);
+    assert.throws(() => renderHAProxyConfig({ backends: [] }), /exactly four/);
+    assert.throws(() => renderHAProxyConfig({ backends: Array(4).fill({ address: 'collector.local', port: 8080 }) }), /invalid collector backend/);
+    assert.throws(() => renderHAProxyConfig({ backends: Array(4).fill({ address: '10.0.0.1', port: 8080 }), maxConnections: 11_999 }), /12000-connection/);
+});
+
+test('HAProxy config supports the full collector range through dynamic ECS service discovery', () => {
+    const config = renderHAProxyConfig({ discoveryName: '_collector._tcp.connection-path.internal' });
+    assert.match(config, /server-template collector 1-8 _collector\._tcp\.connection-path\.internal proto h2/);
+    assert.match(config, /nameserver vpc 169\.254\.169\.253:53/);
+    assert.match(config, /resolve-opts allow-dup-ip/);
+    assert.throws(() => renderHAProxyConfig({ discoveryName: '_collector._tcp.connection-path.internal', serverTemplateSlots: 9 }), /4 through 8/);
+});
+
+test('oha worker pins HTTP/2, p=1, verified TLS, exact destination, and process start schedule', () => {
+    const worker = readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url), 'utf8');
+    assert.match(worker, /OHA_HTTP_VERSION/);
+    assert.match(worker, /OHA_PARALLEL/);
+    assert.match(worker, /--http-version 2 -p 1 --cacert \/protocol-ca\.pem --connect-to/);
+    assert.match(worker, /protocol_rc.*124/);
+    assert.match(worker, /PROCESS_START_SPACING_SECONDS/);
+    assert.match(worker, /PROCESS_START_OFFSET_SECONDS/);
+    assert.match(worker, /process_delay=.*PROCESS_START_OFFSET_SECONDS.*process_index.*PROCESS_START_SPACING_SECONDS/);
+    assert.match(worker, /max_process_start_delay=.*PROCESS_START_OFFSET_SECONDS.*PROCESSES_PER_NODE.*PROCESS_START_SPACING_SECONDS/);
+    assert.match(worker, /container_start_deadline=.*max_process_start_delay.*60/);
+    assert.match(worker, /expected_host_header="\$\{expected_host_header#https:\/\/\}"/);
+    assert.doesNotMatch(worker, /--insecure/);
+});
+
+test('collector image preparation accepts the immutable connection-path session', () => {
+    const preparation = readFileSync(new URL('./prepare-collector-image.sh', import.meta.url), 'utf8');
+    const deletion = readFileSync(new URL('./delete-collector-image.sh', import.meta.url), 'utf8');
+    assert.match(preparation, /EXPERIMENT_MODE" == "connection-path-crossover"/);
+    assert.match(preparation, /\^phase1-kinesis-connection-path-\[0-9\]\{8\}T\[0-9\]\{6\}Z\$/);
+    assert.match(preparation, /EXPECTED_COLLECTOR_SHA/);
+    assert.match(preparation, /collector HEAD does not match EXPECTED_COLLECTOR_SHA/);
+    assert.match(deletion, /EXPERIMENT_MODE" == "connection-path-crossover"/);
+    assert.match(deletion, /\^phase1-kinesis-connection-path-\[0-9\]\{8\}T\[0-9\]\{6\}Z\$/);
+});
+
+test('preflight, deployment verification, and cleanup cover every run-owned connection-path resource', () => {
+    const preflight = readFileSync(new URL('./preflight.mjs', import.meta.url), 'utf8');
+    const deployment = readFileSync(new URL('./verify-connection-path-deployment.mjs', import.meta.url), 'utf8');
+    const cleanup = readFileSync(new URL('./verify-cleanup.mjs', import.meta.url), 'utf8');
+    const cleanupInventory = readFileSync(new URL('./capture-protocol-cleanup-inventory.mjs', import.meta.url), 'utf8');
+    for (const name of ['perf-p1-conn-alb', 'perf-p1-conn-direct', 'perf-p1-conn-proxy']) {
+        assert.match(preflight, new RegExp(name));
+        assert.match(deployment, new RegExp(name));
+        assert.match(cleanup, new RegExp(name));
+    }
+    for (const name of ['perf-p1-conn-alb-h2', 'perf-p1-conn-direct', 'perf-p1-conn-proxy']) {
+        assert.match(preflight, new RegExp(name));
+        assert.match(cleanup, new RegExp(name));
+    }
+    assert.match(deployment, /discoveryInstances\.length === expectedCollectorCount/);
+    assert.match(deployment, /--expected-collector-count/);
+    assert.match(preflight, /\[4, 6\]\.includes\(collectorCount\)/);
+    assert.match(deployment, /--ca-certificate/);
+    assert.match(deployment, /buildReadinessEndpoints/);
+    assert.match(deployment, /analyzeReadinessInvocations/);
+    assert.match(deployment, /tlsReadiness: readiness\.passed === true/);
+    assert.match(deployment, /runtimeOwnership/);
+    assert.match(cleanup, /connectionPathCloudMapAbsent/);
+    assert.match(cleanup, /loop-ad-perf-phase1-connection-path-proxy/);
+    assert.match(cleanup, /proxyLogGroupAbsent/);
+    assert.match(cleanup, /activeProxyTaskDefinitionsAbsent/);
+    assert.match(cleanupInventory, /connection-path-crossover/);
+    assert.match(cleanupInventory, /LoopAdPerfPhase1KinesisConnectionPathStack/);
+});
+
+test('AL2023 host verification selects the connection-path stack and exact session', () => {
+    const verification = readFileSync(new URL('./verify-al2023-hosts.mjs', import.meta.url), 'utf8');
+    assert.match(verification, /connection-path-crossover/);
+    assert.match(verification, /LoopAdPerfPhase1KinesisConnectionPathStack/);
+    assert.match(verification, /\^phase1-kinesis-connection-path-/);
+});
+
+test('TLS cleanup is idempotent after a partially completed deletion', () => {
+    const cleanup = readFileSync(new URL('./delete-protocol-tls-material.mjs', import.meta.url), 'utf8');
+    assert.match(cleanup, /if \(!before\.certificateAbsent\)/);
+    assert.match(cleanup, /if \(!before\.secretAbsent\)/);
+});
+
+test('stage deadline gate accepts Date.toISOString fractional seconds', () => {
+    const result = evaluateConnectionPathDeadlineGate({
+        now: '2026-07-14T16:46:52.801Z',
+        newWorkEnd: '2026-07-14T20:30:00Z',
+        hardDeadline: '2026-07-14T21:00:00Z',
+        action: 'stage',
+        costModel: { budget: {
+            hardCapUsd: 60, newDeployAccruedStopUsd: 54, accruedUpperBoundUsd: 10,
+            projectedPlusReserveUsd: 54.39, cleanupReserveUsd: 5, mayStart: true,
+        } },
+    });
+    assert.equal(result.allowed, true);
+});
+
+test('proxy bootstrap keeps the AL2023 curl-minimal package instead of installing conflicting curl', () => {
+    const stack = readFileSync(new URL('../../src/perf-phase1-kinesis-stack.ts', import.meta.url), 'utf8');
+    assert.match(stack, /dnf install -y jq awscli-2 iproute procps-ng/);
+    assert.doesNotMatch(stack, /dnf install -y jq awscli-2 curl iproute procps-ng/);
+});
+
+test('oha invoker carries verified TLS and global stagger inputs into the worker', () => {
+    const invoker = readFileSync(new URL('./invoke-oha.mjs', import.meta.url), 'utf8');
+    for (const option of ['--target-connect-base-url', '--tls-server-name', '--ca-certificate', '--process-start-spacing-seconds', '--process-start-offset-seconds']) {
+        assert.match(invoker, new RegExp(option));
+    }
+    assert.match(invoker, /OHA_HTTP_VERSION='\$\{connectionPathMode \? 2 : '1\.1'\}'/);
+    assert.match(invoker, /OHA_PARALLEL='1'/);
+    assert.match(invoker, /INSTANCE_ID='\$\{instanceId\}'/);
+    assert.match(invoker, /CA_CERTIFICATE_SHA256/);
+    assert.match(invoker, /isConnectionPathDestinationUrl\(targetConnectBaseUrlOption\)/);
+    assert.match(invoker, /ssm-command-started\.json/);
+    assert.match(invoker, /ssm-transfer-probe-started\.json/);
+    assert.match(invoker, /onStarted\(\{ commandId, comment \}\)/);
+    assert.match(invoker, /AWS_MAX_ATTEMPTS: '1'/);
+    assert.match(invoker, /AWS_RETRY_MODE: 'standard'/);
+    assert.match(invoker, /const sendResponse = awsJson\(\[/);
+    assert.doesNotMatch(invoker, /const sendResponse = await retryAwsJson\(\[/);
+    assert.match(invoker, /durationSeconds \+ \(connectionPathMode \? 900 : 300\)/);
+    assert.doesNotMatch(invoker, /--insecure/);
+    const worker = readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url), 'utf8');
+    assert.match(worker, /phase7_\(warmup\|score\)/);
+    assert.match(worker, /mkdir -m 0700 "\$ATTEMPT_LOCK"/);
+    assert.match(worker, /duplicate immutable load attempt refused/);
+    assert.match(worker, /trap 'handle_worker_signal SIGTERM 143' TERM/);
+    assert.match(worker, /docker rm -f "\$owned_container"/);
+    assert.match(worker, /worker-terminal-state\.json/);
+    assert.match(worker, /owned-container-running-count=\$owned_container_running_count/);
+    assert.match(worker, /owned-runner-process-count=\$owned_runner_process_count/);
+    assert.match(worker, /aws s3api put-object --region ap-northeast-2/);
+    assert.doesNotMatch(worker, /rm -rf "\$ATTEMPT_LOCK"/);
+});
+
+test('run-owned worker installer uses bounded SSM chunks and verifies the final SHA', () => {
+    const installer = readFileSync(new URL('./install-oha-worker.mjs', import.meta.url), 'utf8');
+    assert.match(installer, /CHUNK_BYTES = 18_000/);
+    assert.match(installer, /ComparisonSessionId/);
+    assert.match(installer, /\[4, 8\]\.includes\(expectedCount\)/);
+    assert.match(installer, /sha256sum -c -/);
+    assert.match(installer, /install -m 0755/);
+});
+
+test('interrupted stage recovery attaches only to exact commands and run-owned S3 keys', () => {
+    const recovery = readFileSync(new URL('./recover-interrupted-connection-path-stage.mjs', import.meta.url), 'utf8');
+    assert.match(recovery, /get-command-invocation/);
+    assert.match(recovery, /collector-evidence/);
+    assert.match(recovery, /proxy-evidence/);
+    assert.match(recovery, /archiveSha256/);
+});
+
+test('stage runner validates deployed topology, global stagger, proxy evidence, and stage gates', () => {
+    const runner = readFileSync(new URL('./run-latency-root-cause-stage.mjs', import.meta.url), 'utf8');
+    for (const topology of ['T0', 'T1', 'T2', 'T3']) assert.match(runner, new RegExp(topology));
+    assert.match(runner, /validateConnectionPathIdentity/);
+    assert.match(runner, /connection-path-deadline-gate\.mjs/);
+    assert.match(runner, /processStartMode === 'staggered' \? `\$\{index \* 10\}`/);
+    assert.match(runner, /collect-haproxy-telemetry\.mjs/);
+    assert.match(runner, /physicalConnectionsAtLeast99Percent/);
+    assert.match(runner, /protocolCorrect/);
+});
+
+test('runtime state redacts secret-bearing container environment values', () => {
+    const collector = readFileSync(new URL('./collect-runtime-state.mjs', import.meta.url), 'utf8');
+    assert.match(collector, /SECRET\|TOKEN\|PASSWORD\|PRIVATE_KEY/);
+    assert.match(collector, /capture\(/);
+    assert.match(collector, /\[REDACTED\]/);
+});
+
+test('HAProxy telemetry records raw proxy and host state and exports only run-owned artifacts', () => {
+    const telemetry = readFileSync(new URL('./collect-haproxy-telemetry.mjs', import.meta.url), 'utf8');
+    for (const evidence of ['/metrics', '/stats;csv', 'docker stats', 'ss -tin', '/proc/net/softnet_stat', 'nstat -az']) {
+        assert.match(telemetry, new RegExp(evidence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    assert.match(telemetry, /proxy-evidence/);
+    assert.match(telemetry, /sha256sum/);
+	assert.match(telemetry, /timeout --signal=TERM --kill-after=5s/);
+    assert.match(telemetry, /docker_stats_pid=\$!/);
+    assert.match(telemetry, /sample % 30/);
+	assert.match(telemetry, /sample_epoch/);
+	assert.match(telemetry, /sample_epoch=\$\(\(\$\{startEpoch\} \+ sample - 1\)\)/);
+	assert.doesNotMatch(telemetry, /sample_epoch=\$\(\('\$\{startEpoch\}'/);
+	assert.match(telemetry, /sleep "\$sleep_seconds"/);
+	assert.match(telemetry, /samplesComplete/);
+    assert.match(telemetry, /durationSeconds \+ 300/);
+    assert.doesNotMatch(telemetry, /sleep 1/);
+    assert.match(telemetry, /runId !== runId \|\| item\.sessionId !== sessionId/);
+});

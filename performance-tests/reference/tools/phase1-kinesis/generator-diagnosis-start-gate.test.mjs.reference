@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import test from 'node:test';
+
+const script = new URL('./generator-diagnosis-start-gate.mjs', import.meta.url).pathname;
+test('enforces configured absolute runtime and expanded cumulative cost guards', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'generator-gate-'));
+    const session = join(dir, 'session.json');
+    const accrued = join(dir, 'accrued.json');
+    const projected = join(dir, 'projected.json');
+    writeFileSync(session, JSON.stringify({ sessionId: 'phase1-kinesis-generator-diagnosis-20260712T150000Z', region: 'ap-northeast-2',
+        startedAt: '2026-07-12T15:00:00Z', incrementalHardCapUsd: 30, newWorkStopUsd: 28,
+        runtime: { newWorkDeadline: '2026-07-12T22:30:00Z', cleanupDeadline: '2026-07-12T22:50:00Z', hardDeadline: '2026-07-12T23:00:00Z' } }));
+    writeFileSync(accrued, JSON.stringify({ projectedCumulativeUpperBoundUsd: 2 }));
+    writeFileSync(projected, JSON.stringify({ projectedCumulativeUpperBoundUsd: 4 }));
+    const args = ['--session-id', 'phase1-kinesis-generator-diagnosis-20260712T150000Z', '--session', session,
+        '--action', 'topology', '--estimated-work-seconds', '300', '--now', '2026-07-12T15:30:00Z',
+        '--accrued-cost', accrued, '--projected-cost', projected];
+    const result = JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: 'utf8' }));
+    assert.equal(result.passed, true);
+    writeFileSync(accrued, JSON.stringify({ projectedCumulativeUpperBoundUsd: 28 }));
+    const blocked = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+    assert.equal(blocked.status, 2);
+});

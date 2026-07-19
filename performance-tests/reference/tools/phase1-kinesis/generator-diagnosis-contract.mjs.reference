@@ -1,0 +1,30 @@
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+import { GENERATOR_DIAGNOSIS_EXPERIMENT_MODE } from './oha-load-contract.mjs';
+
+export const GENERATOR_DIAGNOSIS_TOPOLOGIES = Object.freeze([
+    Object.freeze({ nodeCount: 1, processesPerNode: 1 }),
+    Object.freeze({ nodeCount: 1, processesPerNode: 2 }),
+    Object.freeze({ nodeCount: 1, processesPerNode: 4 }),
+    Object.freeze({ nodeCount: 2, processesPerNode: 1 }),
+    Object.freeze({ nodeCount: 2, processesPerNode: 2 }),
+    Object.freeze({ nodeCount: 4, processesPerNode: 1 }),
+]);
+
+export function generatorDiagnosisTopologyPlan({ nodeCount, processesPerNode, targetRps }) {
+    const supported = GENERATOR_DIAGNOSIS_TOPOLOGIES.some((topology) =>
+        topology.nodeCount === nodeCount && topology.processesPerNode === processesPerNode);
+    if (!supported) throw new Error('unsupported generator-diagnosis process/node topology');
+    return oha12kNodePlan({
+        nodeCount,
+        processesPerNode,
+        targetRps,
+        experimentMode: GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    });
+}
+
+export function nextGeneratorDiagnosisTopology(current) {
+    const index = GENERATOR_DIAGNOSIS_TOPOLOGIES.findIndex((topology) =>
+        topology.nodeCount === current.nodeCount && topology.processesPerNode === current.processesPerNode);
+    if (index < 0) throw new Error('current topology is not in the qualification order');
+    return GENERATOR_DIAGNOSIS_TOPOLOGIES[index + 1] ?? null;
+}

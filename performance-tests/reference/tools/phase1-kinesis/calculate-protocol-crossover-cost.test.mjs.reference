@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+// The executable path is tested through dynamic import so arithmetic remains deterministic in the script.
+test('cost model source protects the seven-dollar cleanup reserve under the forty-dollar cap', () => {
+    const source = readFileSync(new URL('./calculate-protocol-crossover-cost.mjs', import.meta.url), 'utf8');
+	assert.match(source, /cleanupReserveUsd = 7/);
+	assert.match(source, /projectedCumulativeUpperBoundUsd \+ cleanupReserveUsd < 40/);
+	assert.match(source, /previousUpperBoundUsd < 32/);
+});

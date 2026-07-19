@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const REQUIRED_REPETITIONS = 3;
+
+export function evaluateFanoutCrossover(input) {
+    const conditions = Object.fromEntries(['a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct']
+        .map((name) => [name, summarizeCondition(input.conditions?.[name] ?? [])]));
+    const measured = (name) => conditions[name].validRepetitions >= REQUIRED_REPETITIONS;
+    const wave = (name) => measured(name) && conditions[name].reproduced > 0;
+    const stable = (name) => measured(name) && conditions[name].reproduced === 0;
+    const pattern = (...names) => names.every((name) => measured(name));
+
+    const hypotheses = {
+        H1: hypothesis('ALB backend pool/path',
+            pattern('a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct') && wave('a_oha_alb') && wave('c_reference_alb') && stable('b_oha_direct') && stable('d_reference_direct'),
+            measured('b_oha_direct') && (wave('b_oha_direct') || (measured('c_reference_alb') && stable('c_reference_alb'))),
+            ['both drivers reproduce only through ALB and backend accepts lead latency'], ['direct reproduces or reference ALB remains stable'], conditions),
+        H2: hypothesis('oha load-driver limitation',
+            pattern('a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct') && wave('a_oha_alb') && wave('b_oha_direct') && stable('c_reference_alb') && stable('d_reference_direct') && input.ohaSchedulingLeads === true,
+            pattern('a_oha_alb', 'c_reference_alb') && wave('a_oha_alb') && wave('c_reference_alb'),
+            ['oha reproduces across paths, references remain stable, and oha schedule debt leads'], ['both drivers reproduce on the same path'], conditions),
+        H3: hypothesis('ALB × oha interaction',
+            pattern('a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct') && wave('a_oha_alb') && stable('b_oha_direct') && stable('c_reference_alb') && stable('d_reference_direct'),
+            measured('a_oha_alb') && (stable('a_oha_alb') || wave('b_oha_direct') || wave('c_reference_alb') || wave('d_reference_direct')),
+            ['only oha through ALB reproduces'], ['another path/driver combination reproduces'], conditions),
+        H4: hypothesis('collector accept/runtime amplification',
+            Boolean(input.collectorRuntime?.runtimeLeadSupported) && (wave('b_oha_direct') || wave('d_reference_direct')),
+            measured('b_oha_direct') && measured('d_reference_direct') && stable('b_oha_direct') && stable('d_reference_direct') && input.collectorRuntime?.abnormalityObserved === false,
+            ['direct delayed accept wave and runtime/queue evidence lead latency'], ['both direct conditions are stable without runtime abnormality'], conditions),
+        H5: bodyHypothesis(input.bodyControl),
+        H6: connectionHypothesis(input.connectionSweep),
+    };
+
+    const reproducedCount = Object.fromEntries(Object.entries(conditions).map(([name, item]) => [name, item.reproduced]));
+    const firstConnection = firstFinite(input.conditions, 'waveStartMonotonic');
+    const firstLatency = firstFinite(input.conditions, 'latencyStartMonotonic');
+    const supported = Object.entries(hypotheses).filter(([, value]) => value.verdict === 'supported').map(([name]) => name);
+    return {
+        schemaVersion: 1,
+        evaluatedAt: new Date().toISOString(),
+        requiredIndependentRepetitions: REQUIRED_REPETITIONS,
+        hypotheses,
+        crossoverMatrix: conditions,
+        delayedWaveReproductionCount: reproducedCount,
+        initialVersusDelayed: 'The first 5 seconds are excluded; only analyzer-classified delayed waves count.',
+        firstConnectionIncreaseLayer: input.firstConnectionIncreaseLayer ?? (firstConnection === null ? 'not measured' : 'collector backend accept'),
+        firstLatencyIncreaseLayer: input.firstLatencyIncreaseLayer ?? (firstLatency === null ? 'not measured' : 'ALB target/TTFB'),
+        connectionToLatencyLeadMs: finiteValues(input.conditions, 'connectionLeadMs'),
+        ohaScheduleDebtCatchup: input.ohaScheduleDebtCatchup ?? 'not measured',
+        referenceScheduleAccuracy: Object.fromEntries(Object.entries(conditions).filter(([name]) => name.includes('reference')).map(([name, item]) => [name, item.referenceAccuracy])),
+        albDirectDifference: comparePairs(conditions, 'a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct'),
+        ohaReferenceDifference: comparePairs(conditions, 'a_oha_alb', 'c_reference_alb', 'b_oha_direct', 'd_reference_direct'),
+        backendRequestsPerConnection: input.backendRequestsPerConnection ?? 'not measured',
+        closeReopenRate: input.closeReopenRate ?? 'not measured',
+        churnSupported: input.churnSupported ?? false,
+        sourceFrontendTargetSkew: input.sourceFrontendTargetSkew ?? 'not measured',
+        smallestReproductionCondition: input.smallestReproductionCondition ?? inferSmallestReproduction(conditions),
+        smallestMitigationCondition: input.smallestMitigationCondition ?? inferMitigation(input.connectionSweep),
+        unresolved: Object.entries(hypotheses).filter(([, value]) => value.verdict === 'inconclusive').map(([name]) => name),
+        productionChangeRecommendation: supported.length === 0 ? 'none: no causal boundary is confirmed' : 'diagnostic mitigation only until /events is validated',
+        nextPriorityExperiment: input.nextPriorityExperiment ?? nextExperiment(hypotheses, conditions),
+    };
+}
+
+function summarizeCondition(repetitions) {
+    const valid = repetitions.filter((item) => item.valid === true && item.analysis?.evidence?.evidenceGap !== true);
+    const waves = valid.filter((item) => item.analysis?.delayedConnectionFanoutWave === true);
+    const stable = valid.filter((item) => item.analysis?.delayedConnectionFanoutWave === false);
+    return {
+        attemptedRepetitions: repetitions.length,
+        validRepetitions: valid.length,
+        reproduced: waves.length,
+        notReproduced: stable.length,
+        reproducedAtLeast: waves.length,
+        notReproducedAtLeast: stable.length,
+        verdict: waves.length > 0 && stable.length > 0 ? 'intermittent-wave' : waves.length > 0 ? 'wave' :
+            valid.length >= REQUIRED_REPETITIONS ? 'stable' : 'inconclusive',
+        artifacts: valid.flatMap((item) => [item.stageArtifact, item.analysisArtifact].filter(Boolean)),
+        waveStartSeconds: waves.map((item) => item.analysis.waveStartMonotonic).filter(Number.isFinite),
+        latencyStartSeconds: waves.map((item) => item.analysis.latencyStartMonotonic).filter(Number.isFinite),
+        connectionLeadMs: waves.map((item) => item.analysis.connectionLeadMs).filter(Number.isFinite),
+        referenceAccuracy: valid.map((item) => item.referenceAccuracy).filter(Boolean),
+    };
+}
+
+function hypothesis(name, supported, falsified, positive, falsification, matrix) {
+    const verdict = supported ? 'supported' : falsified ? 'not-supported' : 'inconclusive';
+    return { name, verdict, positiveEvidenceCondition: positive, falsificationCondition: falsification,
+        supportingArtifacts: verdict === 'supported' ? allArtifacts(matrix) : [], falsifyingArtifacts: verdict === 'not-supported' ? allArtifacts(matrix) : [],
+        unmeasured: verdict === 'inconclusive' ? ['three valid independent repetitions of the discriminating boundary are not complete'] : [] };
+}
+
+function bodyHypothesis(body) {
+    if (!body?.measured) return { name: 'body upload/streaming', verdict: 'inconclusive', positiveEvidenceCondition: ['actual fails and minimal body succeeds with body-write lead'], falsificationCondition: ['both bodies behave equivalently'], supportingArtifacts: [], falsifyingArtifacts: [], unmeasured: ['conditional body control not measured'] };
+    return { name: 'body upload/streaming', verdict: body.supported ? 'supported' : 'not-supported', positiveEvidenceCondition: ['actual fails and minimal body succeeds with body-write lead'], falsificationCondition: ['both bodies behave equivalently'], supportingArtifacts: body.supported ? body.artifacts ?? [] : [], falsifyingArtifacts: body.supported ? [] : body.artifacts ?? [], unmeasured: [] };
+}
+
+function connectionHypothesis(sweep) {
+    if (!sweep?.measured) return { name: 'excessive connection count', verdict: 'inconclusive', positiveEvidenceCondition: ['lower count removes wave while schedule≥99%, achieved≥95%, error<1%'], falsificationCondition: ['3k, 6k, and 12k reproduce'], supportingArtifacts: [], falsifyingArtifacts: [], unmeasured: ['conditional connection sweep not measured'] };
+    const validMitigation = sweep.boundaryRepeated >= REQUIRED_REPETITIONS && sweep.scheduleAccuracy >= 0.99 && sweep.achievedRatio >= 0.95 && sweep.transportErrorRate < 0.01 && sweep.waveRemoved;
+    const falsified = sweep.counts?.every((item) => item.reproducedAtLeast >= REQUIRED_REPETITIONS);
+    return { name: 'excessive connection count', verdict: validMitigation ? 'supported' : falsified ? 'not-supported' : 'inconclusive', positiveEvidenceCondition: ['lower count removes wave at valid offered load'], falsificationCondition: ['all counts reproduce'], supportingArtifacts: validMitigation ? sweep.artifacts ?? [] : [], falsifyingArtifacts: falsified ? sweep.artifacts ?? [] : [], unmeasured: validMitigation || falsified ? [] : ['repeatable valid connection boundary incomplete'] };
+}
+
+function allArtifacts(matrix) { return [...new Set(Object.values(matrix).flatMap((item) => item.artifacts))]; }
+function finiteValues(conditions, field) { return Object.fromEntries(Object.entries(conditions ?? {}).map(([name, reps]) => [name, reps.map((item) => item.analysis?.[field]).filter(Number.isFinite)])); }
+function firstFinite(conditions, field) { const values = Object.values(finiteValues(conditions, field)).flat(); return values.length ? Math.min(...values) : null; }
+function comparePairs(matrix, firstA, firstB, secondA, secondB) { return { [firstA + '_vs_' + firstB]: [matrix[firstA].verdict, matrix[firstB].verdict], [secondA + '_vs_' + secondB]: [matrix[secondA].verdict, matrix[secondB].verdict] }; }
+function inferSmallestReproduction(matrix) { return Object.entries(matrix).find(([, item]) => item.verdict === 'wave')?.[0] ?? 'not established'; }
+function inferMitigation(sweep) { return sweep?.measured && sweep.waveRemoved ? `${sweep.mitigationConnections} connections (diagnostic control only)` : 'not established'; }
+function nextExperiment(h, matrix) { if (matrix.a_oha_alb.verdict === 'inconclusive') return 'Repeat oha→ALB only until three valid wave/non-wave observations.'; if (h.H3.verdict === 'inconclusive') return 'Complete only the missing 2×2 discriminating boundary.'; if (h.H6.verdict === 'inconclusive') return 'Run the conditional 12k→6k→3k connection boundary on the identified failing path.'; return 'Validate the diagnostic mitigation on /events before a production recommendation.'; }
+
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+if (process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === fileURLToPath(import.meta.url)) {
+    const inputPath = option('--input');
+    const outputPath = option('--output');
+    if (!inputPath || !outputPath) throw new Error('--input and --output are required');
+    const result = evaluateFanoutCrossover(JSON.parse(readFileSync(inputPath, 'utf8')));
+    writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify({ output: outputPath, hypotheses: Object.fromEntries(Object.entries(result.hypotheses).map(([name, item]) => [name, item.verdict])) }, null, 2)}\n`);
+}

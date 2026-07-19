@@ -1,0 +1,41 @@
+{
+  "awsRequests": 0,
+  "checks": {
+    "attempt17PerformanceEvidence": true,
+    "attempt23Archive15M": true,
+    "attempt23CleanupRecoveredZero": true,
+    "attempt23FunctionalStages": true,
+    "attemptHashChainUnchangedAfterPromotion": true,
+    "documentsHashBound": true,
+    "finalizationCommitArtifactsExact": true,
+    "finalizationCommitIsAncestor": true,
+    "focusedUnpaidEvidenceBound": true,
+    "globalRunOwnedInventoryZero": true,
+    "handoffSelfHash": true,
+    "historicalVerdictsPreserved": true,
+    "ledgerHashChain": true,
+    "manifestSelfHash": true,
+    "phase5Skipped": true,
+    "phase8PaidAwsUpperBoundZero": true,
+    "postPromotionCostResetAuthorized": true,
+    "prePromotionLedgerCommitAnchor": true,
+    "promotedBudgetFailClosed": true,
+    "promotedLedgerState": true,
+    "promotionArtifactHashes": true,
+    "promotionOnlyChangedCampaignControlState": true,
+    "sourceClosureRevalidated": true
+  },
+  "handoffSha256": "d66409b2a02e9c77332ec12dff6925f988a7f2a3a1ae6777a24d6a30c98d264c",
+  "manifestSha256": "1eb564874428d1ac347d858df6160d053ebbc93eae17ab1b596fb855cb4c2c50",
+  "paidAwsExperiment": false,
+  "passed": true,
+  "promotion": {
+    "currentLedgerFileSha256": "1bf6dfef7c48eb9fa97a1bcf08412d828fcc37b6898da83734f83be6f063e29b",
+    "finalizationCommit": "f49093adf4b2adb1b1a65056fb70b4f277b2106e",
+    "prePromotionLedgerFileSha256": "60f67ef617f0067cdf88b934bacd813fe999ae71533f0a89f4467d91a06bf8e1",
+    "promotionMode": "composite-cleanup-recovered-user-authorized"
+  },
+  "recordType": "phase8-post-promotion-verification",
+  "schemaVersion": 1,
+  "verifiedAt": "2026-07-19T18:42:33.272Z"
+}

@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: '.env', quiet: true });
+
+const REGION = 'ap-northeast-2';
+const experimentMode = optionValue('--experiment-mode') ?? 'comparison';
+if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode)) throw new Error('invalid experiment mode');
+const pathEvidenceMode = ['tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode);
+const capacityMode = experimentMode !== 'comparison';
+const STACK_NAME = experimentMode === 'capacity-oha12k' ? 'LoopAdPerfPhase1KinesisCapacityOha12kStack'
+    : experimentMode === 'protocol-crossover' ? 'LoopAdPerfPhase1KinesisProtocolCrossoverStack'
+    : experimentMode === 'connection-path-crossover' ? 'LoopAdPerfPhase1KinesisConnectionPathStack'
+    : experimentMode === 'admission-scaleout-capacity' ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack'
+    : experimentMode === 'tcp-alb-path-diagnosis' ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack'
+    : experimentMode === 'generator-diagnosis' ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStack'
+    : experimentMode === 'scout' ? 'LoopAdPerfPhase1KinesisCapacityScoutStack'
+    : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStack' : 'LoopAdPerfPhase1KinesisStack';
+const STREAM_STACK_NAME = experimentMode === 'capacity-oha12k' ? 'LoopAdPerfPhase1KinesisCapacityOha12kStreamStack'
+    : experimentMode === 'protocol-crossover' ? 'LoopAdPerfPhase1KinesisProtocolCrossoverStreamStack'
+    : experimentMode === 'connection-path-crossover' ? 'LoopAdPerfPhase1KinesisConnectionPathStreamStack'
+    : experimentMode === 'admission-scaleout-capacity' ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStreamStack'
+    : experimentMode === 'tcp-alb-path-diagnosis' ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStreamStack'
+    : experimentMode === 'generator-diagnosis' ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStreamStack'
+    : experimentMode === 'scout' ? 'LoopAdPerfPhase1KinesisCapacityScoutStreamStack'
+    : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStreamStack' : 'LoopAdPerfPhase1KinesisStreamStack';
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const outputPath = requiredOption('--output');
+const stackResourcesPath = optionValue('--stack-resources-before-destroy');
+const cleanOwnedLambdaLogs = process.argv.includes('--clean-owned-lambda-logs');
+const retainSharedStream = process.argv.includes('--retain-shared-stream');
+const certificateArn = optionValue('--certificate-arn');
+const protocolTlsSecretArn = optionValue('--protocol-tls-secret-arn');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+const sessionPattern = experimentMode === 'admission-scaleout-capacity'
+    ? /^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'connection-path-crossover'
+    ? /^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'protocol-crossover'
+    ? /^phase1-kinesis-protocol-crossover-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'tcp-alb-path-diagnosis'
+    ? /^phase1-kinesis-tcp-alb-path-diagnosis-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'generator-diagnosis'
+    ? /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'capacity-oha12k'
+    ? /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'scout'
+    ? /^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'capacity' ? /^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/ : /^phase1-compare-[0-9]{8}-[0-9]{6}z$/;
+if (!sessionPattern.test(sessionId)) throw new Error('invalid session ID');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+
+const expectedAccount = process.env.CDK_DEFAULT_ACCOUNT;
+const identity = awsJson(['sts', 'get-caller-identity']);
+if (!expectedAccount || identity.Account !== expectedAccount || process.env.LOOP_AD_REGION !== REGION) {
+    throw new Error('cleanup identity or region does not match repo configuration');
+}
+
+const removedLambdaLogGroups = [];
+const stackResources = stackResourcesPath && existsSync(stackResourcesPath)
+    ? readStackResources(stackResourcesPath)
+    : [];
+if (stackResourcesPath && existsSync(stackResourcesPath)) {
+    const lambdaNames = stackResources
+        .filter((resource) => resource.ResourceType === 'AWS::Lambda::Function')
+        .map((resource) => resource.PhysicalResourceId)
+        .filter(Boolean);
+    for (const functionName of lambdaNames) {
+        const logGroupName = `/aws/lambda/${functionName}`;
+        if (exactLogGroupExists(logGroupName) && cleanOwnedLambdaLogs) {
+            execFileSync('aws', ['logs', 'delete-log-group', '--region', REGION, '--log-group-name', logGroupName, '--no-cli-pager']);
+            removedLambdaLogGroups.push(logGroupName);
+        }
+    }
+}
+
+const activeInstances = awsJson([
+    'ec2', 'describe-instances', '--region', REGION,
+    '--filters',
+    `Name=tag:${capacityMode ? 'SessionId' : 'RunId'},Values=${capacityMode ? sessionId : runId}`,
+    'Name=tag:Environment,Values=perf-phase1-kinesis',
+    'Name=instance-state-name,Values=pending,running,shutting-down,stopping,stopped',
+    '--query', 'Reservations[].Instances[].{instanceId:InstanceId,state:State.Name}',
+]);
+const asgs = awsJson([
+    'autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+    '--auto-scaling-group-names', 'perf-phase1-loop-ad-collector', 'perf-phase1-loop-ad-load-generator',
+    'perf-phase1-loop-ad-load-generator-2a', 'perf-phase1-loop-ad-load-generator-2c',
+    'perf-p1-conn-proxy-2a', 'perf-p1-conn-proxy-2c',
+]).AutoScalingGroups;
+const vpcs = awsJson([
+    'ec2', 'describe-vpcs', '--region', REGION,
+    '--filters', 'Name=tag:Name,Values=perf-phase1-loop-ad-vpc',
+    `Name=tag:${capacityMode ? 'SessionId' : 'RunId'},Values=${capacityMode ? sessionId : runId}`,
+]).Vpcs;
+const clusters = awsJson(['ecs', 'describe-clusters', '--region', REGION, '--clusters', 'perf-phase1-loop-ad-collector-cluster', 'perf-p1-conn-proxy']).clusters ?? [];
+const activeProxyTaskDefinitions = experimentMode === 'connection-path-crossover'
+    ? awsJson(['ecs', 'list-task-definitions', '--region', REGION, '--family-prefix', 'perf-p1-conn-proxy', '--status', 'ACTIVE']).taskDefinitionArns ?? []
+    : [];
+const launchTemplates = awsJson([
+    'ec2', 'describe-launch-templates', '--region', REGION,
+    '--filters', `Name=tag:${capacityMode ? 'SessionId' : 'RunId'},Values=${capacityMode ? sessionId : runId}`,
+]).LaunchTemplates ?? [];
+const monitoringAlarms = awsJson([
+    'cloudwatch', 'describe-alarms', '--region', REGION,
+    '--alarm-name-prefix', 'perf-phase1-loop-ad',
+]).MetricAlarms ?? [];
+const generatorDiagnosisLambdaLogGroups = experimentMode === 'generator-diagnosis'
+    ? (awsJson(['logs', 'describe-log-groups', '--region', REGION,
+        '--log-group-name-prefix', '/aws/lambda/LoopAdPerfPhase1Kinesis']).logGroups ?? [])
+        .filter((group) => group.logGroupName?.includes('GeneratorDiagnosis'))
+    : [];
+const sessionCandidateImages = ['generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode)
+    ? (awsJson(['ecr', 'list-images', '--region', REGION, '--repository-name', 'loop-ad/event-collector',
+        '--filter', 'tagStatus=TAGGED']).imageIds ?? [])
+        .filter((image) => image.imageTag?.startsWith(`${sessionId}-`))
+    : [];
+const roles = [
+    'loop-ad-perf-phase1-collector-instance',
+    'loop-ad-perf-phase1-collector-task',
+    'loop-ad-perf-phase1-collector-execution',
+    'loop-ad-perf-phase1-load-generator-instance',
+    'loop-ad-perf-phase1-connection-path-proxy',
+];
+const connectionPathNamespaces = experimentMode === 'connection-path-crossover'
+    ? (awsJson(['servicediscovery', 'list-namespaces', '--region', REGION]).Namespaces ?? []).filter((namespace) => namespace.Name === 'connection-path.internal')
+    : [];
+const ownedFlowLogs = pathEvidenceMode
+    ? (awsJson(['ec2', 'describe-flow-logs', '--region', REGION,
+        '--filter', `Name=tag:SessionId,Values=${sessionId}`]).FlowLogs ?? [])
+    : [];
+const evidenceBucketNames = stackResources
+    .filter((resource) => resource.ResourceType === 'AWS::S3::Bucket')
+    .map((resource) => resource.PhysicalResourceId)
+    .filter(Boolean);
+const streamStack = awsJsonOrNotFound(
+    ['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', STREAM_STACK_NAME],
+    ['does not exist'],
+);
+const streamSummary = awsJsonOrNotFound(
+    ['kinesis', 'describe-stream-summary', '--region', REGION, '--stream-name', 'perf-phase1-loop-ad-events'],
+    ['ResourceNotFoundException'],
+)?.StreamDescriptionSummary;
+const streamTags = streamSummary
+    ? awsJson(['kinesis', 'list-tags-for-stream', '--region', REGION, '--stream-name', 'perf-phase1-loop-ad-events']).Tags ?? []
+    : [];
+const sharedStreamOwnedAndHealthy = Boolean(
+    streamSummary?.StreamStatus === 'ACTIVE' &&
+    streamSummary.OpenShardCount === 80 &&
+    streamSummary.RetentionPeriodHours === 24 &&
+    tagsMatch(streamTags, {
+        Project: 'loop-ad',
+        Environment: 'perf-phase1-kinesis',
+        ResourceScope: 'shared-test-session',
+        ComparisonSessionId: sessionId,
+        ...(capacityMode ? {
+            SessionId: sessionId,
+            RunId: sessionId,
+            Phase: experimentMode === 'scout' ? 'phase1-capacity-scout'
+                : experimentMode === 'capacity-oha12k' ? 'phase1-capacity-oha12k'
+                : experimentMode === 'tcp-alb-path-diagnosis' ? 'phase1-tcp-alb-path-diagnosis'
+                : experimentMode === 'admission-scaleout-capacity' ? 'phase1-admission-scaleout-capacity'
+                : experimentMode === 'protocol-crossover' ? 'phase1-protocol-crossover'
+                : experimentMode === 'connection-path-crossover' ? 'phase1-connection-path-crossover'
+                : experimentMode === 'generator-diagnosis' ? 'phase1-generator-diagnosis' : 'phase1-capacity',
+            ManagedBy: 'codex',
+            Owner: 'loop-ad',
+        } : {}),
+    }),
+);
+const checks = {
+    stackAbsent: !awsJsonOrNotFound(
+        ['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', STACK_NAME],
+        ['does not exist'],
+    ),
+    sharedStreamLifecycleCorrect: retainSharedStream
+        ? Boolean(streamStack?.Stacks?.[0]?.StackStatus === 'CREATE_COMPLETE' && sharedStreamOwnedAndHealthy)
+        : !streamStack && !streamSummary,
+    autoScalingGroupsAbsent: asgs.length === 0,
+    launchTemplatesAbsent: launchTemplates.length === 0,
+    activeEc2InstancesAbsent: activeInstances.length === 0,
+    loadBalancerAbsent: ['perf-phase1-loop-ad-alb', 'perf-p1-conn-alb'].every((name) => !awsJsonOrNotFound(
+        ['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name], ['LoadBalancerNotFound'],
+    )),
+    networkLoadBalancerAbsent: ['perf-p1-protocol-n2', 'perf-p1-protocol-n3', 'perf-p1-conn-direct', 'perf-p1-conn-proxy'].every((name) => !awsJsonOrNotFound(
+        ['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name],
+        ['LoadBalancerNotFound'],
+    )),
+    targetGroupAbsent: ['perf-phase1-loop-ad-collector', 'perf-p1-protocol-http1', 'perf-p1-protocol-http2', 'perf-p1-conn-alb-h2'].every((name) => !awsJsonOrNotFound(
+        ['elbv2', 'describe-target-groups', '--region', REGION, '--names', name],
+        ['TargetGroupNotFound'],
+    )),
+    networkTargetGroupAbsent: ['perf-p1-protocol-tcp', 'perf-p1-protocol-quic', 'perf-p1-conn-direct', 'perf-p1-conn-proxy'].every((name) => !awsJsonOrNotFound(
+        ['elbv2', 'describe-target-groups', '--region', REGION, '--names', name],
+        ['TargetGroupNotFound'],
+    )),
+    vpcAbsent: vpcs.length === 0,
+    ecsClusterInactive: clusters.length === 0 || clusters.every((cluster) => cluster.status === 'INACTIVE'),
+    collectorLogGroupAbsent: !exactLogGroupExists('/loop-ad/perf-phase1/event-collector'),
+    proxyLogGroupAbsent: experimentMode !== 'connection-path-crossover' || !exactLogGroupExists('/loop-ad/perf-phase1/connection-path/haproxy'),
+    activeProxyTaskDefinitionsAbsent: activeProxyTaskDefinitions.length === 0,
+    diagnosticFlowLogGroupAbsent: !pathEvidenceMode || !exactLogGroupExists(`/loop-ad/perf-phase1/tcp-alb-path/${runId}/vpc-flow`),
+    diagnosticFlowLogsAbsent: ownedFlowLogs.length === 0,
+    connectionPathCloudMapAbsent: connectionPathNamespaces.length === 0,
+    evidenceBucketsAbsent: evidenceBucketNames.every(bucketAbsent),
+    ownedMonitoringAlarmsAbsent: monitoringAlarms.length === 0,
+    generatorDiagnosisLambdaLogGroupsAbsent: generatorDiagnosisLambdaLogGroups.length === 0,
+    namedIamRolesAbsent: roles.every((roleName) => !awsJsonOrNotFound(['iam', 'get-role', '--role-name', roleName], ['NoSuchEntity'])),
+    ownedLambdaLogGroupsAbsent: stackResourcesPath ? ownedLambdaLogGroupsAbsent(stackResourcesPath) : true,
+    sessionCandidateImageTagsAbsent: !['generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode) || retainSharedStream || sessionCandidateImages.length === 0,
+    runCertificateAbsent: !certificateArn || !awsJsonOrNotFound(
+        ['acm', 'describe-certificate', '--region', REGION, '--certificate-arn', certificateArn],
+        ['ResourceNotFoundException'],
+    ),
+	runProtocolTlsSecretAbsent: !protocolTlsSecretArn || !awsJsonOrNotFound(
+		['secretsmanager', 'describe-secret', '--region', REGION, '--secret-id', protocolTlsSecretArn],
+		['ResourceNotFoundException'],
+	),
+};
+const result = {
+    verifiedAt: new Date().toISOString(),
+    experimentMode,
+    region: REGION,
+    runId,
+    sessionId,
+    candidate,
+    stackName: STACK_NAME,
+    sharedStreamStackName: STREAM_STACK_NAME,
+    retainSharedStream,
+    sharedStream: {
+        exists: Boolean(streamSummary),
+        status: streamSummary?.StreamStatus ?? null,
+        openShardCount: streamSummary?.OpenShardCount ?? null,
+        retentionPeriodHours: streamSummary?.RetentionPeriodHours ?? null,
+        ownedAndHealthy: sharedStreamOwnedAndHealthy,
+    },
+    activeInstances,
+    clusters,
+    activeProxyTaskDefinitions,
+    launchTemplates,
+    monitoringAlarms,
+    generatorDiagnosisLambdaLogGroups,
+    sessionCandidateImages,
+    certificateArn: certificateArn ?? null,
+	protocolTlsSecretArn: protocolTlsSecretArn ?? null,
+    ownedFlowLogs,
+    evidenceBucketNames,
+    removedOwnedLambdaLogGroups: removedLambdaLogGroups,
+    collectorImagePolicy: 'phase1 image tag intentionally retained between runs and deleted once at goal cleanup',
+    checks,
+    passed: Object.values(checks).every(Boolean),
+};
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function ownedLambdaLogGroupsAbsent(path) {
+    const resources = readStackResources(path);
+    return resources
+        .filter((resource) => resource.ResourceType === 'AWS::Lambda::Function')
+        .every((resource) => !exactLogGroupExists(`/aws/lambda/${resource.PhysicalResourceId}`));
+}
+
+function readStackResources(path) {
+    const document = JSON.parse(readFileSync(path, 'utf8'));
+    const resources = document.StackResourceSummaries
+        ?? document.stacks?.[STACK_NAME]?.StackResourceSummaries;
+    if (!Array.isArray(resources)) {
+        throw new Error(`cleanup inventory does not contain resources for ${STACK_NAME}`);
+    }
+    return resources;
+}
+
+function exactLogGroupExists(name) {
+    const groups = awsJson(['logs', 'describe-log-groups', '--region', REGION, '--log-group-name-prefix', name]).logGroups ?? [];
+    return groups.some((group) => group.logGroupName === name);
+}
+
+function bucketAbsent(name) {
+    const result = spawnSync('aws', ['s3api', 'head-bucket', '--region', REGION, '--bucket', name, '--no-cli-pager'], { encoding: 'utf8' });
+    if (result.status === 0) return false;
+    const errorText = `${result.stdout}\n${result.stderr}`;
+    if (/Not Found|404|NoSuchBucket/.test(errorText)) return true;
+    throw new Error(`AWS cleanup verification failed closed for S3 bucket ${name}: ${result.stderr.trim()}`);
+}
+
+function tagsMatch(tags, expected) {
+    const tagMap = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value]));
+    return Object.entries(expected).every(([key, value]) => tagMap[key] === value);
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function awsJsonOrNotFound(args, notFoundPatterns) {
+    const result = spawnSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' });
+    if (result.status === 0) return JSON.parse(result.stdout);
+    const errorText = `${result.stdout}\n${result.stderr}`;
+    if (notFoundPatterns.some((pattern) => errorText.includes(pattern))) return undefined;
+    throw new Error(`AWS cleanup verification failed closed: aws ${args.join(' ')}\n${result.stderr.trim()}`);
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}

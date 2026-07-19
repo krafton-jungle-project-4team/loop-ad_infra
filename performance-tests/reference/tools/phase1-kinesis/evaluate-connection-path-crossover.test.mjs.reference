@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateConnectionPathCrossover } from './evaluate-connection-path-crossover.mjs';
+
+function repetition(overrides = {}) {
+    return {
+        repetition: 1, httpVersion: '2', http1Fallbacks: 0, physicalConnectionFraction: 1,
+        telemetryEvidenceGaps: 0, offeredAccuracy: 1, achievedRps: 30_000, achievedFraction: 1,
+        transportErrorFraction: 0, unexpectedStatusFraction: 0, targetP95Ms: 100,
+        queueOutstandingStable: true, kinesisThrottleOrFailure: 0, taskRestartOomFatal: 0,
+        artifact: 'stages/example', ...overrides,
+    };
+}
+function three(value) { return [1, 2, 3].map((repetitionNumber) => ({ ...value, repetition: repetitionNumber })); }
+
+test('selects NLB direct and rejects unnecessary HAProxy when ALB fails and T2 passes', () => {
+    const pass = repetition();
+    const fail = repetition({ achievedRps: 20_000, achievedFraction: .66, transportErrorFraction: .05, targetP95Ms: 900 });
+    const result = evaluateConnectionPathCrossover({
+        T0: three(pass), T1: three(fail), T2: three(pass), T3: [],
+        diagnostics: { albAssignment: { backendMultiplexingOrAssignment: true } },
+    });
+    assert.equal(result.topology30k.T1.passRepetitions, 0);
+    assert.equal(result.topology30k.T2.passRepetitions, 3);
+    assert.equal(result.hypotheses.H7.verdict, 'supported');
+    assert.equal(result.smallestSuccessfulTopology, 'T2');
+    assert.match(result.productionRecommendation, /HAProxy is not required/);
+    assert.equal(result.capacity50k.promotionEligible, true);
+});
+
+test('supports HAProxy redistribution only on a complete T2 fail T3 pass crossover', () => {
+    const pass = repetition();
+    const fail = repetition({ achievedFraction: .8, transportErrorFraction: .02, targetP95Ms: 700 });
+    const result = evaluateConnectionPathCrossover({ T0: three(pass), T1: three(fail), T2: three(fail), T3: three(pass) });
+    assert.equal(result.hypotheses.H8.verdict, 'supported');
+    assert.equal(result.smallestSuccessfulTopology, 'T3');
+    assert.match(result.productionRecommendation, /causal crossover/);
+});
+
+test('excludes protocol fallback or missing evidence instead of treating it as failure', () => {
+    const result = evaluateConnectionPathCrossover({
+        T1: three(repetition({ http1Fallbacks: 1 })),
+        T2: three(repetition({ telemetryEvidenceGaps: 1 })),
+    });
+    assert.equal(result.topology30k.T1.validRepetitions, 0);
+    assert.equal(result.topology30k.T2.validRepetitions, 0);
+    assert.equal(result.hypotheses.H1.verdict, 'inconclusive');
+    assert.equal(result.capacity50k.promotionEligible, false);
+});
+
+test('requires strict p95, status, queue, Kinesis, and runtime success in every repetition', () => {
+    for (const override of [
+        { targetP95Ms: 500 }, { unexpectedStatusFraction: .0011 }, { queueOutstandingStable: false },
+        { kinesisThrottleOrFailure: 1 }, { taskRestartOomFatal: 1 },
+    ]) {
+        const result = evaluateConnectionPathCrossover({ T1: three(repetition(override)) });
+        assert.equal(result.topology30k.T1.passRepetitions, 0);
+    }
+});
+
+test('retains qualification status and evidence indexes in the final evaluator output', () => {
+    const result = evaluateConnectionPathCrossover({
+        measurementStatus: 'incomplete',
+        topologyQualification: { T2: { verdict: 'blocked', reason: 'TLS probe failed' } },
+        supportingArtifacts: { T1: ['stages/t1/stage-summary.json'] },
+        hypothesisArtifacts: { H1: { supporting: [], falsifying: [] } },
+    });
+    assert.equal(result.measurementStatus, 'incomplete');
+    assert.equal(result.topologyQualification.T2.verdict, 'blocked');
+    assert.deepEqual(result.supportingArtifacts.T1, ['stages/t1/stage-summary.json']);
+    assert.deepEqual(result.hypothesisArtifacts.H1, { supporting: [], falsifying: [] });
+});

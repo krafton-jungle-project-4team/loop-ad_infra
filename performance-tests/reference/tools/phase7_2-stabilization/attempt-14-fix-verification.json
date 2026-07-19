@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 14,
+  "runId": "run_20260718_210703_phase7_integration",
+  "sessionId": "phase7-integration-20260718T210703Z",
+  "generatedAt": "2026-07-18T22:28:00Z",
+  "evidenceCommit": "adc21d1d8a517d474a3e4105f0cfe775454bf868",
+  "fixCommit": "112d4c03cfcd90192fd7b0a1fa55e77949d01ef9",
+  "failure": {
+    "firstFailingGate": "warmup",
+    "observedDnsName": "perf-p1-conn-proxy-60718210703-381db1c0bfbf645a.elb.ap-northeast-2.amazonaws.com",
+    "liveVerifiedScheme": "internal",
+    "trafficStarted": false
+  },
+  "fix": {
+    "path": "performance-tests/phase1-kinesis/connection-path-destination.mjs",
+    "change": "The Phase 7-only hostname-shape regex accepts the AWS-emitted optional internal- prefix while preserving the proxy-only name, exact 11-digit run stamp, nonempty lowercase hash, Seoul ELB suffix and exact hostname rules.",
+    "authoritativeBoundaryPreserved": "runtime_stages.py continues to require an exact live ELBv2 DNS inventory match, expected session-derived load-balancer name, Scheme=internal, Type=network, active state, exact VPC/security group/tags, TLS/HTTP2 listener and healthy targets before runner sequencing permits warmup.",
+    "genericValidatorNotSubstituted": true
+  },
+  "tests": {
+    "focusedConnectionPath": {
+      "tests": 59,
+      "passed": 59
+    },
+    "focusedDiagnostic": {
+      "tests": 10,
+      "passed": 10
+    },
+    "focusedDeploymentVerifier": {
+      "tests": 13,
+      "passed": 13
+    },
+    "phase7Jest": {
+      "tests": 14,
+      "passed": 14
+    },
+    "phase7Node": {
+      "tests": 27,
+      "passed": 27
+    },
+    "phase7Python": {
+      "tests": 140,
+      "passed": 140
+    },
+    "typescriptBuild": "passed"
+  },
+  "synth": {
+    "exactContext": true,
+    "awsRequests": 0,
+    "templateSha256": "99f5ecbf9167d2c8ad8460cac0a164e4cd2eb0843b20282eda20e1e59f13673c",
+    "matchesAttempt14FrozenTemplate": true,
+    "decodedUserDataRegressionPassed": true,
+    "loadGeneratorDecodedUpperBoundBytes": 15224,
+    "loadGeneratorMarginLimitBytes": 15360,
+    "ec2DecodedLimitBytes": 16384,
+    "templateValidatorPassed": true,
+    "taskDefinitionsChecked": 5,
+    "schemaGuardRetries": 10
+  },
+  "cfnLint": {
+    "version": "1.53.0",
+    "rawExitCode": 6,
+    "acceptedE1022": 8,
+    "acceptedW3005": 3,
+    "unexpectedFindings": 0,
+    "passed": true
+  },
+  "evidence": {
+    "commands": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-14-fix-validation/commands.md",
+      "sha256": "d05c3768670bea4e03a545116fe357cdd8ee0cce7b8a1d7dc7aec31811197162"
+    },
+    "synth": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-14-fix-validation/synth-summary.json",
+      "sha256": "f14c701908d3d2623406f9cc7604597d166b49a54e9e8b420acb562c9d960263"
+    },
+    "templateValidator": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-14-fix-validation/template-validator.json",
+      "sha256": "0e38045a0255d02d26f22bf968ed743699591f525be5fdd20c6f146ed3a59e4d"
+    },
+    "cfnLint": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-14-fix-validation/cfn-lint-summary.json",
+      "sha256": "1adabb349a6322d6db3a34f72f45030f0deb8d61b522fdc0996c21366fa361b2"
+    }
+  },
+  "status": "passed",
+  "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+  "newAwsWorkAuthorized": false,
+  "phase5": "skipped"
+}

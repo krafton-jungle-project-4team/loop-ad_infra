@@ -1,0 +1,181 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const HARD_LIMIT_USD = 30;
+const INITIAL_PLAN_LIMIT_USD = 16;
+const DEFAULT_NEW_RUN_STOP_USD = 28;
+
+const pricesPath = requiredOption('--prices');
+const outputPath = optionValue('--output');
+const collectorCount = requiredNonNegativeInteger('--collector-count');
+const loadGeneratorCount = integerOption('--load-generator-count', 1);
+const wallSecondsUpperBound = requiredPositiveInteger('--wall-seconds-upper-bound');
+const requestsUpperBound = requiredNonNegativeInteger('--requests-upper-bound');
+const previousUpperBoundUsd = requiredNonNegativeNumber('--previous-upper-bound-usd');
+const logIngestGiBUpperBound = numberOption('--log-ingest-gib-upper-bound', 1);
+const imageStorageGiBUpperBound = numberOption('--image-storage-gib-upper-bound', 0.25);
+const cloudWatchMetricsRequestedUpperBound = integerOption('--cloudwatch-metrics-requested-upper-bound', 10_000);
+const budgetMode = optionValue('--budget-mode') ?? 'before-start';
+const experimentMode = optionValue('--experiment-mode') ?? 'comparison';
+const targetKind = optionValue('--target-kind') ?? 'collector';
+if (!['initial-plan', 'before-start', 'realtime'].includes(budgetMode)) {
+    throw new Error('--budget-mode must be initial-plan, before-start, or realtime.');
+}
+if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis', 'alb-warmup', 'tcp-alb-path-diagnosis'].includes(experimentMode)) throw new Error('unsupported --experiment-mode.');
+if (!['collector', 'fast-control'].includes(targetKind)) throw new Error('invalid --target-kind');
+if (targetKind === 'fast-control' && (experimentMode !== 'generator-diagnosis' || collectorCount !== 0)) {
+    throw new Error('fast-control requires generator-diagnosis mode and zero collectors');
+}
+if (targetKind === 'collector' && experimentMode !== 'comparison' && collectorCount !== 4) throw new Error('capacity cost model requires exactly four collectors.');
+const natGatewayUpperBoundUsd = experimentMode !== 'comparison' ? numberOption('--nat-gateway-upper-bound-usd', 0) : 0;
+const dataTransferUpperBoundUsd = experimentMode !== 'comparison' ? numberOption('--data-transfer-upper-bound-usd', 1) : 0;
+if (experimentMode === 'tcp-alb-path-diagnosis' ? loadGeneratorCount !== 4
+    : ['capacity-oha12k', 'generator-diagnosis', 'alb-warmup'].includes(experimentMode) ? ![1, 2, 4].includes(loadGeneratorCount) : loadGeneratorCount !== 1) {
+    throw new Error('invalid load generator count for experiment mode');
+}
+
+if (collectorCount < 0 || collectorCount > 17 || (targetKind === 'collector' && collectorCount < 1)) {
+    throw new Error('--collector-count is invalid for target kind.');
+}
+
+const priceDocument = JSON.parse(readFileSync(pricesPath, 'utf8'));
+const prices = priceDocument.prices;
+const billableHoursUpperBound = Math.ceil(wallSecondsUpperBound / 3_600);
+const kinesisShardHoursUpperBound = integerOption(
+    '--kinesis-shard-hours-upper-bound',
+    targetKind === 'fast-control' ? 0 : 80 * billableHoursUpperBound,
+);
+const instanceCount = collectorCount + loadGeneratorCount;
+const rootVolumeGiB = instanceCount * 30;
+const detailedMetricCount = instanceCount * 10;
+const albProcessedBytesUpperBound = requestsUpperBound * 4_096;
+const albLcuHoursUpperBound = albProcessedBytesUpperBound / 1_000_000_000;
+const kinesisPutPayloadUnitsUpperBound = targetKind === 'fast-control' ? 0 : requestsUpperBound;
+
+const components = {
+    collectorEc2: collectorCount * billableHoursUpperBound * prices.collectorInstanceHour,
+    loadGeneratorEc2: loadGeneratorCount * billableHoursUpperBound * prices.loadGeneratorInstanceHour,
+    kinesisShardHours: kinesisShardHoursUpperBound * prices.kinesisProvisionedShardHour,
+    kinesisPutPayloadUnits: kinesisPutPayloadUnitsUpperBound * prices.kinesisPutPayloadUnit,
+    albHours: billableHoursUpperBound * prices.albHour,
+    albLcu: albLcuHoursUpperBound * prices.albLcuHour,
+    ebsGp3: rootVolumeGiB * billableHoursUpperBound / 730 * prices.ebsGp3GbMonth,
+    publicIpv4: instanceCount * billableHoursUpperBound * prices.publicIpv4Hour,
+    ec2DetailedMonitoring: detailedMetricCount * billableHoursUpperBound / 730 * prices.cloudWatchMetricMonth,
+    cloudWatchLogsIngest: logIngestGiBUpperBound * prices.cloudWatchLogIngestGb,
+    cloudWatchLogsStorage: logIngestGiBUpperBound * billableHoursUpperBound / 730 * prices.cloudWatchLogStorageGbMonth,
+    cloudWatchGetMetricData: cloudWatchMetricsRequestedUpperBound * prices.cloudWatchGetMetricDataMetric,
+    ecrStorage: imageStorageGiBUpperBound * billableHoursUpperBound / 730 * prices.ecrStorageGbMonth,
+    costExplorerApi: priceDocument.fixedApiUpperBounds.costExplorerRequestUsd,
+    ...(experimentMode !== 'comparison' ? {
+        natGateway: natGatewayUpperBoundUsd,
+        dataTransfer: dataTransferUpperBoundUsd,
+    } : {}),
+};
+const runUpperBoundUsd = Object.values(components).reduce((sum, value) => sum + value, 0);
+const projectedCumulativeUpperBoundUsd = previousUpperBoundUsd + runUpperBoundUsd;
+const newRunStopUsd = experimentMode === 'tcp-alb-path-diagnosis' ? 24 : DEFAULT_NEW_RUN_STOP_USD;
+const result = {
+    calculatedAt: new Date().toISOString(),
+    priceAsOf: priceDocument.asOf,
+    currency: 'USD',
+    model: 'conservative upper bound; hourly resources rounded up to complete hours',
+    inputs: {
+        collectorCount,
+        loadGeneratorCount,
+        instanceCount,
+        wallSecondsUpperBound,
+        billableHoursUpperBound,
+        kinesisShardHoursUpperBound,
+        requestsUpperBound,
+        kinesisPutPayloadUnitsUpperBound,
+        albProcessedBytesUpperBound,
+        albLcuHoursUpperBound,
+        rootVolumeGiB,
+        detailedMetricCount,
+        logIngestGiBUpperBound,
+        imageStorageGiBUpperBound,
+        cloudWatchMetricsRequestedUpperBound,
+        previousUpperBoundUsd,
+        experimentMode,
+        targetKind,
+        natGatewayUpperBoundUsd,
+        dataTransferUpperBoundUsd,
+    },
+    components,
+    runUpperBoundUsd,
+    projectedCumulativeUpperBoundUsd,
+    budget: {
+        hardLimitUsd: HARD_LIMIT_USD,
+        initialPlanLimitUsd: INITIAL_PLAN_LIMIT_USD,
+        newRunStopUsd,
+        mode: budgetMode,
+        initialPlanAccepted: budgetMode !== 'initial-plan' || projectedCumulativeUpperBoundUsd <= INITIAL_PLAN_LIMIT_USD,
+        belowNewRunStop: previousUpperBoundUsd < newRunStopUsd,
+        belowHardLimit: projectedCumulativeUpperBoundUsd < HARD_LIMIT_USD,
+        mayStart: projectedCumulativeUpperBoundUsd < HARD_LIMIT_USD &&
+            previousUpperBoundUsd < newRunStopUsd &&
+            (budgetMode !== 'initial-plan' || projectedCumulativeUpperBoundUsd <= INITIAL_PLAN_LIMIT_USD),
+    },
+};
+
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) {
+    writeFileSync(outputPath, serialized, 'utf8');
+}
+process.stdout.write(serialized);
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) {
+        throw new Error(`${name} is required.`);
+    }
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function requiredNonNegativeInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value) || value < 0) {
+        throw new Error(`${name} must be a non-negative integer.`);
+    }
+    return value;
+}
+
+function requiredPositiveInteger(name) {
+    const value = requiredNonNegativeInteger(name);
+    if (value < 1) {
+        throw new Error(`${name} must be positive.`);
+    }
+    return value;
+}
+
+function requiredNonNegativeNumber(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`${name} must be a non-negative number.`);
+    }
+    return value;
+}
+
+function numberOption(name, defaultValue) {
+    const raw = optionValue(name);
+    const value = raw === undefined ? defaultValue : Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`${name} must be a non-negative number.`);
+    }
+    return value;
+}
+
+function integerOption(name, defaultValue) {
+    const value = numberOption(name, defaultValue);
+    if (!Number.isInteger(value)) {
+        throw new Error(`${name} must be an integer.`);
+    }
+    return value;
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "incidentId": "incident-connection-path",
+  "symptom": "not_recorded",
+  "rootCause": "not_recorded",
+  "fix": "not_recorded",
+  "regressionResult": "run_20260715_002706_connection_path_retry:unknown",
+  "affectedRunIds": [
+    "run_20260715_002706_connection_path_retry"
+  ],
+  "period": {
+    "start": "2026-07-15T00:27:06",
+    "end": "2026-07-15T00:27:06",
+    "timezone": "not_recorded"
+  },
+  "invalidationScope": "unknown",
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceEvidence": []
+  }
+}

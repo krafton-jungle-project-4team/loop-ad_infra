@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0",
+  "asOf": "2026-07-16T19:46:49.543Z",
+  "region": "ap-northeast-2",
+  "source": "copied local fixture from Phase 4 Price List evidence; not a live lookup",
+  "pricesUsd": {
+    "clickHouseR7g2xlargeHour": 0.5168,
+    "ebsGp3GbMonth": 0.0912,
+    "ebsGp3ThroughputGibpsMonth": 46.6944,
+    "s3StandardStorageGbMonth": 0.025,
+    "s3Tier1Request": 0.0000045,
+    "s3Tier2Request": 0.00000035,
+    "vpcEndpointHour": 0.013,
+    "publicIpv4Hour": 0.005,
+    "cloudWatchLogIngestGb": 0.76
+  }
+}

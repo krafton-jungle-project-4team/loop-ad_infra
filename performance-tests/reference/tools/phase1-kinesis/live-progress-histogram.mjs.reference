@@ -1,0 +1,39 @@
+import { mergeFixedHistograms } from './merge-fixed-latency-histograms.mjs';
+
+export function aggregateLiveProgress(rows) {
+    if (rows.length !== 16) throw new Error(`expected 16 live progress rows, found ${rows.length}`);
+    const phaseIds = [...new Set(rows.map((item) => `${item.phase}:${item.phase_started_at}`))];
+    if (phaseIds.length !== 1) return { transition: true, phaseIds };
+    return {
+        transition: false,
+        phaseId: phaseIds[0],
+        histogram: mergeFixedHistograms(rows.map((item) => item.service_histogram)),
+        completed: sum(rows, 'completed_requests'),
+        http429: sum(rows, 'http_429'),
+        http5xx: sum(rows, 'http_5xx'),
+        physicalConnections: sum(rows, 'current_tcp_connections'),
+        traceDropped: sum(rows, 'trace_dropped'),
+        protocolErrors: sum(rows, 'protocol_errors'),
+        hiddenRetries: sum(rows, 'hidden_retries'),
+        elapsedSeconds: Math.min(...rows.map((item) => number(item.elapsed_seconds))),
+        plannedRps: sum(rows, 'planned_rps'),
+        targetConnections: sum(rows, 'target_physical_connections'),
+    };
+}
+
+export function liveHistogramDelta(current, previous) {
+    if (current.bucket_width_nanoseconds !== previous.bucket_width_nanoseconds || current.max_nanoseconds !== previous.max_nanoseconds || current.counts.length !== previous.counts.length) throw new Error('live histogram schema changed');
+    const counts = current.counts.map((value, index) => value - previous.counts[index]);
+    if (counts.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('live histogram counters regressed');
+    const count = counts.reduce((sum, value) => sum + value, 0);
+    const overflow = current.overflow_count - previous.overflow_count;
+    if (overflow < 0 || count !== current.count - previous.count) throw new Error('live histogram delta is inconsistent');
+    return { ...current, counts, count, overflow_count: overflow };
+}
+
+export function emptyLiveHistogram(histogram) {
+    return { ...histogram, counts: histogram.counts.map(() => 0), count: 0, overflow_count: 0 };
+}
+
+function sum(values, field) { return values.reduce((total, value) => total + number(value[field]), 0); }
+function number(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }

@@ -1,0 +1,1987 @@
+{
+  "generator": "performance-tests/phase1-kinesis/generate-payload-pool.mjs",
+  "sourceContract": "loop-ad_event_sdk-compatible hotel_rec_promo.v1 envelope",
+  "output": "sdk-compatible-event-bodies.ndjson",
+  "contentType": "application/json",
+  "lineFormat": "one pre-serialized JSON request body per LF-terminated line",
+  "runtimeSelection": "oha -Z randomly selects one complete line for each HTTP request",
+  "rows": 480,
+  "uniqueEventIds": 480,
+  "sha256": "93704c35ef7ca24c9c887a439dbea011c94a852f98e12b2d51b4bf6d4f3322b7",
+  "requiredEnvelopeFields": [
+    "project_id",
+    "write_key",
+    "schema_version",
+    "event_id",
+    "event_name",
+    "event_time",
+    "source",
+    "user_id",
+    "session_id",
+    "properties_json"
+  ],
+  "profiles": {
+    "counts": {
+      "compact": 160,
+      "standard": 160,
+      "expanded": 160
+    },
+    "targetBodyBytes": {
+      "compact": 1092,
+      "standard": 1413,
+      "expanded": 1518
+    }
+  },
+  "bodyBytes": {
+    "min": 1092,
+    "max": 1518,
+    "mean": 1341,
+    "p50": 1413,
+    "p95": 1518,
+    "p99": 1518
+  },
+  "kinesisPartitioning": {
+    "partitionKeyField": "event_id",
+    "hashAlgorithm": "MD5, interpreted as an unsigned 128-bit integer",
+    "shardMapping": "floor(hash * 120 / 2^128)",
+    "capacityBytes": "UTF-8 data bytes plus UTF-8 partition-key bytes",
+    "shardCount": 120,
+    "targetRps": 50000,
+    "shardWriteLimits": {
+      "recordsPerSecond": 1000,
+      "bytesPerSecond": 1048576
+    },
+    "poolRowsPerShard": {
+      "min": 4,
+      "max": 4
+    },
+    "expectedAtTarget": {
+      "maxRecordsPerSecond": 416.6666666666667,
+      "maxBytesPerSecond": 585104.1666666666,
+      "maxRecordCapacityUtilization": 0.4166666666666667,
+      "maxByteCapacityUtilization": 0.5579988161722819
+    },
+    "shards": [
+      {
+        "shardIndex": 0,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 1,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 2,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 3,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 4,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 5,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 6,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 7,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 8,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 9,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 10,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 11,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 12,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 13,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 14,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 15,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 16,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 17,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 18,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 19,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 20,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 21,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 22,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 23,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 24,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 25,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 26,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 27,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 28,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 29,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 30,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 31,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 32,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 33,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 34,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 35,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 36,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 37,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 38,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 39,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 40,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 41,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 42,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 43,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 44,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 45,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 46,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 47,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 48,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 49,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 50,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 51,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 52,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 53,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 54,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 55,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 56,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 57,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 58,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 59,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 60,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 61,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 62,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 63,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 64,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 65,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 66,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 67,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 68,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 69,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 70,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 71,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 72,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 73,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 74,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 75,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 76,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 77,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 78,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 79,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 80,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 81,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 82,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 83,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 84,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 85,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 86,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 87,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 88,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 89,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 90,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 91,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 92,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 93,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 94,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 95,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 96,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 97,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 98,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 99,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 100,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 101,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 102,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 103,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 104,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 105,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 106,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 107,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 108,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 109,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 110,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 111,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 112,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 113,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 114,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 115,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 116,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      },
+      {
+        "shardIndex": 117,
+        "poolRows": 4,
+        "poolBytes": 5191,
+        "poolBodyBytes": 5115,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 2,
+          "standard": 1,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 540729.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5156795183817545
+      },
+      {
+        "shardIndex": 118,
+        "poolRows": 4,
+        "poolBytes": 5512,
+        "poolBodyBytes": 5436,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 2,
+          "expanded": 1
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 574166.6666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5475680033365885
+      },
+      {
+        "shardIndex": 119,
+        "poolRows": 4,
+        "poolBytes": 5617,
+        "poolBodyBytes": 5541,
+        "poolPartitionKeyBytes": 76,
+        "profileCounts": {
+          "compact": 1,
+          "standard": 1,
+          "expanded": 2
+        },
+        "expectedRecordsPerSecond": 416.6666666666667,
+        "expectedBytesPerSecond": 585104.1666666666,
+        "expectedRecordCapacityUtilization": 0.4166666666666667,
+        "expectedByteCapacityUtilization": 0.5579988161722819
+      }
+    ]
+  }
+}

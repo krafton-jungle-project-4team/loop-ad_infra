@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+import { readFileSync, writeFileSync } from 'node:fs';
+import { evaluateAdmissionScaleout } from './admission-scaleout-contract.mjs';
+const input = JSON.parse(readFileSync(required('--input'), 'utf8'));
+const output = required('--output');
+const result = evaluateAdmissionScaleout(input);
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+function required(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

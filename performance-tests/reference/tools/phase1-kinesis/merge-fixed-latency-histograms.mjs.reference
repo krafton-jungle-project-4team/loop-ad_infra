@@ -1,0 +1,32 @@
+export function mergeFixedHistograms(histograms) {
+    if (histograms.length === 0) throw new Error('reference summaries contain no mergeable latency histograms');
+    const first = histograms[0];
+    const counts = Array.from({ length: first.counts.length }, () => 0);
+    let count = 0;
+    let overflowCount = 0;
+    for (const histogram of histograms) {
+        if (histogram.method !== 'fixed-width-upper-bound' || histogram.unit !== 'nanoseconds' ||
+            histogram.bucket_width_nanoseconds !== first.bucket_width_nanoseconds || histogram.max_nanoseconds !== first.max_nanoseconds ||
+            histogram.counts.length !== counts.length) throw new Error('incompatible reference latency histograms');
+        for (let index = 0; index < counts.length; index += 1) counts[index] += histogram.counts[index];
+        count += histogram.count;
+        overflowCount += histogram.overflow_count;
+    }
+    if (counts.reduce((total, value) => total + value, 0) !== count) throw new Error('merged latency histogram count mismatch');
+    return { method: first.method, unit: first.unit, bucket_width_nanoseconds: first.bucket_width_nanoseconds,
+        max_nanoseconds: first.max_nanoseconds, counts, count, overflow_count: overflowCount };
+}
+
+export function histogramLatencyMs(histogram) {
+    const quantile = (fraction) => {
+        if (histogram.count === 0) return 0;
+        const target = Math.ceil(histogram.count * fraction);
+        let cumulative = 0;
+        for (let index = 0; index < histogram.counts.length; index += 1) {
+            cumulative += histogram.counts[index];
+            if (cumulative >= target) return index * histogram.bucket_width_nanoseconds / 1_000_000;
+        }
+        return histogram.max_nanoseconds / 1_000_000;
+    };
+    return { method: 'fleet-pooled-fixed-histogram-upper-bound', p50: quantile(.50), p95: quantile(.95), p99: quantile(.99) };
+}

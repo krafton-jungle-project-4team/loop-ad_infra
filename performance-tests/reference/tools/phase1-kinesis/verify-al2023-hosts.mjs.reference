@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REGION = 'ap-northeast-2';
+const AL2023_PARAMETER = '/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id';
+const COLLECTOR_NAME = 'perf-phase1-loop-ad-collector';
+const LOAD_GENERATOR_NAME = 'perf-phase1-loop-ad-load-generator';
+const TCP_ALB_LOAD_GENERATOR_NAMES = [`${LOAD_GENERATOR_NAME}-2a`, `${LOAD_GENERATOR_NAME}-2c`];
+const OHA_IMAGE = 'ghcr.io/hatoo/oha@sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072';
+const runId = requiredOption('--run-id');
+const expectedCollectorCount = requiredInteger('--expected-collector-count');
+const expectedLoadGeneratorCount = integerOption('--expected-load-generator-count', 1);
+const outputDir = requiredOption('--output-dir');
+const experimentMode = optionValue('--experiment-mode') ?? 'comparison';
+const sessionId = optionValue('--session-id');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (expectedCollectorCount < 1 || expectedCollectorCount > 17) throw new Error('invalid collector count');
+if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'connection-path-crossover'].includes(experimentMode)) throw new Error('invalid experiment mode');
+if (experimentMode === 'connection-path-crossover' && ![4, 6].includes(expectedCollectorCount)) throw new Error('connection-path-crossover requires four or six collectors');
+if (experimentMode !== 'comparison' && !['admission-scaleout-capacity', 'connection-path-crossover'].includes(experimentMode) && expectedCollectorCount !== 4) throw new Error('capacity and scout modes require four collectors');
+if (experimentMode === 'capacity-oha12k' && !/^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId ?? '')) {
+    throw new Error('capacity-oha12k host verification requires --session-id');
+}
+if (experimentMode === 'generator-diagnosis' && !/^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId ?? '')) {
+    throw new Error('generator-diagnosis host verification requires --session-id');
+}
+if (experimentMode === 'tcp-alb-path-diagnosis' && (!/^phase1-kinesis-tcp-alb-path-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId ?? '') || expectedLoadGeneratorCount !== 4)) {
+    throw new Error('tcp-alb-path-diagnosis host verification requires its session ID and four load generators');
+}
+if (experimentMode === 'connection-path-crossover' && (!/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId ?? '') || ![4, 8].includes(expectedLoadGeneratorCount))) {
+    throw new Error('connection-path-crossover host verification requires its session ID and four or eight load generators');
+}
+if (experimentMode === 'admission-scaleout-capacity' && (!/^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId ?? '') ||
+    ![4, 8].includes(expectedCollectorCount) || expectedLoadGeneratorCount !== 4)) {
+    throw new Error('admission-scaleout-capacity host verification requires its session ID, four generators, and profile collector count');
+}
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const workerPath = join(scriptDir, 'run-ec2-oha-worker.sh');
+const expectedWorkerSha256 = createHash('sha256').update(readFileSync(workerPath)).digest('hex');
+const currentRecommendedImageId = awsJson([
+    'ssm', 'get-parameter', '--region', REGION, '--name', AL2023_PARAMETER,
+]).Parameter.Value;
+const stack = awsJson([
+    'cloudformation', 'describe-stacks', '--region', REGION,
+    '--stack-name', experimentMode === 'capacity-oha12k'
+        ? 'LoopAdPerfPhase1KinesisCapacityOha12kStack'
+        : experimentMode === 'admission-scaleout-capacity'
+        ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack'
+        : experimentMode === 'connection-path-crossover'
+        ? 'LoopAdPerfPhase1KinesisConnectionPathStack'
+        : experimentMode === 'tcp-alb-path-diagnosis'
+        ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack'
+        : experimentMode === 'generator-diagnosis'
+        ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStack'
+        : experimentMode === 'scout'
+        ? 'LoopAdPerfPhase1KinesisCapacityScoutStack'
+        : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStack' : 'LoopAdPerfPhase1KinesisStack',
+]).Stacks[0];
+const stackAmiParameter = stack?.Parameters?.find((parameter) => parameter.ParameterValue === AL2023_PARAMETER);
+const stackResolvedImageId = stackAmiParameter?.ResolvedValue;
+if (!/^ami-[0-9a-f]+$/.test(stackResolvedImageId ?? '')) {
+    throw new Error('stack does not expose the resolved AL2023 AMI parameter value');
+}
+const reservations = awsJson([
+    'ec2', 'describe-instances', '--region', REGION,
+    '--filters',
+    ['capacity-oha12k', 'generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'connection-path-crossover'].includes(experimentMode) ? `Name=tag:SessionId,Values=${sessionId}` : `Name=tag:RunId,Values=${runId}`,
+    'Name=tag:Environment,Values=perf-phase1-kinesis',
+    `Name=tag:Name,Values=${COLLECTOR_NAME},${LOAD_GENERATOR_NAME},${TCP_ALB_LOAD_GENERATOR_NAMES.join(',')}`,
+    'Name=instance-state-name,Values=running',
+]).Reservations ?? [];
+const instances = reservations.flatMap((reservation) => reservation.Instances ?? []).sort((left, right) => (
+    left.InstanceId.localeCompare(right.InstanceId)
+));
+const collectors = instances.filter((instance) => tagValue(instance.Tags, 'Name') === COLLECTOR_NAME);
+const loadGenerators = instances.filter((instance) => [LOAD_GENERATOR_NAME, ...TCP_ALB_LOAD_GENERATOR_NAMES].includes(tagValue(instance.Tags, 'Name')));
+if (collectors.length !== expectedCollectorCount || loadGenerators.length !== expectedLoadGeneratorCount) {
+    throw new Error(`expected ${expectedCollectorCount} collector hosts and ${expectedLoadGeneratorCount} load generators`);
+}
+
+mkdirSync(outputDir, { recursive: true });
+const hostResults = [];
+for (const [index, instance] of instances.entries()) {
+    const name = tagValue(instance.Tags, 'Name');
+    const role = name === COLLECTOR_NAME ? 'collector' : 'load-generator';
+    const hostLabel = role === 'collector'
+        ? `collector-${(collectors.indexOf(instance) + 1).toString().padStart(2, '0')}`
+        : `load-generator-${(loadGenerators.indexOf(instance) + 1).toString().padStart(2, '0')}`;
+    const response = awsJson([
+        'ssm', 'send-command', '--region', REGION,
+        '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', instance.InstanceId,
+        '--timeout-seconds', '180',
+        '--parameters', JSON.stringify({
+            commands: hostInspectionCommands(),
+            executionTimeout: ['180'],
+        }),
+        '--comment', `loop-ad ${runId} AL2023 host verification ${index + 1}`,
+    ]);
+    const commandId = response.Command.CommandId;
+    const invocation = await waitForInvocation(commandId, instance.InstanceId);
+    const stdout = invocation.StandardOutputContent ?? '';
+    const stderr = invocation.StandardErrorContent ?? '';
+    writeFileSync(join(outputDir, `${hostLabel}.stdout.log`), stdout, 'utf8');
+    writeFileSync(join(outputDir, `${hostLabel}.stderr.log`), stderr, 'utf8');
+    const facts = parseFacts(stdout);
+    const checks = {
+        ssmCommandSucceeded: invocation.Status === 'Success' && invocation.ResponseCode === 0,
+        usesStackResolvedEcsAl2023Image: instance.ImageId === stackResolvedImageId,
+        imdsv2RequiredByLaunchTemplate: instance.MetadataOptions?.HttpTokens === 'required' &&
+            instance.MetadataOptions?.HttpEndpoint === 'enabled' && instance.MetadataOptions?.State === 'applied',
+        imdsv1RequestRejected: facts.imds_v1_http_code === '401',
+        amazonLinux2023: facts.os_id === 'amzn' && facts.os_version_id === '2023',
+        cgroupV2: facts.cgroup_filesystem === 'cgroup2fs',
+        hostMemoryReadable: /^[0-9]+$/.test(facts.mem_available_kib ?? ''),
+        cloudInitDone: facts.cloud_init_status === 'done',
+        cloudFinalSucceeded: facts.cloud_final_result === 'success',
+        userDataFinished: facts.user_data_finished === 'true',
+        dnfAvailable: facts.dnf_path === '/usr/bin/dnf',
+        dockerActive: facts.docker_active === 'active',
+        ssmAgentActive: facts.ssm_active === 'active',
+        ...(role === 'collector' ? {
+            ecsAgentActive: facts.ecs_active === 'active',
+            ecsAgentEndpointHealthy: facts.ecs_agent_http_code === '200',
+            collectorCgroupMemoryReadable: /^[0-9]+$/.test(facts.collector_cgroup_memory_current ?? ''),
+        } : {
+            al2023PackagesInstalled: facts.jq_package?.startsWith('jq-') &&
+                facts.awscli_package?.startsWith('awscli-2-') && facts.ethtool_package?.startsWith('ethtool-') &&
+                facts.iproute_package?.startsWith('iproute-') && facts.procps_package?.startsWith('procps-ng-') &&
+                facts.tcpdump_package?.startsWith('tcpdump-') && facts.bind_utils_package?.startsWith('bind-utils-'),
+            workerMatchesRepository: facts.worker_sha256 === expectedWorkerSha256,
+            pinnedOhaImagePresent: facts.oha_image_present === 'true',
+        }),
+    };
+    const result = {
+        hostLabel,
+        role,
+        instanceId: instance.InstanceId,
+        instanceType: instance.InstanceType,
+        imageId: instance.ImageId,
+        stackResolvedImageId,
+        currentRecommendedImageId,
+        metadataOptions: instance.MetadataOptions,
+        commandId,
+        facts,
+        checks,
+        passed: Object.values(checks).every(Boolean),
+    };
+    writeFileSync(join(outputDir, `${hostLabel}.json`), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    hostResults.push(result);
+}
+
+const summary = {
+    verifiedAt: new Date().toISOString(),
+    region: REGION,
+    runId,
+    experimentMode,
+    expectedCollectorCount,
+    expectedLoadGeneratorCount,
+    al2023SsmParameter: AL2023_PARAMETER,
+    stackResolvedImageId,
+    currentRecommendedImageId,
+    expectedWorkerSha256,
+    hosts: hostResults,
+    passed: hostResults.length === expectedCollectorCount + expectedLoadGeneratorCount && hostResults.every((host) => host.passed),
+};
+writeFileSync(join(outputDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+if (!summary.passed) process.exitCode = 2;
+
+function hostInspectionCommands() {
+    return [
+        'set -eu',
+        'cloud-init status --wait >/dev/null',
+        '. /etc/os-release',
+        `printf 'os_id=%s\\n' "$ID"`,
+        `printf 'os_version_id=%s\\n' "$VERSION_ID"`,
+        `printf 'system_release=%s\\n' "$(rpm -q system-release)"`,
+        `printf 'kernel=%s\\n' "$(uname -r)"`,
+        `printf 'cgroup_filesystem=%s\\n' "$(stat -fc %T /sys/fs/cgroup)"`,
+        `printf 'mem_available_kib=%s\\n' "$(awk '$1==\"MemAvailable:\"{print $2}' /proc/meminfo)"`,
+        `printf 'cloud_init_status=%s\\n' "$(cloud-init status | awk '{print $2}')"`,
+        `printf 'cloud_final_result=%s\\n' "$(systemctl show cloud-final.service -p Result --value)"`,
+        `printf 'user_data_finished=%s\\n' "$(test -f /var/lib/cloud/instance/boot-finished && printf true || printf false)"`,
+        `printf 'dnf_path=%s\\n' "$(command -v dnf)"`,
+        `printf 'docker_active=%s\\n' "$(systemctl is-active docker)"`,
+        `printf 'docker_version=%s\\n' "$(docker --version)"`,
+        `printf 'ssm_active=%s\\n' "$(systemctl is-active amazon-ssm-agent)"`,
+        `printf 'ecs_active=%s\\n' "$(systemctl is-active ecs 2>/dev/null || true)"`,
+        `printf 'ecs_agent_http_code=%s\\n' "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:51678/v1/metadata || true)"`,
+        `printf 'imds_v1_http_code=%s\\n' "$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 2 http://169.254.169.254/latest/meta-data/ || true)"`,
+        `printf 'jq_package=%s\\n' "$(rpm -q jq 2>/dev/null || printf not-installed)"`,
+        `printf 'awscli_package=%s\\n' "$(rpm -q awscli-2 2>/dev/null || printf not-installed)"`,
+        `printf 'ethtool_package=%s\\n' "$(rpm -q ethtool 2>/dev/null || printf not-installed)"`,
+        `printf 'iproute_package=%s\\n' "$(rpm -q iproute 2>/dev/null || printf not-installed)"`,
+        `printf 'procps_package=%s\\n' "$(rpm -q procps-ng 2>/dev/null || printf not-installed)"`,
+        `printf 'tcpdump_package=%s\\n' "$(rpm -q tcpdump 2>/dev/null || printf not-installed)"`,
+        `printf 'bind_utils_package=%s\\n' "$(rpm -q bind-utils 2>/dev/null || printf not-installed)"`,
+        `printf 'aws_version=%s\\n' "$(aws --version 2>&1 || true)"`,
+        `collector_cgroup_memory_current=''`,
+        `collector_container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /loop-ad\\/event-collector/ {print $1; exit}')"`,
+        `if [ -n "$collector_container_id" ]; then collector_pid="$(docker inspect --format '{{.State.Pid}}' "$collector_container_id")"; collector_cgroup_path="$(awk -F: '$1==\"0\"{print $3}' "/proc/$collector_pid/cgroup")"; collector_cgroup_memory_current="$(cat "/sys/fs/cgroup\${collector_cgroup_path}/memory.current")"; fi`,
+        `printf 'collector_cgroup_memory_current=%s\\n' "$collector_cgroup_memory_current"`,
+        `printf 'worker_sha256=%s\\n' "$(sha256sum /opt/loop-ad-phase1/run-ec2-oha-worker.sh 2>/dev/null | awk '{print $1}' || true)"`,
+        `printf 'oha_image_present=%s\\n' "$(docker image inspect '${OHA_IMAGE}' >/dev/null 2>&1 && printf true || printf false)"`,
+    ];
+}
+
+function parseFacts(stdout) {
+    return Object.fromEntries(stdout.split('\n').flatMap((line) => {
+        const match = /^([a-z0-9_]+)=(.*)$/.exec(line);
+        return match ? [[match[1], match[2]]] : [];
+    }));
+}
+
+async function waitForInvocation(commandId, instanceId) {
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+        await sleep(2_000);
+        try {
+            const invocation = awsJson([
+                'ssm', 'get-command-invocation', '--region', REGION,
+                '--command-id', commandId, '--instance-id', instanceId,
+            ]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`SSM command ${commandId} timed out for ${instanceId}`);
+}
+
+function tagValue(tags, key) {
+    return (tags ?? []).find((tag) => tag.Key === key)?.Value;
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function integerOption(name, fallback) {
+    const raw = optionValue(name);
+    if (raw === undefined) return fallback;
+    const value = Number(raw);
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
+    return value;
+}
+
+function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

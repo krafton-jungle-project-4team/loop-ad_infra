@@ -1,0 +1,153 @@
+import { createHash } from 'node:crypto';
+
+const ALB_DNS = /^internal-perf-p1-conn-alb-[a-z0-9-]+\.ap-northeast-2\.elb\.amazonaws\.com$/;
+const DIRECT_NLB_DNS = /^perf-p1-conn-direct-[a-z0-9-]+\.elb\.ap-northeast-2\.amazonaws\.com$/;
+const PROXY_NLB_DNS = /^perf-p1-conn-proxy-[a-z0-9-]+\.elb\.ap-northeast-2\.amazonaws\.com$/;
+const RUN_ID = /^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+const PRIVATE_IPV4 = /^10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}$/;
+
+export function buildReadinessEndpoints({ albDnsName, directNlbDnsName, proxyNlbDnsName, collectorInstances }) {
+    if (!ALB_DNS.test(albDnsName) || !DIRECT_NLB_DNS.test(directNlbDnsName) || !PROXY_NLB_DNS.test(proxyNlbDnsName)) {
+        throw new Error('connection-path readiness requires the three exact run-scoped load balancer DNS names');
+    }
+    const collectorCount = collectorInstances?.length;
+    if (!Array.isArray(collectorInstances) || ![4, 6].includes(collectorCount) ||
+        new Set(collectorInstances.map((item) => item.instanceId)).size !== collectorCount ||
+        new Set(collectorInstances.map((item) => item.privateIp)).size !== collectorCount ||
+        collectorInstances.some((item) => !/^i-[0-9a-f]+$/.test(item.instanceId) || !validPrivateIpv4(item.privateIp))) {
+        throw new Error('connection-path readiness requires four or six distinct collector hosts and private IPv4 addresses');
+    }
+    const collectors = collectorInstances.toSorted((a, b) => a.instanceId.localeCompare(b.instanceId)).map((item, index) => ({
+        label: `collector-${String(index + 1).padStart(2, '0')}`,
+        kind: 'collector-direct',
+        destination: `${item.privateIp}:8443`,
+        collectorInstanceId: item.instanceId,
+    }));
+    return [
+        { label: 'alb', kind: 'alb', destination: `${albDnsName}:443` },
+        { label: 'direct-nlb', kind: 'direct-nlb', destination: `${directNlbDnsName}:443` },
+        { label: 'proxy-nlb', kind: 'proxy-nlb', destination: `${proxyNlbDnsName}:443` },
+        ...collectors,
+    ];
+}
+
+export function buildReadinessCommand({ runId, tlsServerName, caCertificateBase64, caCertificateSha256, endpoints }) {
+    if (!RUN_ID.test(runId) || tlsServerName !== 'loopad-protocol.internal' || !SHA256.test(caCertificateSha256) ||
+        !/^[A-Za-z0-9+/=]+$/.test(caCertificateBase64) || caCertificateBase64.length > 16_384) {
+        throw new Error('invalid connection-path readiness command identity');
+    }
+    const caCertificate = Buffer.from(caCertificateBase64, 'base64');
+    const caText = caCertificate.toString('utf8');
+    if (caCertificate.toString('base64') !== caCertificateBase64 || !caText.includes('-----BEGIN CERTIFICATE-----') ||
+        caText.includes('PRIVATE KEY') || createHash('sha256').update(caCertificate).digest('hex') !== caCertificateSha256) {
+        throw new Error('readiness accepts only an integrity-checked public CA certificate');
+    }
+    validateEndpoints(endpoints);
+    const probes = endpoints.map((endpoint) => `probe '${endpoint.label}' '${endpoint.destination}'`).join('\n');
+    return `set -euo pipefail
+umask 077
+root='/tmp/loopad-connection-path-readiness/${runId}'
+rm -rf "$root"
+mkdir -p "$root"
+trap 'rm -rf "$root"' EXIT
+printf '%s' '${caCertificateBase64}' | base64 -d > "$root/ca.pem"
+test "$(sha256sum "$root/ca.pem" | awk '{print $1}')" = '${caCertificateSha256}'
+failures=0
+probe() {
+  label="$1"
+  destination="$2"
+  set +e
+  protocol_output="$(timeout --signal=TERM --kill-after=1s 5s openssl s_client -connect "$destination" -servername '${tlsServerName}' -alpn h2 -CAfile "$root/ca.pem" </dev/null 2>&1)"
+  rc="$?"
+  set -e
+  alpn="$(printf '%s\\n' "$protocol_output" | awk -F': ' '/^ALPN protocol:/{print $2; exit}')"
+  verify="$(printf '%s\\n' "$protocol_output" | sed -n 's/^Verify return code: \\([0-9][0-9]*\\).*/\\1/p' | tail -1)"
+  test -n "$alpn" || alpn=missing
+  test -n "$verify" || verify=missing
+  printf 'PROBE\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$label" "$destination" "$rc" "$alpn" "$verify"
+  if { test "$rc" = 0 || test "$rc" = 124; } && test "$alpn" = h2 && test "$verify" = 0; then
+    :
+  else
+    failures=$((failures + 1))
+  fi
+}
+${probes}
+test "$failures" = 0`;
+}
+
+export function parseReadinessOutput(output) {
+    const probes = `${output ?? ''}`.split('\n').filter((line) => line.startsWith('PROBE\t')).map((line) => {
+        const fields = line.split('\t');
+        if (fields.length !== 6 || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(fields[1]) || !validDestination(fields[2]) || !/^[0-9]+$/.test(fields[3])) {
+            throw new Error('malformed connection-path readiness output');
+        }
+        const exitCode = Number(fields[3]);
+        const verifyReturnCode = /^[0-9]+$/.test(fields[5]) ? Number(fields[5]) : null;
+        return {
+            label: fields[1], destination: fields[2], exitCode,
+            negotiatedAlpn: fields[4], verifyReturnCode,
+            passed: [0, 124].includes(exitCode) && fields[4] === 'h2' && verifyReturnCode === 0,
+        };
+    });
+    if (new Set(probes.map((probe) => probe.label)).size !== probes.length) throw new Error('duplicate readiness probe label');
+    return probes;
+}
+
+export function analyzeReadinessInvocations({ invocations, expectedGeneratorIds, endpoints }) {
+    validateEndpoints(endpoints);
+    if (!Array.isArray(expectedGeneratorIds) || expectedGeneratorIds.some((id) => !/^i-[0-9a-f]+$/.test(id))) {
+        throw new Error('invalid expected generator identities');
+    }
+    const expectedIds = [...new Set(expectedGeneratorIds)].toSorted();
+    const supportedGeneratorCount = [4, 8].includes(expectedIds.length);
+    const expectedByLabel = new Map(endpoints.map((endpoint) => [endpoint.label, endpoint.destination]));
+    const nodeResults = expectedIds.map((instanceId) => {
+        const matches = (invocations ?? []).filter((item) => item.instanceId === instanceId);
+        if (matches.length !== 1) return { instanceId, invocationCount: matches.length, commandId: null, status: null, responseCode: null, probes: [], parseError: 'expected exactly one invocation' };
+        const invocation = matches[0];
+        try {
+            return { instanceId, invocationCount: 1, commandId: invocation.commandId ?? null, status: invocation.status, responseCode: invocation.responseCode,
+                probes: parseReadinessOutput(invocation.standardOutput), parseError: null };
+        } catch (error) {
+            return { instanceId, invocationCount: 1, commandId: invocation.commandId ?? null, status: invocation.status, responseCode: invocation.responseCode,
+                probes: [], parseError: error.message };
+        }
+    });
+    const checks = {
+        supportedGeneratorCount: supportedGeneratorCount && (invocations ?? []).length === expectedIds.length,
+        oneInvocationPerGenerator: nodeResults.every((node) => node.invocationCount === 1),
+        allSsmCommandsSucceeded: nodeResults.every((node) => node.status === 'Success' && node.responseCode === 0),
+        exactEndpointCoverage: nodeResults.every((node) => node.parseError === null && node.probes.length === endpoints.length &&
+            node.probes.every((probe) => expectedByLabel.get(probe.label) === probe.destination)),
+        allTlsChecksPassed: nodeResults.every((node) => node.probes.length === endpoints.length && node.probes.every((probe) => probe.passed)),
+    };
+    return { expectedGeneratorIds: expectedIds, endpoints, nodeResults, checks, passed: Object.values(checks).every(Boolean) };
+}
+
+function validateEndpoints(endpoints) {
+    const collectorCount = (endpoints?.length ?? 0) - 3;
+    const expectedLabels = [
+        'alb', 'direct-nlb', 'proxy-nlb',
+        ...Array.from({ length: collectorCount }, (_, index) => `collector-${String(index + 1).padStart(2, '0')}`),
+    ];
+    if (!Array.isArray(endpoints) || ![4, 6].includes(collectorCount) ||
+        new Set(endpoints.map((item) => item.label)).size !== endpoints.length ||
+        endpoints.some((item, index) => item.label !== expectedLabels[index]) ||
+        endpoints.some((item) => !/^[a-z0-9][a-z0-9-]{0,31}$/.test(item.label) || !validDestination(item.destination))) {
+        throw new Error('readiness requires three load balancers plus four or six ordered collector endpoints');
+    }
+}
+
+function validDestination(value) {
+    const separator = value.lastIndexOf(':');
+    if (separator < 1) return false;
+    const host = value.slice(0, separator);
+    const port = value.slice(separator + 1);
+    return (port === '443' && (ALB_DNS.test(host) || DIRECT_NLB_DNS.test(host) || PROXY_NLB_DNS.test(host))) ||
+        (port === '8443' && validPrivateIpv4(host));
+}
+
+function validPrivateIpv4(value) {
+    return PRIVATE_IPV4.test(value) && value.split('.').every((part) => Number(part) >= 0 && Number(part) <= 255);
+}

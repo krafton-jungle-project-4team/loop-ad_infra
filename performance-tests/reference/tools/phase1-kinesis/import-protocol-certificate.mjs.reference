@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+const REGION = 'ap-northeast-2';
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const output = requiredOption('--output');
+const publicCAOutput = requiredOption('--public-ca-output');
+if (!/^phase1-kinesis-(?:protocol-crossover|connection-path)-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId)) throw new Error('invalid session or run ID');
+
+const directory = mkdtempSync(join(tmpdir(), 'loopad-protocol-cert-'));
+try {
+    const caCertificatePath = join(directory, 'ca-certificate.pem');
+    const caPrivateKeyPath = join(directory, 'ca-private-key.pem');
+    const certificatePath = join(directory, 'server-certificate.pem');
+    const privateKeyPath = join(directory, 'server-private-key.pem');
+    const signingRequestPath = join(directory, 'server.csr');
+    const extensionsPath = join(directory, 'server-extensions.conf');
+    const secretDocumentPath = join(directory, 'secret.json');
+    writeFileSync(extensionsPath, 'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:loopad-protocol.internal\n', { mode: 0o600 });
+    openssl(['req', '-x509', '-newkey', 'rsa:2048', '-sha256', '-nodes', '-days', '1',
+        '-subj', '/CN=loopad-protocol-run-ca', '-addext', 'basicConstraints=critical,CA:TRUE',
+        '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-keyout', caPrivateKeyPath, '-out', caCertificatePath]);
+    openssl(['req', '-new', '-newkey', 'rsa:2048', '-sha256', '-nodes', '-subj', '/CN=loopad-protocol.internal',
+        '-keyout', privateKeyPath, '-out', signingRequestPath]);
+    openssl(['x509', '-req', '-in', signingRequestPath, '-CA', caCertificatePath, '-CAkey', caPrivateKeyPath,
+        '-CAcreateserial', '-days', '1', '-sha256', '-extfile', extensionsPath, '-out', certificatePath]);
+
+    const imported = aws(['acm', 'import-certificate', '--region', REGION,
+        '--certificate', `fileb://${certificatePath}`, '--private-key', `fileb://${privateKeyPath}`,
+        '--certificate-chain', `fileb://${caCertificatePath}`]);
+    const certificateArn = imported.CertificateArn;
+    if (!/^arn:aws:acm:ap-northeast-2:[0-9]{12}:certificate\/[0-9a-f-]+$/.test(certificateArn ?? '')) throw new Error('ACM returned an invalid certificate ARN');
+    execFileSync('aws', ['acm', 'add-tags-to-certificate', '--region', REGION, '--certificate-arn', certificateArn,
+        '--tags', `Key=Project,Value=loop-ad`, `Key=Environment,Value=perf-phase1-kinesis`,
+        `Key=SessionId,Value=${sessionId}`, `Key=ComparisonSessionId,Value=${sessionId}`, `Key=RunId,Value=${runId}`, `Key=ManagedBy,Value=codex`,
+        '--no-cli-pager'], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+    const secretFile = openSync(secretDocumentPath, 'w', 0o600);
+    try {
+        execFileSync('jq', ['-n', '--rawfile', 'certificate_pem', certificatePath, '--rawfile', 'private_key_pem', privateKeyPath,
+            '--rawfile', 'ca_pem', caCertificatePath, '{certificate_pem:$certificate_pem,private_key_pem:$private_key_pem,ca_pem:$ca_pem}'],
+        { stdio: ['ignore', secretFile, 'pipe'] });
+    } finally {
+        closeSync(secretFile);
+    }
+    const secretName = `/loopad/perf-phase1/protocol/${sessionId}/${runId}/tls`;
+    const createdSecret = aws(['secretsmanager', 'create-secret', '--region', REGION, '--name', secretName,
+        '--description', 'Run-scoped LoopAd collector protocol TLS material', '--secret-string', `file://${secretDocumentPath}`,
+        '--tags', `Key=Project,Value=loop-ad`, `Key=Environment,Value=perf-phase1-kinesis`,
+        `Key=SessionId,Value=${sessionId}`, `Key=ComparisonSessionId,Value=${sessionId}`, `Key=RunId,Value=${runId}`, `Key=ManagedBy,Value=codex`]);
+    const secretArn = createdSecret.ARN;
+    if (!/^arn:aws:secretsmanager:ap-northeast-2:[0-9]{12}:secret:/.test(secretArn ?? '')) throw new Error('Secrets Manager returned an invalid secret ARN');
+
+    const publicCA = readFileSync(caCertificatePath);
+    writeFileSync(publicCAOutput, publicCA, { mode: 0o600 });
+    const result = {
+        createdAt: new Date().toISOString(), region: REGION, sessionId, runId, certificateArn, secretArn,
+        tlsServerName: 'loopad-protocol.internal', publicCASha256: createHash('sha256').update(publicCA).digest('hex'),
+        publicCAPath: publicCAOutput, privateKeyPersistedInRunArtifacts: false,
+    };
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+} finally {
+    rmSync(directory, { recursive: true, force: true });
+}
+
+function openssl(args) { execFileSync('openssl', args, { stdio: ['ignore', 'ignore', 'ignore'] }); }
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' })); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

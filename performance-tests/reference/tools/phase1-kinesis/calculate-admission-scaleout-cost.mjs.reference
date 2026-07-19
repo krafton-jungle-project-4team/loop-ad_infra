@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const pricesPath = requiredOption('--prices');
+const outputPath = optionValue('--output');
+const phaseASeconds = positiveInteger('--phase-a-seconds');
+const phaseBSeconds = positiveInteger('--phase-b-seconds');
+const wallSeconds = positiveInteger('--wall-seconds');
+const requests = nonNegativeInteger('--requests-upper-bound');
+const previousUpperBoundUsd = nonNegativeNumber('--previous-upper-bound-usd');
+const logIngestGiB = numberOption('--log-ingest-gib-upper-bound', 2);
+const cloudWatchMetrics = integerOption('--cloudwatch-metrics-requested-upper-bound', 20_000);
+const dataTransferUpperBoundUsd = numberOption('--data-transfer-upper-bound-usd', 1);
+const s3EvidenceUpperBoundUsd = numberOption('--s3-evidence-upper-bound-usd', 0.25);
+const pricesDocument = JSON.parse(readFileSync(pricesPath, 'utf8'));
+const prices = pricesDocument.prices;
+for (const key of ['collectorInstanceHour', 'collectorLargeInstanceHour', 'loadGeneratorInstanceHour',
+    'kinesisProvisionedShardHour', 'kinesisPutPayloadUnit', 'albHour', 'albLcuHour', 'ebsGp3GbMonth',
+    'publicIpv4Hour', 'cloudWatchMetricMonth', 'cloudWatchLogIngestGb', 'cloudWatchLogStorageGbMonth',
+    'cloudWatchGetMetricDataMetric', 'ecrStorageGbMonth']) {
+    if (!Number.isFinite(prices[key]) || prices[key] < 0) throw new Error(`missing price: ${key}`);
+}
+
+const phaseAHours = Math.ceil(phaseASeconds / 3_600);
+const phaseBHours = Math.ceil(phaseBSeconds / 3_600);
+const wallHours = Math.ceil(wallSeconds / 3_600);
+const albProcessedBytes = requests * 4_096;
+const albLcuHours = albProcessedBytes / 1_000_000_000;
+const collectorEbsGbHours = 4 * 30 * phaseAHours + 8 * 30 * phaseBHours;
+const generatorEbsGbHours = 4 * 30 * wallHours;
+const detailedMetricHours = (4 * 10 * phaseAHours) + (8 * 10 * phaseBHours) + (4 * 10 * wallHours);
+const publicIpv4Hours = 4 * phaseAHours + 8 * phaseBHours + 4 * wallHours;
+const components = {
+    profileACollectors: 4 * phaseAHours * prices.collectorInstanceHour,
+    profileBCollectors: 8 * phaseBHours * prices.collectorLargeInstanceHour,
+    loadGenerators: 4 * wallHours * prices.loadGeneratorInstanceHour,
+    kinesisShardHours: 80 * wallHours * prices.kinesisProvisionedShardHour,
+    kinesisPutPayloadUnits: requests * prices.kinesisPutPayloadUnit,
+    albHours: wallHours * prices.albHour,
+    albLcu: albLcuHours * prices.albLcuHour,
+    ebsGp3: (collectorEbsGbHours + generatorEbsGbHours) / 730 * prices.ebsGp3GbMonth,
+    publicIpv4: publicIpv4Hours * prices.publicIpv4Hour,
+    detailedMonitoring: detailedMetricHours / 730 * prices.cloudWatchMetricMonth,
+    cloudWatchLogsIngest: logIngestGiB * prices.cloudWatchLogIngestGb,
+    cloudWatchLogsStorage: logIngestGiB * wallHours / 730 * prices.cloudWatchLogStorageGbMonth,
+    cloudWatchGetMetricData: cloudWatchMetrics * prices.cloudWatchGetMetricDataMetric,
+    ecrStorage: 0.5 * wallHours / 730 * prices.ecrStorageGbMonth,
+    s3Evidence: s3EvidenceUpperBoundUsd,
+    dataTransfer: dataTransferUpperBoundUsd,
+    costExplorerApi: pricesDocument.fixedApiUpperBounds.costExplorerRequestUsd,
+};
+const runUpperBoundUsd = Object.values(components).reduce((sum, value) => sum + value, 0);
+const projectedCumulativeUpperBoundUsd = previousUpperBoundUsd + runUpperBoundUsd;
+const cleanupReserveUsd = 4;
+const checks = {
+    accruedBelowNewWorkStop: previousUpperBoundUsd < 24,
+    projectedPlusReserveBelowHardLimit: projectedCumulativeUpperBoundUsd + cleanupReserveUsd < 30,
+};
+const result = {
+    calculatedAt: new Date().toISOString(), priceAsOf: pricesDocument.asOf, currency: 'USD',
+    model: 'conservative upper bound; Profile A, Profile B, and total wall-clock hourly resources rounded up independently',
+    inputs: { phaseASeconds, phaseBSeconds, wallSeconds, phaseAHours, phaseBHours, wallHours, requests,
+        albProcessedBytes, albLcuHours, previousUpperBoundUsd, logIngestGiB, cloudWatchMetrics,
+        dataTransferUpperBoundUsd, s3EvidenceUpperBoundUsd },
+    components, runUpperBoundUsd, projectedCumulativeUpperBoundUsd,
+    budget: { hardLimitUsd: 30, newWorkStopUsd: 24, cleanupReserveUsd, checks, mayStart: Object.values(checks).every(Boolean) },
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) writeFileSync(outputPath, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.budget.mayStart) process.exitCode = 2;
+
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function nonNegativeNumber(name) { const value = Number(requiredOption(name)); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }
+function nonNegativeInteger(name) { const value = nonNegativeNumber(name); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function positiveInteger(name) { const value = nonNegativeInteger(name); if (value < 1) throw new Error(`${name} must be positive`); return value; }
+function numberOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }
+function integerOption(name, fallback) { const value = numberOption(name, fallback); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }

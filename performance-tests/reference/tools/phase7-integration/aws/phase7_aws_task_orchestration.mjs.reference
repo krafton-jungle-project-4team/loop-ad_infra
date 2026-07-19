@@ -1,0 +1,904 @@
+import { createHash } from 'node:crypto';
+
+const REGION = 'ap-northeast-2';
+const ACCOUNT = '742711170910';
+const RUN_ID = /^run_[0-9]{8}_[0-9]{6}_phase7_integration$/;
+const COMMAND_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const TASK_ARN = new RegExp(
+    `^arn:aws:ecs:${REGION}:${ACCOUNT}:task/(?:[A-Za-z0-9_-]+/)?[0-9a-f-]{32,36}$`,
+);
+const SSM_TERMINAL_STATUSES = new Set(['Success', 'Cancelled', 'TimedOut', 'Failed']);
+
+export function buildArchiveTaskIdentity(runId) {
+    if (!RUN_ID.test(runId)) throw new Error('invalid Phase 7 run ID');
+    const stamp = runId.match(/^run_([0-9]{8}_[0-9]{6})_/)?.[1].replaceAll('_', '');
+    const digest = createHash('sha256').update(`phase7-archive-v1\0${runId}`).digest('hex');
+    return {
+        clientToken: `p7a-${digest.slice(0, 60)}`,
+        startedBy: `phase7-archive-${stamp}`,
+    };
+}
+
+export function createArchiveTaskState(runId) {
+    const identity = buildArchiveTaskIdentity(runId);
+    return {
+        ...identity,
+        runTaskInvocationCount: 0,
+        runTaskResponseReceived: false,
+        runTaskResponseLost: false,
+        responseTaskArn: null,
+        listedTaskArns: [],
+        taskArn: null,
+        lastStatus: null,
+    };
+}
+
+export function validateHardStopConfig(value, expectedRunId) {
+    const name = /^[A-Za-z0-9_-]{1,255}$/;
+    if (!RUN_ID.test(expectedRunId) || !value || typeof value !== 'object' || value.runId !== expectedRunId ||
+        !name.test(String(value.consumerCluster)) || !name.test(String(value.consumerService)) ||
+        !name.test(String(value.clickHouseCluster)) || !name.test(String(value.clickHouseService)) ||
+        !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(value.failureBucket)) ||
+        value.consumerLogGroup !== `/loopad/perf/phase7/${expectedRunId}/ConsumerLogs`) {
+        throw new Error('invalid Phase 7 hard-stop monitor configuration');
+    }
+}
+
+export async function monitorTerminalHardStops({
+    config,
+    runId,
+    stage,
+    startEpoch,
+    state,
+    signal,
+    awsJson,
+    sleep,
+    now = Date.now,
+}) {
+    validateHardStopConfig(config, runId);
+    if (!['warmup', 'score'].includes(stage) || !Number.isInteger(startEpoch) || startEpoch < 0 ||
+        !state || !Array.isArray(state.polls) || typeof awsJson !== 'function' || typeof sleep !== 'function') {
+        throw new Error('invalid Phase 7 hard-stop monitor inputs');
+    }
+    const terminalEvents = [
+        'phase4_terminal_failure',
+        'phase4_terminal_archive_error',
+        'phase4_fatal_processing_error',
+    ];
+    const unavailableSince = new Map();
+    while (true) {
+        throwIfAborted(signal);
+        const checkedAt = now();
+        const signals = [];
+        for (const eventName of terminalEvents) {
+            const logs = await awsJson([
+                'logs', 'filter-log-events', '--region', REGION,
+                '--log-group-name', config.consumerLogGroup,
+                '--start-time', String(startEpoch * 1_000),
+                '--filter-pattern', `{ $.event = "${eventName}" }`,
+                '--limit', '1',
+            ]);
+            if ((logs.events ?? []).length > 0) signals.push(`consumer-log:${eventName}`);
+        }
+        const failures = await awsJson([
+            's3api', 'list-objects-v2', '--region', REGION,
+            '--bucket', config.failureBucket,
+            '--prefix', `failures/${runId}/`,
+            '--max-keys', '1',
+        ]);
+        if (Number(failures.KeyCount ?? 0) > 0 || (failures.Contents ?? []).length > 0) {
+            signals.push('consumer-failure-object');
+        }
+        const services = [];
+        for (const service of [
+            { role: 'consumer', cluster: config.consumerCluster, name: config.consumerService, expected: 2 },
+            { role: 'clickhouse', cluster: config.clickHouseCluster, name: config.clickHouseService, expected: 1 },
+        ]) {
+            const response = await awsJson([
+                'ecs', 'describe-services', '--region', REGION,
+                '--cluster', service.cluster,
+                '--services', service.name,
+            ]);
+            if ((response.failures ?? []).length !== 0 || (response.services ?? []).length !== 1) {
+                throw new Error(`${service.role} service inventory became untrustworthy during ${stage}`);
+            }
+            const observed = response.services[0];
+            const healthy = observed.status === 'ACTIVE' && observed.desiredCount === service.expected &&
+                observed.runningCount === service.expected;
+            if (healthy) {
+                unavailableSince.delete(service.role);
+            } else {
+                const firstObserved = unavailableSince.get(service.role) ?? checkedAt;
+                unavailableSince.set(service.role, firstObserved);
+                if (checkedAt - firstObserved >= 60_000) signals.push(`${service.role}-unavailable-60s`);
+            }
+            services.push({
+                role: service.role,
+                status: observed.status,
+                desiredCount: observed.desiredCount,
+                runningCount: observed.runningCount,
+                pendingCount: observed.pendingCount,
+                healthy,
+            });
+        }
+        state.polls.push({
+            checkedAt: new Date(checkedAt).toISOString(),
+            failureObjectCount: Number(failures.KeyCount ?? 0),
+            services,
+            signals: [...signals].sort(),
+        });
+        if (signals.length > 0) return [...new Set(signals)].sort();
+        await sleepWithAbort(10_000, sleep, signal);
+    }
+}
+
+export async function runArchiveTaskOnceAt({
+    epoch,
+    config,
+    runId,
+    state = createArchiveTaskState(runId),
+    awsJson,
+    sleep,
+    now = Date.now,
+    signal,
+    onStateChange = () => {},
+    onResult = () => {},
+    maxListPolls = 12,
+    maxDescribePolls = 120,
+}) {
+    validateArchiveConfig(config);
+    if (!Number.isInteger(epoch) || epoch < 0 || typeof awsJson !== 'function' || typeof sleep !== 'function' ||
+        !Number.isInteger(maxListPolls) || maxListPolls < 1 || !Number.isInteger(maxDescribePolls) || maxDescribePolls < 1) {
+        throw new Error('invalid archive orchestration inputs');
+    }
+    const expectedIdentity = buildArchiveTaskIdentity(runId);
+    if (state.clientToken !== expectedIdentity.clientToken || state.startedBy !== expectedIdentity.startedBy ||
+        state.runTaskInvocationCount !== 0) {
+        throw new Error('archive task state is not a fresh exact run-owned attempt');
+    }
+    await sleepWithAbort(Math.max(0, epoch * 1_000 - now()), sleep, signal);
+    throwIfAborted(signal);
+
+    const overrides = {
+        containerOverrides: [{
+            name: 'archive',
+            environment: [
+                { name: 'ARCHIVE_PARTITION', value: config.partition },
+                { name: 'ARCHIVE_TODAY', value: config.today },
+            ],
+        }],
+    };
+    const runTaskArgs = [
+        'ecs', 'run-task', '--region', REGION,
+        '--cluster', config.cluster,
+        '--task-definition', config.taskDefinition,
+        '--count', '1',
+        '--capacity-provider-strategy', `capacityProvider=${config.capacityProvider},weight=1`,
+        '--network-configuration', `awsvpcConfiguration={subnets=[${config.subnetIds.join(',')}],securityGroups=[${config.securityGroupId}],assignPublicIp=DISABLED}`,
+        '--overrides', JSON.stringify(overrides),
+        '--client-token', state.clientToken,
+        '--started-by', state.startedBy,
+    ];
+
+    // This counter is persisted before the only RunTask call. Response-loss recovery
+    // below uses ListTasks and never calls RunTask again.
+    state.runTaskInvocationCount = 1;
+    state.runTaskRequestedAt = new Date(now()).toISOString();
+    onStateChange(snapshot(state));
+    let response;
+    try {
+        response = await awsJson(runTaskArgs);
+        state.runTaskResponseReceived = true;
+        const responseTaskArns = exactTaskArns(response?.tasks?.map((task) => task.taskArn) ?? []);
+        if ((response?.failures ?? []).length !== 0 || responseTaskArns.length !== 1) {
+            state.responseTaskArns = responseTaskArns;
+            onStateChange(snapshot(state));
+            throw new Error('archive RunTask response did not contain exactly one task and zero failures');
+        }
+        state.responseTaskArn = responseTaskArns[0];
+    } catch (error) {
+        if (state.runTaskResponseReceived) throw error;
+        state.runTaskResponseLost = true;
+        state.runTaskResponseError = sanitizedError(error);
+    }
+    onStateChange(snapshot(state));
+
+    const taskArn = await discoverExactlyOneArchiveTask({
+        awsJson,
+        sleep,
+        signal,
+        config,
+        state,
+        maxListPolls,
+    });
+    state.taskArn = taskArn;
+    onStateChange(snapshot(state));
+
+    let task;
+    for (let poll = 1; poll <= maxDescribePolls; poll += 1) {
+        throwIfAborted(signal);
+        const described = await awsJson([
+            'ecs', 'describe-tasks', '--region', REGION,
+            '--cluster', config.cluster,
+            '--tasks', taskArn,
+        ]);
+        task = exactDescribedTask(described, { taskArn, startedBy: state.startedBy, taskDefinition: config.taskDefinition });
+        state.lastStatus = task.lastStatus ?? null;
+        state.describePolls = poll;
+        onStateChange(snapshot(state));
+        if (task.lastStatus === 'STOPPED') break;
+        if (poll < maxDescribePolls) await sleepWithAbort(15_000, sleep, signal);
+    }
+    if (!task || task.lastStatus !== 'STOPPED') throw new Error('archive task did not stop within 30 minutes');
+
+    const startedAt = exactEcsTimestamp(task.startedAt, 'startedAt');
+    const stoppedAt = exactEcsTimestamp(task.stoppedAt, 'stoppedAt');
+    const container = task.containers?.find((value) => value.name === 'archive');
+    const result = {
+        attemptCount: state.runTaskInvocationCount,
+        runTaskInvocationCount: state.runTaskInvocationCount,
+        runTaskResponseLost: state.runTaskResponseLost,
+        clientToken: state.clientToken,
+        startedBy: state.startedBy,
+        taskCardinality: state.listedTaskArns.length,
+        taskArn,
+        timingSource: 'ecs-task.startedAt',
+        startedAt,
+        startedEpoch: Math.floor(Date.parse(startedAt) / 1_000),
+        startedEpochSource: 'ecs-task.startedAt',
+        stoppedAt,
+        stopCode: task.stopCode ?? null,
+        stoppedReason: task.stoppedReason ?? null,
+        exitCode: container?.exitCode ?? null,
+        reason: container?.reason ?? null,
+        placementEvidence: {
+            listTasks: {
+                startedBy: state.startedBy,
+                taskArns: [...state.listedTaskArns],
+                count: state.listedTaskArns.length,
+            },
+            describeTasks: {
+                taskArn,
+                count: 1,
+                exactStartedBy: task.startedBy === state.startedBy,
+                exactTaskDefinition: task.taskDefinitionArn === config.taskDefinition,
+            },
+        },
+    };
+    onResult(snapshot(result));
+    if (result.exitCode !== 0) throw new Error(`archive task failed with exit code ${result.exitCode ?? 'unknown'}`);
+    return result;
+}
+
+export async function reconcileOwnedStageCommands({
+    runId,
+    stage,
+    plans,
+    localCommands = [],
+    awsJson,
+    sleep,
+    maxPolls = 6,
+}) {
+    if (!RUN_ID.test(runId) || !['warmup', 'score'].includes(stage) || !Array.isArray(plans) ||
+        plans.length === 0 || typeof awsJson !== 'function' || typeof sleep !== 'function' ||
+        !Number.isInteger(maxPolls) || maxPolls < 1) {
+        throw new Error('invalid SSM command reconciliation inputs');
+    }
+    const stamp = runId.match(/^run_([0-9]{8}_[0-9]{6})_/)?.[1];
+    const workerRunId = `run_${stamp}_phase7_${stage}`;
+    const durationSeconds = stage === 'warmup' ? 180 : 300;
+    const planByNode = new Map();
+    for (const plan of plans) {
+        if (!/^node-[0-9]{2}$/.test(String(plan?.nodeId)) || !/^i-[0-9a-f]+$/.test(String(plan?.instanceId)) ||
+            !Number.isInteger(plan?.offeredRps) || plan.offeredRps < 1 || planByNode.has(plan.nodeId)) {
+            throw new Error('invalid or duplicate SSM reconciliation node plan');
+        }
+        planByNode.set(plan.nodeId, plan);
+    }
+    if (new Set(plans.map((plan) => plan.instanceId)).size !== plans.length) {
+        throw new Error('SSM reconciliation node plans must use unique instances');
+    }
+    const localByNode = new Map();
+    for (const command of localCommands) {
+        const plan = planByNode.get(command?.nodeId);
+        const expectedComment = plan
+            ? `loop-ad ${workerRunId} oha ${plan.offeredRps}rps ${durationSeconds}s`
+            : null;
+        if (!plan || command.instanceId !== plan.instanceId || !COMMAND_ID.test(String(command.commandId)) ||
+            command.comment !== expectedComment || localByNode.has(command.nodeId)) {
+            throw new Error('invalid or duplicate local SSM load-command evidence');
+        }
+        localByNode.set(command.nodeId, command);
+    }
+
+    const remoteByNode = new Map(plans.map((plan) => [plan.nodeId, {
+        listSucceeded: false,
+        loadCommands: new Map(),
+        transferCommands: new Map(),
+        errors: [],
+        listErrors: [],
+        polls: 0,
+    }]));
+    for (let poll = 1; poll <= maxPolls; poll += 1) {
+        for (const plan of plans) {
+            const observed = remoteByNode.get(plan.nodeId);
+            observed.polls = poll;
+            try {
+                const response = await awsJson([
+                    'ssm', 'list-commands', '--region', REGION,
+                    '--instance-id', plan.instanceId,
+                    '--max-results', '50',
+                ]);
+                if (!Array.isArray(response?.Commands)) throw new Error('ListCommands response is malformed');
+                observed.listSucceeded = true;
+                const loadComment = `loop-ad ${workerRunId} oha ${plan.offeredRps}rps ${durationSeconds}s`;
+                const transferComment = `loop-ad ${workerRunId} 20KiB SSM transfer probe`;
+                for (const command of response.Commands) {
+                    const comment = String(command?.Comment ?? '');
+                    if (!comment.includes(workerRunId)) continue;
+                    const commandId = String(command?.CommandId ?? '');
+                    const exactTarget = COMMAND_ID.test(commandId) && command?.DocumentName === 'AWS-RunShellScript' &&
+                        Array.isArray(command?.InstanceIds) && command.InstanceIds.length === 1 &&
+                        command.InstanceIds[0] === plan.instanceId;
+                    if (!exactTarget || ![loadComment, transferComment].includes(comment)) {
+                        observed.errors.push('unowned or malformed same-run SSM command');
+                    } else if (comment === loadComment) {
+                        observed.loadCommands.set(commandId, command);
+                    } else {
+                        observed.transferCommands.set(commandId, command);
+                    }
+                }
+            } catch (error) {
+                observed.listErrors.push(String(error?.message ?? error).slice(0, 500));
+            }
+        }
+        if (poll < maxPolls) await sleep(1_000);
+    }
+
+    const commands = [];
+    const errors = [];
+    const reconciliation = [];
+    for (const plan of plans) {
+        const observed = remoteByNode.get(plan.nodeId);
+        const local = localByNode.get(plan.nodeId) ?? null;
+        const remoteIds = [...observed.loadCommands.keys()].sort();
+        const transferIds = [...observed.transferCommands.keys()].sort();
+        const nodeErrors = [...new Set(observed.errors)];
+        if (!observed.listSucceeded) {
+            nodeErrors.push(`ListCommands never produced a trustworthy response: ${observed.listErrors.at(-1) ?? 'unknown error'}`);
+        }
+        if (remoteIds.length > 1) nodeErrors.push('more than one exact load SendCommand exists');
+        if (transferIds.length > 1) nodeErrors.push('more than one exact transfer-probe SendCommand exists');
+        if (local && observed.listSucceeded && remoteIds.length === 0) {
+            nodeErrors.push('local exact load CommandId is absent from remote exact inventory');
+        }
+        if (local && remoteIds.length === 1 && local.commandId !== remoteIds[0]) {
+            nodeErrors.push('local and remote exact load CommandIds differ');
+        }
+        const cancellationIds = [...new Set([
+            ...remoteIds,
+            ...(local ? [local.commandId] : []),
+        ])].sort();
+        const commandId = cancellationIds.length === 1 ? cancellationIds[0] : null;
+        for (const cancellationCommandId of cancellationIds) {
+            commands.push({
+                nodeId: plan.nodeId,
+                instanceId: plan.instanceId,
+                commandId: cancellationCommandId,
+                comment: `loop-ad ${workerRunId} oha ${plan.offeredRps}rps ${durationSeconds}s`,
+            });
+        }
+        errors.push(...nodeErrors.map((message) => ({ nodeId: plan.nodeId, message })));
+        reconciliation.push({
+            nodeId: plan.nodeId,
+            instanceId: plan.instanceId,
+            localCommandId: local?.commandId ?? null,
+            remoteLoadCommandIds: remoteIds,
+            ignoredTransferCommandIds: transferIds,
+            cancellationLoadCommandIds: cancellationIds,
+            selectedLoadCommandId: commandId,
+            noLoadCommandObserved: commandId === null && observed.listSucceeded && nodeErrors.length === 0,
+            listPolls: observed.polls,
+            transientListErrors: [...observed.listErrors],
+            errors: nodeErrors,
+        });
+    }
+    return { workerRunId, commands, errors, reconciliation };
+}
+
+export async function cancelOwnedStageWork({
+    runId,
+    stage,
+    cause,
+    ssmCommands = [],
+    commandDiscoveryErrors = [],
+    commandReconciliation = [],
+    localChildren = [],
+    archiveConfig = null,
+    archiveState = null,
+    awsJson,
+    sleep = defaultSleep,
+    now = Date.now,
+    maxSsmPolls = 10,
+    maxWorkerStatePolls = 10,
+    maxArchivePolls = 30,
+    pollMilliseconds = 1_000,
+}) {
+    if (!RUN_ID.test(runId) || !['warmup', 'score'].includes(stage) || typeof awsJson !== 'function' ||
+        typeof sleep !== 'function' || !Number.isInteger(maxSsmPolls) || maxSsmPolls < 1 ||
+        !Number.isInteger(maxWorkerStatePolls) || maxWorkerStatePolls < 1 ||
+        !Number.isInteger(maxArchivePolls) || maxArchivePolls < 1 ||
+        !Number.isInteger(pollMilliseconds) || pollMilliseconds < 0) {
+        throw new Error('invalid Phase 7 cancellation inputs');
+    }
+    const stamp = runId.match(/^run_([0-9]{8}_[0-9]{6})_/)?.[1];
+    const workerRunId = `run_${stamp}_phase7_${stage}`;
+    const durationSeconds = stage === 'warmup' ? 180 : 300;
+    const evidence = {
+        schemaVersion: 1,
+        runId,
+        stage,
+        requestedAt: new Date(now()).toISOString(),
+        cause: sanitizedError(cause),
+        nextState: 'cleanup-only',
+        newWorkAllowed: false,
+        localChildren,
+        commandDiscoveryErrors,
+        commandReconciliation,
+        ssmCommands: [],
+        archive: null,
+    };
+    const ssmPromise = Promise.all(ssmCommands.map((command) => cancelAndVerifySsmCommand({
+        command,
+        runId,
+        stage,
+        workerRunId,
+        durationSeconds,
+        awsJson,
+        sleep,
+        maxSsmPolls,
+        maxWorkerStatePolls,
+        pollMilliseconds,
+    })));
+    const archivePromise = archiveConfig && archiveState
+        ? cancelAndVerifyArchiveTasks({
+            runId,
+            archiveConfig,
+            archiveState,
+            awsJson,
+            sleep,
+            maxArchivePolls,
+            pollMilliseconds,
+        })
+        : Promise.resolve(null);
+    [evidence.ssmCommands, evidence.archive] = await Promise.all([ssmPromise, archivePromise]);
+
+    const reconciledCommandIds = commandReconciliation
+        .flatMap((item) => item.cancellationLoadCommandIds ?? [item.selectedLoadCommandId])
+        .filter((commandId) => commandId !== null && commandId !== undefined)
+        .sort();
+    const cancellationCommandIds = evidence.ssmCommands.map((item) => item.commandId).sort();
+    const reconciliationComplete = commandReconciliation.length === 0 || (
+        commandReconciliation.length === 8 && commandReconciliation.every((item) =>
+            Array.isArray(item.errors) && item.errors.length === 0 &&
+            COMMAND_ID.test(String(item.selectedLoadCommandId))) &&
+        JSON.stringify(reconciledCommandIds) === JSON.stringify(cancellationCommandIds)
+    );
+    evidence.cancellationComplete = commandDiscoveryErrors.length === 0 &&
+        reconciliationComplete &&
+        localChildren.every((item) => item.alreadyExited || item.terminationSignalSent) &&
+        evidence.ssmCommands.every((item) => item.remoteWorkStopped === true) &&
+        (evidence.archive === null || (
+            evidence.archive.listError === null && evidence.archive.describeError === undefined &&
+            evidence.archive.ownershipErrors.length === 0 &&
+            evidence.archive.stopAttempts.every((item) => item.stoppedVerified === true)
+        ));
+    return evidence;
+}
+
+async function cancelAndVerifySsmCommand({
+    command,
+    runId,
+    stage,
+    workerRunId,
+    durationSeconds,
+    awsJson,
+    sleep,
+    maxSsmPolls,
+    maxWorkerStatePolls,
+    pollMilliseconds,
+}) {
+    const expectedWorkerStateKey = `generator-evidence/${runId}/${stage}/${command?.nodeId}/worker-terminal-state.json`;
+    const expectedComment = new RegExp(
+        `^loop-ad ${workerRunId} oha [1-9][0-9]*rps ${durationSeconds}s$`,
+    );
+    const entry = {
+        nodeId: command?.nodeId ?? null,
+        instanceId: command?.instanceId ?? null,
+        commandId: command?.commandId ?? null,
+        comment: command?.comment ?? null,
+        cancelRequested: false,
+        cancelApiAccepted: false,
+        cancelSucceeded: false,
+        invocationPolls: 0,
+        invocationErrors: [],
+        terminalStatus: null,
+        terminalVerified: false,
+        workerState: {
+            bucket: command?.workerStateBucket ?? null,
+            key: command?.workerStateKey ?? null,
+            polls: 0,
+            errors: [],
+            verified: false,
+            metadata: null,
+        },
+        remoteWorkStopped: false,
+        error: null,
+    };
+    if (!/^node-[0-9]{2}$/.test(String(command?.nodeId)) ||
+        !/^i-[0-9a-f]+$/.test(String(command?.instanceId)) ||
+        !COMMAND_ID.test(String(command?.commandId)) || !expectedComment.test(String(command?.comment)) ||
+        !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(command?.workerStateBucket)) ||
+        command?.workerStateKey !== expectedWorkerStateKey) {
+        entry.error = { name: 'ValidationError', message: 'refused malformed SSM command ownership or worker-state evidence' };
+        return entry;
+    }
+
+    const getInvocation = async () => {
+        entry.invocationPolls += 1;
+        try {
+            const invocation = await awsJson([
+                'ssm', 'get-command-invocation', '--region', REGION,
+                '--command-id', command.commandId,
+                '--instance-id', command.instanceId,
+            ]);
+            if (invocation?.CommandId !== command.commandId || invocation?.InstanceId !== command.instanceId ||
+                invocation?.DocumentName !== 'AWS-RunShellScript' || invocation?.Comment !== command.comment ||
+                typeof invocation?.Status !== 'string') {
+                throw new Error('GetCommandInvocation response does not match exact command ownership');
+            }
+            return invocation;
+        } catch (error) {
+            entry.invocationErrors.push(sanitizedError(error));
+            return null;
+        }
+    };
+
+    let terminalInvocation = null;
+    const initialInvocation = await getInvocation();
+    if (initialInvocation && SSM_TERMINAL_STATUSES.has(initialInvocation.Status)) {
+        terminalInvocation = initialInvocation;
+    } else {
+        entry.cancelRequested = true;
+        try {
+            await awsJson([
+                'ssm', 'cancel-command', '--region', REGION,
+                '--command-id', command.commandId,
+                '--instance-ids', command.instanceId,
+            ]);
+            entry.cancelApiAccepted = true;
+            entry.cancelSucceeded = true;
+        } catch (error) {
+            entry.cancelError = sanitizedError(error);
+        }
+        for (let poll = 1; poll <= maxSsmPolls && !terminalInvocation; poll += 1) {
+            if (pollMilliseconds > 0) await sleep(pollMilliseconds);
+            const invocation = await getInvocation();
+            if (invocation && SSM_TERMINAL_STATUSES.has(invocation.Status)) terminalInvocation = invocation;
+        }
+    }
+    if (terminalInvocation) {
+        entry.terminalStatus = terminalInvocation.Status;
+        entry.terminalStatusDetails = terminalInvocation.StatusDetails ?? null;
+        entry.terminalResponseCode = terminalInvocation.ResponseCode ?? null;
+        entry.terminalExecutionStartDateTime = terminalInvocation.ExecutionStartDateTime ?? null;
+        entry.terminalExecutionEndDateTime = terminalInvocation.ExecutionEndDateTime ?? null;
+        entry.terminalVerified = true;
+    }
+
+    if (entry.terminalVerified) {
+        const expectedMetadata = {
+            'schema-version': '1',
+            'main-run-id': runId,
+            'worker-run-id': workerRunId,
+            stage,
+            'node-id': command.nodeId,
+            'instance-id': command.instanceId,
+            state: 'terminal',
+            'cleanup-complete': 'true',
+            'owned-container-running-count': '0',
+            'owned-runner-process-count': '0',
+        };
+        for (let poll = 1; poll <= maxWorkerStatePolls; poll += 1) {
+            entry.workerState.polls = poll;
+            try {
+                const head = await awsJson([
+                    's3api', 'head-object', '--region', REGION,
+                    '--bucket', command.workerStateBucket,
+                    '--key', command.workerStateKey,
+                ]);
+                const metadata = head?.Metadata;
+                if (!metadata || Number(head?.ContentLength ?? 0) < 2 ||
+                    Object.entries(expectedMetadata).some(([key, value]) => metadata[key] !== value)) {
+                    throw new Error('worker terminal-state object does not prove exact ownership and zero remote work');
+                }
+                entry.workerState.metadata = Object.fromEntries(
+                    Object.keys(expectedMetadata).map((key) => [key, metadata[key]]),
+                );
+                entry.workerState.contentLength = head.ContentLength;
+                entry.workerState.eTag = head.ETag ?? null;
+                entry.workerState.verified = true;
+                break;
+            } catch (error) {
+                entry.workerState.errors.push(sanitizedError(error));
+            }
+            if (poll < maxWorkerStatePolls && pollMilliseconds > 0) await sleep(pollMilliseconds);
+        }
+    }
+    entry.remoteWorkStopped = entry.terminalVerified && entry.workerState.verified;
+    if (!entry.remoteWorkStopped && entry.error === null) {
+        entry.error = {
+            name: 'CancellationVerificationError',
+            message: entry.terminalVerified
+                ? 'SSM command is terminal but exact worker zero-state is unverified'
+                : 'SSM command terminal status is unverified',
+        };
+    }
+    return entry;
+}
+
+async function cancelAndVerifyArchiveTasks({
+    runId,
+    archiveConfig,
+    archiveState,
+    awsJson,
+    sleep,
+    maxArchivePolls,
+    pollMilliseconds,
+}) {
+    validateArchiveConfig(archiveConfig);
+    const expectedIdentity = buildArchiveTaskIdentity(runId);
+    const archiveEvidence = {
+        clientToken: expectedIdentity.clientToken,
+        startedBy: expectedIdentity.startedBy,
+        listedTaskArns: [],
+        cardinality: null,
+        listError: null,
+        ownershipErrors: [],
+        listPolls: 0,
+        listErrors: [],
+        stopAttempts: [],
+    };
+    if (archiveState.clientToken !== expectedIdentity.clientToken || archiveState.startedBy !== expectedIdentity.startedBy ||
+        ![0, 1].includes(archiveState.runTaskInvocationCount)) {
+        archiveEvidence.ownershipErrors.push('archive state is not bound to the exact one-shot task identity');
+    }
+    let taskArns = [];
+    const knownStateArn = [archiveState.responseTaskArn, archiveState.taskArn]
+        .some((taskArn) => TASK_ARN.test(String(taskArn)));
+    const maxListPolls = archiveState.runTaskInvocationCount === 1 && !knownStateArn
+        ? Math.min(6, maxArchivePolls)
+        : 1;
+    let listSucceeded = false;
+    for (let poll = 1; poll <= maxListPolls; poll += 1) {
+        archiveEvidence.listPolls = poll;
+        try {
+            const listed = await awsJson([
+                'ecs', 'list-tasks', '--region', REGION,
+                '--cluster', archiveConfig.cluster,
+                '--started-by', expectedIdentity.startedBy,
+            ]);
+            taskArns.push(...exactTaskArns(listed?.taskArns ?? []));
+            listSucceeded = true;
+        } catch (error) {
+            archiveEvidence.listErrors.push(sanitizedError(error));
+        }
+        if (poll < maxListPolls && pollMilliseconds > 0) await sleep(pollMilliseconds);
+    }
+    if (!listSucceeded) archiveEvidence.listError = archiveEvidence.listErrors.at(-1) ?? sanitizedError('inventory unavailable');
+    for (const [field, taskArn] of [
+        ['responseTaskArn', archiveState.responseTaskArn],
+        ['taskArn', archiveState.taskArn],
+    ]) {
+        if (taskArn === null || taskArn === undefined) continue;
+        if (TASK_ARN.test(String(taskArn))) taskArns.push(taskArn);
+        else archiveEvidence.ownershipErrors.push(`${field} is not an exact task ARN`);
+    }
+    taskArns = [...new Set(taskArns)].sort();
+    archiveEvidence.listedTaskArns = taskArns;
+    archiveEvidence.cardinality = taskArns.length;
+    if (archiveState.runTaskInvocationCount === 1 && taskArns.length === 0) {
+        archiveEvidence.ownershipErrors.push('RunTask was invoked but no exact archive task could be reconciled');
+    }
+    if (taskArns.length === 0) return archiveEvidence;
+
+    let describedByArn = new Map();
+    try {
+        const described = await awsJson([
+            'ecs', 'describe-tasks', '--region', REGION,
+            '--cluster', archiveConfig.cluster,
+            '--tasks', ...taskArns,
+        ]);
+        if ((described?.failures ?? []).length !== 0 || described?.tasks?.length !== taskArns.length) {
+            throw new Error('describe-tasks did not return the exact cancellation inventory');
+        }
+        describedByArn = new Map(described.tasks.map((task) => [task.taskArn, task]));
+        if (describedByArn.size !== taskArns.length) throw new Error('describe-tasks returned duplicate cancellation inventory');
+        for (const taskArn of taskArns) {
+            const task = describedByArn.get(taskArn);
+            if (!task || task.startedBy !== expectedIdentity.startedBy ||
+                task.taskDefinitionArn !== archiveConfig.taskDefinition) {
+                throw new Error('refused task without exact startedBy and task definition');
+            }
+        }
+    } catch (error) {
+        archiveEvidence.describeError = sanitizedError(error);
+        return archiveEvidence;
+    }
+    archiveEvidence.stopAttempts = await Promise.all(taskArns.map((taskArn) => stopAndVerifyArchiveTask({
+        task: describedByArn.get(taskArn),
+        taskArn,
+        expectedIdentity,
+        archiveConfig,
+        awsJson,
+        sleep,
+        maxArchivePolls,
+        pollMilliseconds,
+    })));
+    return archiveEvidence;
+}
+
+async function stopAndVerifyArchiveTask({
+    task,
+    taskArn,
+    expectedIdentity,
+    archiveConfig,
+    awsJson,
+    sleep,
+    maxArchivePolls,
+    pollMilliseconds,
+}) {
+    const attempt = {
+        taskArn,
+        stopRequested: false,
+        stopApiAccepted: false,
+        stopSucceeded: task.lastStatus === 'STOPPED',
+        alreadyStopped: task.lastStatus === 'STOPPED',
+        stoppedVerified: task.lastStatus === 'STOPPED',
+        statusPolls: 0,
+        statusHistory: [task.lastStatus ?? null],
+        pollErrors: [],
+        error: null,
+    };
+    if (attempt.stoppedVerified) return attempt;
+    attempt.stopRequested = true;
+    try {
+        await awsJson([
+            'ecs', 'stop-task', '--region', REGION,
+            '--cluster', archiveConfig.cluster,
+            '--task', taskArn,
+            '--reason', 'Phase 7 score/archive peer failed; cleanup-only',
+        ]);
+        attempt.stopApiAccepted = true;
+    } catch (error) {
+        attempt.stopError = sanitizedError(error);
+    }
+    for (let poll = 1; poll <= maxArchivePolls; poll += 1) {
+        if (pollMilliseconds > 0) await sleep(pollMilliseconds);
+        attempt.statusPolls = poll;
+        try {
+            const described = await awsJson([
+                'ecs', 'describe-tasks', '--region', REGION,
+                '--cluster', archiveConfig.cluster,
+                '--tasks', taskArn,
+            ]);
+            const observed = exactDescribedTask(described, {
+                taskArn,
+                startedBy: expectedIdentity.startedBy,
+                taskDefinition: archiveConfig.taskDefinition,
+            });
+            attempt.statusHistory.push(observed.lastStatus ?? null);
+            if (observed.lastStatus === 'STOPPED') {
+                attempt.stoppedVerified = true;
+                attempt.stopSucceeded = true;
+                attempt.stoppedReason = observed.stoppedReason ?? null;
+                break;
+            }
+        } catch (error) {
+            attempt.pollErrors.push(sanitizedError(error));
+        }
+    }
+    if (!attempt.stoppedVerified) {
+        attempt.error = { name: 'CancellationVerificationError', message: 'exact archive task STOPPED state is unverified' };
+    }
+    return attempt;
+}
+
+export function validateArchiveConfig(value) {
+    if (!value || typeof value !== 'object' ||
+        !new RegExp(`^arn:aws:ecs:${REGION}:${ACCOUNT}:task-definition/[A-Za-z0-9_-]+:[0-9]+$`).test(String(value.taskDefinition)) ||
+        !/^[A-Za-z0-9_-]{1,255}$/.test(String(value.cluster)) ||
+        !/^[A-Za-z0-9_-]{1,255}$/.test(String(value.capacityProvider)) || !Array.isArray(value.subnetIds) ||
+        value.subnetIds.length !== 2 || !value.subnetIds.every((item) => /^subnet-[0-9a-f]+$/.test(item)) ||
+        !/^sg-[0-9a-f]+$/.test(value.securityGroupId) || !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(value.partition) ||
+        !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(value.today)) {
+        throw new Error('invalid archive task configuration');
+    }
+}
+
+async function discoverExactlyOneArchiveTask({ awsJson, sleep, signal, config, state, maxListPolls }) {
+    for (let poll = 1; poll <= maxListPolls; poll += 1) {
+        throwIfAborted(signal);
+        const listed = await awsJson([
+            'ecs', 'list-tasks', '--region', REGION,
+            '--cluster', config.cluster,
+            '--started-by', state.startedBy,
+        ]);
+        const taskArns = exactTaskArns(listed?.taskArns ?? []);
+        state.listPolls = poll;
+        state.listedTaskArns = taskArns;
+        if (taskArns.length > 1) throw new Error(`archive task cardinality is ${taskArns.length}, expected exactly one`);
+        if (taskArns.length === 1) {
+            if (state.responseTaskArn && state.responseTaskArn !== taskArns[0]) {
+                throw new Error('RunTask response task differs from exact startedBy inventory');
+            }
+            return taskArns[0];
+        }
+        if (poll < maxListPolls) await sleepWithAbort(5_000, sleep, signal);
+    }
+    const suffix = state.runTaskResponseLost ? ' after RunTask response loss; RunTask was not retried' : '';
+    throw new Error(`archive task cardinality is 0, expected exactly one${suffix}`);
+}
+
+function exactDescribedTask(response, { taskArn, startedBy, taskDefinition }) {
+    if ((response?.failures ?? []).length !== 0 || response?.tasks?.length !== 1) {
+        throw new Error('describe-tasks did not return exactly one archive task');
+    }
+    const task = response.tasks[0];
+    if (task.taskArn !== taskArn || task.startedBy !== startedBy || task.taskDefinitionArn !== taskDefinition) {
+        throw new Error('described archive task does not match exact task ownership');
+    }
+    return task;
+}
+
+function exactTaskArns(values) {
+    if (!Array.isArray(values) || values.some((value) => !TASK_ARN.test(String(value)))) {
+        throw new Error('invalid archive task ARN evidence');
+    }
+    return [...new Set(values)].sort();
+}
+
+function exactEcsTimestamp(value, field) {
+    const milliseconds = typeof value === 'number' ? value * 1_000 : Date.parse(value);
+    if (!Number.isFinite(milliseconds)) throw new Error(`archive task is missing actual ECS ${field}`);
+    return new Date(milliseconds).toISOString();
+}
+
+async function sleepWithAbort(milliseconds, sleep, signal) {
+    throwIfAborted(signal);
+    if (milliseconds > 0) await sleep(milliseconds, signal);
+    throwIfAborted(signal);
+}
+
+function throwIfAborted(signal) {
+    if (signal?.aborted) {
+        const error = new Error('Phase 7 score/archive orchestration was cancelled');
+        error.name = 'AbortError';
+        throw error;
+    }
+}
+
+function sanitizedError(error) {
+    return {
+        name: String(error?.name ?? 'Error').slice(0, 100),
+        message: String(error?.message ?? error ?? 'unknown error').slice(0, 500),
+    };
+}
+
+function snapshot(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function defaultSleep(milliseconds) {
+    return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}

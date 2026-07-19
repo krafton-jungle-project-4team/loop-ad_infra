@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "incidentId": "incident-phase7-20260719-020156",
+  "symptom": "not_recorded",
+  "rootCause": "not_recorded",
+  "fix": "not_recorded",
+  "regressionResult": "run_20260719_020156_phase7_2_deployment_readiness:unknown, run_20260719_020156_phase7_2_aws_integration:unknown",
+  "affectedRunIds": [
+    "run_20260719_020156_phase7_2_aws_integration",
+    "run_20260719_020156_phase7_2_deployment_readiness"
+  ],
+  "period": {
+    "start": "2026-07-19T02:01:56",
+    "end": "2026-07-19T02:01:56",
+    "timezone": "not_recorded"
+  },
+  "invalidationScope": "unknown",
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceEvidence": [
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/cleanup-verification.json",
+        "bytes": 2330,
+        "sha256": "6714577736f6811763f55ba826e16677e1b05c6c185d148412d53fec19fe8b58"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/commands.md",
+        "bytes": 21,
+        "sha256": "36bf3ab648efe54631f6db88e6f20fb4b3e57751e521ad7e181e68b80a3a1e87"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/correctness-summary.json",
+        "bytes": 2462,
+        "sha256": "0b2b108aebd5b7a0ac14f9a800943b8400e80f1e9888db5adae83dfa046b5f85"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/cost-status.json",
+        "bytes": 828,
+        "sha256": "6d1a1992d071f34b81444af43641f08c8c4b086cc9b833482f425c930d60c57c"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/infra.md",
+        "bytes": 27,
+        "sha256": "eb92563ef76dff5f591296c3d3d8fa3deedd431e643f468d7edbec42cf2579a2"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/metrics-summary.json",
+        "bytes": 1325,
+        "sha256": "3ee8e3f152f297b820d9e4da69ba3e6ebbc661462200c9df28df7f170ad8d9f4"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/report.md",
+        "bytes": 2329,
+        "sha256": "25f35172a2cc8e83319b9806ed045f5bc3564642a399c42ef5c7478b24479a68"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_aws_integration/run.json",
+        "bytes": 4857,
+        "sha256": "68c855a69ef41b7e6f01f90c3c540d533a1ef05d0050e0b366970abdb9f7cd0c"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_deployment_readiness/commands.md",
+        "bytes": 7159,
+        "sha256": "502dd7129506ff9f5969f1f2a325706ccce56985b854ef9f76b0b686c727e597"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_deployment_readiness/cost-model-final.json",
+        "bytes": 7686,
+        "sha256": "82a7b5426deae1def8bb98575dea5b80153a4ca74501d378358e2ebffee9e5c4"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_deployment_readiness/cost-model.json",
+        "bytes": 7686,
+        "sha256": "e58e38060bfd710dda8db41ed684f05a84c53ee9cef5816d97dfaf4f52acf1b8"
+      },
+      {
+        "path": "run_20260719_020156_phase7_2_deployment_readiness/report.md",
+        "bytes": 1522,
+        "sha256": "bc1bdc96b9e371ed43889a922b5088d9765a913376104a661d62ff97a5c21e00"
+      }
+    ]
+  }
+}

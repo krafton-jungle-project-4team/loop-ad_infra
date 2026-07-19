@@ -1,0 +1,218 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
+import { aggregateOha12k, parseCounterText } from './oha12k-aggregate.mjs';
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+import { evaluatePersistentWarmupGate } from './persistent-warmup-gate.mjs';
+
+const REGION = 'ap-northeast-2';
+const EXPERIMENT_MODE = 'alb-warmup';
+const WARMUP_SECONDS = 120;
+const MEASUREMENT_SECONDS = 15;
+const CONTROL_WAIT_SECONDS = 90;
+const MAX_OHA_SECONDS = 300;
+const NODE_COUNT = 2;
+const PROCESSES_PER_NODE = 2;
+const TOTAL_CONNECTIONS = 12_000;
+const scripts = dirname(fileURLToPath(import.meta.url));
+const poolPath = join(scripts, 'payloads', 'sdk-compatible-event-bodies.ndjson');
+const manifestPath = join(scripts, 'payloads', 'sdk-compatible-event-bodies.manifest.json');
+
+const instanceIds = requiredOption('--instance-ids').split(',').filter(Boolean);
+const targetBaseUrl = requiredOption('--target-base-url');
+const runId = requiredOption('--run-id');
+const candidate = requiredOption('--candidate');
+const targetRps = requiredInteger('--rps');
+const imageDigest = requiredOption('--image-digest');
+const outputDir = requiredOption('--output-dir');
+if (instanceIds.length !== NODE_COUNT || new Set(instanceIds).size !== NODE_COUNT || !instanceIds.every((id) => /^i-[0-9a-f]+$/.test(id))) throw new Error('exactly two unique instance IDs are required');
+if (!/^http:\/\/internal-perf-phase1-loop-ad-alb-[a-z0-9-]+\.ap-northeast-2\.elb\.amazonaws\.com$/.test(targetBaseUrl)) throw new Error('invalid internal ALB URL');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+if (![30_000, 50_000].includes(targetRps)) throw new Error('RPS must be 30000 or 50000');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid image digest');
+
+const plan = oha12kNodePlan({ nodeCount: NODE_COUNT, processesPerNode: PROCESSES_PER_NODE, targetRps, experimentMode: EXPERIMENT_MODE });
+if (plan.totalConnections !== TOTAL_CONNECTIONS) throw new Error('fixed connection topology changed');
+const pool = readFileSync(poolPath);
+const poolManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const poolSha256 = createHash('sha256').update(pool).digest('hex');
+if (poolManifest.sha256 !== poolSha256) throw new Error('payload pool checksum mismatch');
+const payloadGzipBase64 = gzipSync(pool, { level: 9 }).toString('base64');
+if (Buffer.byteLength(payloadGzipBase64) > 20 * 1_024) throw new Error('payload exceeds checked SSM transfer size');
+
+mkdirSync(outputDir, { recursive: true });
+const startEpoch = Math.ceil((Date.now() / 1_000 + 30) / 10) * 10;
+const manifest = {
+    createdAt: new Date().toISOString(), experimentMode: EXPERIMENT_MODE, runId, candidate,
+    nodeCount: NODE_COUNT, processesPerNode: PROCESSES_PER_NODE, processCount: 4,
+    targetRps, totalConnections: TOTAL_CONNECTIONS, warmupSeconds: WARMUP_SECONDS,
+    measurementSeconds: MEASUREMENT_SECONDS, maxOhaSeconds: MAX_OHA_SECONDS, startEpoch,
+    nodes: plan.nodes.map((node, index) => ({ ...node, instanceId: instanceIds[index], startEpoch, outputDir: join(outputDir, node.nodeId) })),
+};
+writeJson(join(outputDir, 'topology-manifest.json'), manifest);
+
+const mainCommands = manifest.nodes.map((node) => {
+    mkdirSync(node.outputDir, { recursive: true });
+    const command = persistentWorkerCommand(node);
+    const sent = sendCommand(node.instanceId, [command], 600, `${runId} ${node.nodeId} persistent warmup`);
+    writeJson(join(node.outputDir, 'ssm-start.json'), { commandId: sent.Command.CommandId, instanceId: node.instanceId, commandBytes: Buffer.byteLength(command), startedAt: new Date().toISOString() });
+    return { node, commandId: sent.Command.CommandId };
+});
+
+const readyDeadline = (startEpoch + WARMUP_SECONDS + 45) * 1_000;
+while (Date.now() < readyDeadline) {
+    if (Date.now() < (startEpoch + WARMUP_SECONDS) * 1_000) {
+        await sleep(Math.min(5_000, (startEpoch + WARMUP_SECONDS) * 1_000 - Date.now()));
+        continue;
+    }
+    const statuses = mainCommands.map(({ node }) => remoteFileExists(node.instanceId, `/tmp/loop-ad-phase1/${runId}/warmup-ready.json`));
+    if (statuses.every(Boolean)) break;
+    await sleep(3_000);
+}
+
+let gate;
+try {
+    const workers = mainCommands.map(({ node }) => collectWorkerGateSnapshot(node));
+    const awsGate = collectAwsGate();
+    const debugDir = join(outputDir, 'gate', 'debug-vars');
+    execFileSync(process.execPath, [join(scripts, 'collect-debug-vars.mjs'), '--expected-count', '4', '--candidate', candidate, '--label', 'persistent-warmup-gate', '--output-dir', debugDir], { stdio: 'inherit' });
+    const taskStatePath = join(outputDir, 'gate', 'task-state.json');
+    execFileSync(process.execPath, [join(scripts, 'collect-capacity-task-state.mjs'), '--image-digest', imageDigest, '--output', taskStatePath], { stdio: 'inherit' });
+    const debugVars = readdirSync(debugDir).filter((name) => /^collector-[0-9]{2}\.json$/.test(name)).sort().map((name) => json(join(debugDir, name)));
+    const gateInput = { workers, ...awsGate, debugVars, taskState: json(taskStatePath) };
+    writeJson(join(outputDir, 'gate', 'evaluation-input.json'), gateInput);
+    gate = evaluatePersistentWarmupGate(gateInput);
+    writeJson(join(outputDir, 'gate', 'decision.json'), gate);
+} catch (error) {
+    gate = { evaluatedAt: new Date().toISOString(), passed: false, error: String(error.stack ?? error) };
+    writeJson(join(outputDir, 'gate', 'decision.json'), gate);
+}
+
+let measurementStartEpoch = null;
+if (gate.passed) {
+    measurementStartEpoch = Math.ceil((Date.now() / 1_000 + 12) / 5) * 5;
+    for (const { node } of mainCommands) runOneShot(node.instanceId, [`printf '%s' '${measurementStartEpoch}' > /tmp/loop-ad-phase1/${runId}/control-go-epoch.txt`], 60, `${runId} measurement go`);
+} else {
+    for (const { node } of mainCommands) runOneShot(node.instanceId, [`touch /tmp/loop-ad-phase1/${runId}/control-stop`], 60, `${runId} measurement stop`);
+}
+
+const nodes = [];
+for (const entry of mainCommands) {
+    const invocation = await waitInvocation(entry.commandId, entry.node.instanceId, 360);
+    nodes.push(extractWorkerEvidence(entry.node, entry.commandId, invocation));
+}
+
+const measurement = measurementStartEpoch === null ? null : {
+    startEpoch: measurementStartEpoch,
+    start: new Date(measurementStartEpoch * 1_000).toISOString(),
+    end: new Date((measurementStartEpoch + MEASUREMENT_SECONDS) * 1_000).toISOString(),
+    seconds: MEASUREMENT_SECONDS,
+};
+writeJson(join(outputDir, 'measurement-window.json'), { gatePassed: gate.passed, measurement });
+if (!gate.passed) {
+    writeJson(join(outputDir, 'orchestration-result.json'), { completedAt: new Date().toISOString(), gatePassed: false, measurementStarted: false, passed: false });
+    process.stdout.write(`${JSON.stringify(gate, null, 2)}\n`);
+    process.exitCode = 2;
+} else {
+    manifest.durationSeconds = Math.max(...nodes.map((node) => (Date.parse(node.summary.endedAt) - Date.parse(node.summary.startedAt)) / 1_000));
+    const aggregate = aggregateOha12k({ manifest, nodes });
+    aggregate.persistent = { warmupSeconds: WARMUP_SECONDS, measurement, sameProcesses: gate.checks.sameFourOhaProcesses, gate: 'gate/decision.json' };
+    writeJson(join(outputDir, 'oha12k-summary.json'), aggregate);
+    writeJson(join(outputDir, 'orchestration-result.json'), { completedAt: new Date().toISOString(), gatePassed: true, measurementStarted: true, passed: aggregate.passed });
+    process.stdout.write(`${JSON.stringify(aggregate, null, 2)}\n`);
+    if (!aggregate.passed) process.exitCode = 2;
+}
+
+function persistentWorkerCommand(node) {
+    return ['sudo -n env', `TARGET_BASE_URL='${targetBaseUrl}'`, `RUN_ID='${runId}'`, `QUERY_PER_SECOND='${node.offeredRps}'`,
+        `DURATION_SECONDS='${MAX_OHA_SECONDS}'`, `CONNECTIONS='${node.connections}'`, `PROCESSES_PER_NODE='${PROCESSES_PER_NODE}'`,
+        `EXPERIMENT_MODE='${EXPERIMENT_MODE}'`, `START_EPOCH='${startEpoch}'`, `TELEMETRY_INTERVAL_SECONDS='1'`,
+        `PERSISTENT_WARMUP_SECONDS='${WARMUP_SECONDS}'`, `MEASUREMENT_SECONDS='${MEASUREMENT_SECONDS}'`, `CONTROL_WAIT_SECONDS='${CONTROL_WAIT_SECONDS}'`,
+        `NODE_ID='${node.nodeId}'`, `EXPECTED_POOL_SHA256='${poolSha256}'`, `PAYLOAD_GZIP_BASE64='${payloadGzipBase64}'`,
+        '/opt/loop-ad-phase1/run-ec2-oha-worker.sh'].join(' ');
+}
+
+function collectWorkerGateSnapshot(node) {
+    const runDir = `/tmp/loop-ad-phase1/${runId}`;
+    const commands = [
+        `test -s ${runDir}/warmup-ready.json`,
+        `: > ${runDir}/process-identities-gate.ndjson`,
+        `for process_id in process-01 process-02; do container_name=loopad-${runId}-${node.nodeId}-$process_id; docker inspect --format '{{.Id}} {{.State.Pid}} {{.State.Running}} {{.State.StartedAt}}' "$container_name" | jq -R --arg processId "$process_id" --arg containerName "$container_name" --arg capturedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" 'split(" ") | {processId:$processId,containerName:$containerName,containerId:.[0],hostOhaPid:(.[1]|tonumber),running:(.[2]=="true"),containerStartedAt:.[3],capturedAt:$capturedAt}' >> ${runDir}/process-identities-gate.ndjson; done`,
+        `jq -s --arg nodeId '${node.nodeId}' '{nodeId:$nodeId,label:"gate",processes:.}' ${runDir}/process-identities-gate.ndjson > ${runDir}/process-identities-gate.json`,
+        `interface=$(ip route show default | awk 'NR==1 {print $5}'); ethtool -S "$interface" 2>/dev/null | awk '/allowance_exceeded/ {gsub(":", "", $1); print $1, $2}' > ${runDir}/ena-allowance-gate.txt`,
+        `{ head -n 1 ${runDir}/load-generator-telemetry.tsv; tail -n 20 ${runDir}/load-generator-telemetry.tsv; } > ${runDir}/load-generator-telemetry-gate.tsv`,
+        `tar -C ${runDir} -czf - warmup-ready.json process-identities-start.json process-identities-ready.json process-identities-gate.json load-generator-telemetry-gate.tsv load-generator-bootstrap.json ena-allowance-before.txt ena-allowance-gate.txt | base64 -w0`,
+    ];
+    const invocation = runOneShot(node.instanceId, commands, 60, `${runId} ${node.nodeId} gate snapshot`);
+    const archive = Buffer.from(invocation.StandardOutputContent.trim(), 'base64');
+    const gateDir = join(node.outputDir, 'gate');
+    mkdirSync(gateDir, { recursive: true });
+    const archivePath = join(gateDir, 'snapshot.tgz');
+    writeFileSync(archivePath, archive);
+    execFileSync('tar', ['-xzf', archivePath, '-C', gateDir]);
+    return { nodeId: node.nodeId, telemetryTsv: readFileSync(join(gateDir, 'load-generator-telemetry-gate.tsv'), 'utf8'),
+        identityStart: json(join(gateDir, 'process-identities-start.json')), identityReady: json(join(gateDir, 'process-identities-ready.json')),
+        identityGate: json(join(gateDir, 'process-identities-gate.json')), bootstrap: json(join(gateDir, 'load-generator-bootstrap.json')),
+        enaBefore: parseCounterText(readFileSync(join(gateDir, 'ena-allowance-before.txt'), 'utf8')),
+        enaGate: parseCounterText(readFileSync(join(gateDir, 'ena-allowance-gate.txt'), 'utf8')) };
+}
+
+function collectAwsGate() {
+    const loadBalancer = awsJson(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-loop-ad-alb']).LoadBalancers[0];
+    const targetGroup = awsJson(['elbv2', 'describe-target-groups', '--region', REGION, '--names', 'perf-phase1-loop-ad-collector']).TargetGroups[0];
+    const targetHealth = awsJson(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', targetGroup.TargetGroupArn]);
+    const service = awsJson(['ecs', 'describe-services', '--region', REGION, '--cluster', 'perf-phase1-loop-ad-collector-cluster', '--services', 'perf-phase1-loop-ad-collector']).services[0];
+    const dimension = loadBalancer.LoadBalancerArn.split(':loadbalancer/')[1];
+    const targetGroupDimension = targetGroup.TargetGroupArn.split(':').at(-1);
+    const end = new Date();
+    const start = new Date(end.getTime() - 5 * 60_000);
+    const metric = (name, targetScoped = false) => (awsJson(['cloudwatch', 'get-metric-statistics', '--region', REGION, '--namespace', 'AWS/ApplicationELB', '--metric-name', name,
+        '--dimensions', `Name=LoadBalancer,Value=${dimension}`, ...(targetScoped ? [`Name=TargetGroup,Value=${targetGroupDimension}`] : []),
+        '--start-time', start.toISOString(), '--end-time', end.toISOString(), '--period', '60', '--statistics', 'Sum']).Datapoints ?? [])
+        .reduce((sum, point) => sum + (point.Sum ?? 0), 0);
+    const cloudwatch = { rejectedConnectionCount: metric('RejectedConnectionCount'), targetConnectionErrorCount: metric('TargetConnectionErrorCount', true), elb5xxCount: metric('HTTPCode_ELB_5XX_Count') };
+    const result = { targetHealth, service: { service }, cloudwatch, collectedAt: new Date().toISOString() };
+    writeJson(join(outputDir, 'gate', 'aws-live-state.json'), result);
+    return result;
+}
+
+function extractWorkerEvidence(node, commandId, invocation) {
+    writeJson(join(node.outputDir, 'ssm-invocation.json'), { commandId, instanceId: node.instanceId, status: invocation.Status, responseCode: invocation.ResponseCode,
+        executionStartDateTime: invocation.ExecutionStartDateTime, executionEndDateTime: invocation.ExecutionEndDateTime });
+    writeFileSync(join(node.outputDir, 'ssm-stderr.log'), invocation.StandardErrorContent ?? '', 'utf8');
+    const stdout = invocation.StandardOutputContent ?? '';
+    const artifactLine = stdout.split('\n').find((line) => line.startsWith('ARTIFACT_TGZ_BASE64='));
+    if (!artifactLine) { writeFileSync(join(node.outputDir, 'ssm-stdout.log'), stdout); throw new Error(`missing worker artifact for ${node.nodeId}`); }
+    const archivePath = join(node.outputDir, 'artifacts.tgz');
+    writeFileSync(archivePath, Buffer.from(artifactLine.slice('ARTIFACT_TGZ_BASE64='.length), 'base64'));
+    execFileSync('tar', ['-xzf', archivePath, '-C', node.outputDir]);
+    const command = json(join(node.outputDir, 'oha-command.json'));
+    const evidence = { nodeId: node.nodeId, summary: json(join(node.outputDir, 'oha-summary.json')), report: json(join(node.outputDir, 'oha-report.json')),
+        command, bootstrap: json(join(node.outputDir, 'load-generator-bootstrap.json')), telemetryTsv: readFileSync(join(node.outputDir, 'load-generator-telemetry.tsv'), 'utf8'),
+        enaBefore: parseCounterText(readFileSync(join(node.outputDir, 'ena-allowance-before.txt'), 'utf8')), enaAfter: parseCounterText(readFileSync(join(node.outputDir, 'ena-allowance-after.txt'), 'utf8')),
+        processes: node.processes.map((process) => { const commandPlan = command.processes.find((item) => item.processId === process.processId); return { processId: process.processId,
+            command: commandPlan.command, summary: json(join(node.outputDir, process.processId, 'oha-summary.json')), report: json(join(node.outputDir, process.processId, 'oha-report.json')) }; }) };
+    unlinkSync(archivePath);
+    return evidence;
+}
+
+function remoteFileExists(instanceId, path) { try { return runOneShot(instanceId, [`test -s ${path}`], 30, `${runId} ready check`).ResponseCode === 0; } catch { return false; } }
+function runOneShot(instanceId, commands, timeoutSeconds, comment) { const sent = sendCommand(instanceId, commands, timeoutSeconds, comment); return waitInvocationSync(sent.Command.CommandId, instanceId, timeoutSeconds + 15); }
+function sendCommand(instanceId, commands, timeoutSeconds, comment) { return awsJson(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', instanceId,
+    '--timeout-seconds', String(timeoutSeconds), '--parameters', JSON.stringify({ commands, executionTimeout: [String(timeoutSeconds)] }), '--comment', comment]); }
+async function waitInvocation(commandId, instanceId, timeoutSeconds) { const deadline = Date.now() + timeoutSeconds * 1_000; while (Date.now() < deadline) { await sleep(2_000); const value = tryInvocation(commandId, instanceId); if (value && !['Pending', 'InProgress', 'Delayed'].includes(value.Status)) return value; } throw new Error(`SSM ${commandId} timed out`); }
+function waitInvocationSync(commandId, instanceId, timeoutSeconds) { const deadline = Date.now() + timeoutSeconds * 1_000; while (Date.now() < deadline) { execFileSync('sleep', ['1']); const value = tryInvocation(commandId, instanceId); if (value && !['Pending', 'InProgress', 'Delayed'].includes(value.Status)) { if (value.Status !== 'Success' || value.ResponseCode !== 0) throw new Error(`SSM ${commandId} failed: ${value.Status} ${value.StandardErrorContent}`); return value; } } throw new Error(`SSM ${commandId} timed out`); }
+function tryInvocation(commandId, instanceId) { try { return awsJson(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]); } catch (error) { if (`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) return null; throw error; } }
+function awsJson(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be integer`); return value; }
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }

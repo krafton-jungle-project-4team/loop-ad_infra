@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { scoutRunPlan } from './scout-run-contract.mjs';
+
+test('scout freezes smoke and probes without final measurements', () => {
+    const plan = scoutRunPlan('go-batch');
+    assert.deepEqual(plan.stages.map((stage) => stage.targetRps), [1_000, 10_000, 30_000, 50_000]);
+    assert.ok(plan.stages.every((stage) => stage.durationSeconds === 15 && stage.cooldownSeconds === 15));
+    assert.equal(JSON.stringify(plan).includes('measurements'), false);
+    assert.deepEqual(plan.classificationValues, ['feasible', 'unsafe', 'inconclusive']);
+});

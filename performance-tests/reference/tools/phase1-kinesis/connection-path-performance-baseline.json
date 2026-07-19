@@ -1,0 +1,112 @@
+{
+    "schemaVersion": 1,
+    "name": "connection-path-50k",
+    "status": "adopted-performance-test-default",
+    "scope": "phase1 connection-path-crossover performance tests",
+    "route": {
+        "segments": [
+            "oha generator",
+            "internal NLB TCP 443",
+            "HAProxy",
+            "collector",
+            "Kinesis Data Streams"
+        ],
+        "responseSemantics": "Kinesis final-ACK"
+    },
+    "load": {
+        "offeredRps": 50000,
+        "physicalConnections": 12000,
+        "httpVersion": "2",
+        "streamsPerConnection": 1,
+        "warmupSeconds": 180,
+        "warmupScored": false,
+        "scoreSeconds": 300
+    },
+    "generator": {
+        "tool": "oha",
+        "instanceCount": 8,
+        "instanceType": "c6in.large",
+        "processesPerInstance": 2,
+        "processCount": 16
+    },
+    "loadBalancer": {
+        "kind": "NLB",
+        "scheme": "internal",
+        "listenerProtocol": "TCP",
+        "listenerPort": 443,
+        "crossZone": true
+    },
+    "deploymentEnvelope": {
+        "activeMeasuredPath": "T3_NLB_HAPROXY",
+        "auxiliaryTopologies": [
+            "T0/T1 internal ALB control and actual endpoint",
+            "T2 internal direct NLB endpoint"
+        ],
+        "auxiliaryMeasuredBusinessLoad": false
+    },
+    "haproxy": {
+        "profile": "sampled-202",
+        "instanceCount": 2,
+        "instanceType": "c6in.xlarge",
+        "availabilityZoneCount": 2,
+        "vcpusPerInstance": 4,
+        "threadMode": "automatic",
+        "runtimeThreadExpectation": "equals-instance-vcpu-count",
+        "image": "haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
+        "maxConnections": 65536,
+        "normalAccessLogSample": "1/1000",
+        "errorAccessLogStatusRange": "400-599",
+        "errorAccessLogSample": "all",
+        "minimumTlsVersion": "1.2",
+        "alpn": [
+            "h2"
+        ],
+        "balance": "leastconn",
+        "httpReuse": "always",
+        "backendDiscovery": "AWS Cloud Map SRV server-template",
+        "backendSlots": 8,
+        "healthCheck": true,
+        "retries": 0,
+        "timeouts": {
+            "connect": "3s",
+            "client": "15s",
+            "server": "15s",
+            "httpRequest": "10s",
+            "clientFin": "5s",
+            "serverFin": "5s"
+        },
+        "observability": [
+            "stats/Prometheus endpoint",
+            "admin socket"
+        ]
+    },
+    "collector": {
+        "instanceCount": 6,
+        "instanceType": "c6i.xlarge",
+        "tasksPerInstance": 1,
+        "applicationMaxInFlight": 2048,
+        "kinesisSdkMaxConnections": 1024
+    },
+    "kinesis": {
+        "mode": "provisioned",
+        "shardCount": 120,
+        "finalFailureLimit": 0
+    },
+    "acceptanceThresholds": {
+        "minimumActualRps": 49500,
+        "maximumCorrectedP95Ms": 300,
+        "maximumWorstWorkerP95Ms": 360,
+        "minimumPhysicalConnections": 11880,
+        "maximumTransportErrorRate": 0.001,
+        "maximumHttp429": 0,
+        "maximumHttp5xx": 0,
+        "maximumKinesisRetryRate": 0.00001,
+        "alignedFinalAckAccountingRequired": true,
+        "queueDrainRequired": true,
+        "maximumFatalOomRestart": 0
+    },
+    "experimentalOverrides": {
+        "baseline-full": "full normal-request access logging only",
+        "sampled-202-capacity": "c6in.2xlarge capacity experiment only"
+    }
+}

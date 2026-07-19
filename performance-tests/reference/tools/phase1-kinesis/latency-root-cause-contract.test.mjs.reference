@@ -1,0 +1,213 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import test from 'node:test';
+import { gzipSync } from 'node:zlib';
+
+const directory = new URL('.', import.meta.url).pathname;
+
+test('diagnostic runner pins routes, topology, metadata, raw evidence, and five-dollar reserve', () => {
+    const invoke = readFileSync(join(directory, 'invoke-oha.mjs'), 'utf8');
+    const worker = readFileSync(join(directory, 'run-ec2-oha-worker.sh'), 'utf8');
+    const stage = readFileSync(join(directory, 'run-latency-root-cause-stage.mjs'), 'utf8');
+    const collector = readFileSync(join(directory, 'collect-latency-root-cause-telemetry.mjs'), 'utf8');
+    const recovery = readFileSync(join(directory, 'verify-tcp-alb-recovery.mjs'), 'utf8');
+    const gate = readFileSync(join(directory, 'tcp-alb-diagnosis-start-gate.mjs'), 'utf8');
+	const direct = readFileSync(join(directory, 'configure-direct-target-access.mjs'), 'utf8');
+    for (const route of ['/__collector_control', '/__delay_control', '/__decode_control', '/__batch_control']) {
+        assert.match(invoke, new RegExp(route.replace(/[?]/g, '\\?')));
+        assert.match(worker, new RegExp(route.replace(/[?]/g, '\\?')));
+    }
+    assert.match(stage, /processes-per-node', '2'/);
+	    assert.match(stage, /connections \/ generatorCount/);
+	assert.match(stage, /persistentWarmupSeconds/);
+	assert.match(stage, /mergeFixedHistograms/);
+	assert.match(stage, /fleet-pooled-fixed-histogram-dispatch-to-final-ack/);
+    assert.match(stage, /ap-northeast-2a/);
+    assert.match(stage, /ap-northeast-2c/);
+    assert.match(stage, /Name=tag:Name,Values=perf-phase1-loop-ad-load-generator-2a,perf-phase1-loop-ad-load-generator-2c/);
+    assert.match(stage, /--expected-load-generator-count', `\$\{generatorCount\}`/);
+    assert.match(stage, /collectorTelemetryComplete: telemetryComplete/);
+    assert.match(stage, /verify-tcp-alb-recovery\.mjs/);
+    assert.match(stage, /applicationDrained/);
+    assert.match(stage, /noFatalRuntimeLogs/);
+    assert.match(stage, /if \(!safetyPassed\) process\.exitCode = 2/);
+    assert.match(worker, /X-Loopad-Stage/);
+    assert.match(worker, /ss-tin\.log/);
+    assert.match(worker, /telemetry_sample % 30/);
+    assert.match(worker, /kernel-network-snapshots\.log/);
+    assert.match(collector, /request-traces\.sha256/);
+    assert.match(collector, /debug-vars\.ndjson/);
+    assert.match(collector, /debug-vars\.ndjson\.gz/);
+    assert.match(collector, /debug_pid=\$!/);
+    assert.match(collector, /wait "\$debug_pid"/);
+    assert.match(collector, /\/var\/tmp\/loopad-root-cause/);
+    assert.match(collector, /trace_start_bytes=.*docker exec "\$cid" stat -c %s/);
+    assert.match(collector, /tail -c \+\$\(\(trace_start_bytes \+ 1\)\)/);
+    assert.doesNotMatch(collector, /: > \/tmp\/loopad-request-traces\.ndjson/);
+    assert.match(collector, /aws s3 cp.*artifacts\.tgz[\s\S]*rm -rf "\$run_dir"/);
+    assert.match(collector, /durationSeconds \+ 300/);
+    assert.match(recovery, /tcp_orphan <= baseline_orphan \|\| tcp_orphan <= \$\{NORMALIZED_ORPHAN_MAX\}/);
+    assert.match(recovery, /time_wait <= baseline_time_wait \|\| time_wait <= \$\{NORMALIZED_TIME_WAIT_MAX\}/);
+    assert.match(gate, /cleanupReserveUsd: 5/);
+	assert.match(direct, /--source-group/);
+	assert.match(direct, /verify-absent/);
+	assert.match(direct, /FromPort === 8080/);
+	assert.match(direct, /authorize-security-group-egress/);
+	assert.match(direct, /IpPermissionsEgress/);
+	assert.match(direct, /ingressPresent && egressPresent/);
+	assert.match(direct, /aws:cloudformation:logical-id/);
+	assert.match(direct, /startsWith\('LoadGeneratorSecurityGroup'\)/);
+	assert.match(stage, /--direct-target-ip/);
+});
+
+test('per-second telemetry summarizer produces one-second bins and ten-second blocks', () => {
+    const root = mkdtempSync(join(tmpdir(), 'root-cause-telemetry-'));
+    for (let index = 1; index <= 4; index += 1) {
+        const collector = join(root, `collector-${String(index).padStart(2, '0')}`);
+        mkdirSync(collector);
+        const rows = [row('2026-07-13T10:00:00Z', 0, 0), row('2026-07-13T10:00:01Z', 10, 10_000_000)].map(JSON.stringify).join('\n');
+        writeFileSync(join(collector, 'debug-vars.ndjson.gz'), gzipSync(rows));
+    }
+    const output = join(root, 'summary.json');
+    execFileSync(process.execPath, [join(directory, 'summarize-latency-root-cause-telemetry.mjs'), '--input-dir', root, '--output', output]);
+    const summary = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(summary.passed, true);
+    assert.equal(summary.oneSecondBins.length, 4);
+	    assert.equal(summary.tenSecondBlocks[0].count, 40);
+	assert.equal(summary.oneSecondBins[0].p95Overflow, false);
+	assert.equal(Number.isFinite(summary.oneSecondBins[0].p95UpperNanoseconds), true);
+});
+
+test('telemetry histogram overflow is explicit and never serialized as null', () => {
+	const root = mkdtempSync(join(tmpdir(), 'root-cause-overflow-'));
+	for (let index = 1; index <= 4; index += 1) {
+		const collector = join(root, `collector-${String(index).padStart(2, '0')}`);
+		mkdirSync(collector);
+		const before = row('2026-07-13T10:00:00Z', 0, 0);
+		const after = row('2026-07-13T10:00:01Z', 10, 20_000_000);
+		after.snapshot.requests.phases['/events'].total.cumulative_buckets.le_1000000ns = 0;
+		writeFileSync(join(collector, 'debug-vars.ndjson.gz'), gzipSync([before, after].map(JSON.stringify).join('\n')));
+	}
+	const output = join(root, 'summary.json');
+	execFileSync(process.execPath, [join(directory, 'summarize-latency-root-cause-telemetry.mjs'), '--input-dir', root, '--output', output]);
+	const summary = JSON.parse(readFileSync(output, 'utf8'));
+	assert.equal(summary.oneSecondBins[0].p95Overflow, true);
+	assert.equal(summary.oneSecondBins[0].p95UpperNanoseconds, 1_000_000);
+	assert.doesNotMatch(readFileSync(output, 'utf8'), /"p95UpperNanoseconds": null/);
+});
+
+test('collector telemetry can isolate the scored window after persistent warm-up', () => {
+	const root = mkdtempSync(join(tmpdir(), 'root-cause-scored-window-'));
+	for (let index = 1; index <= 6; index += 1) {
+		const collector = join(root, `collector-${String(index).padStart(2, '0')}`);
+		mkdirSync(collector);
+		const rows = [row('2026-07-13T10:00:00Z', 100, 100_000_000), row('2026-07-13T10:00:01Z', 110, 110_000_000)].map(JSON.stringify).join('\n');
+		writeFileSync(join(collector, 'debug-vars.ndjson.gz'), gzipSync(rows));
+	}
+	const output = join(root, 'summary.json');
+	execFileSync(process.execPath, [join(directory, 'summarize-latency-root-cause-telemetry.mjs'), '--input-dir', root,
+		'--start-time', '2026-07-13T10:00:00Z', '--end-time', '2026-07-13T10:00:01Z', '--output', output]);
+	const summary = JSON.parse(readFileSync(output, 'utf8'));
+	assert.equal(summary.passed, true);
+	assert.equal(summary.collectorCount, 6);
+	assert.equal(summary.window.expectedSeconds, 1);
+	assert.deepEqual(Object.values(summary.window.samplesByCollector), [1, 1, 1, 1, 1, 1]);
+});
+
+test('HAProxy telemetry summary isolates scored CPU, session, queue, and counter evidence', () => {
+	const root = mkdtempSync(join(tmpdir(), 'haproxy-scored-window-'));
+	for (let index = 1; index <= 2; index += 1) {
+		const proxy = join(root, `proxy-${String(index).padStart(2, '0')}`);
+		mkdirSync(proxy);
+		const prometheus = [0, 1, 2].flatMap((second) => [
+			`# sample_timestamp_utc=2026-07-13T10:00:0${second}Z`,
+			`haproxy_frontend_http_requests_total{proxy="events_h2"} ${10 + second * 10}`,
+			`haproxy_frontend_current_sessions{proxy="events_h2"} ${second + 1}`,
+			`haproxy_backend_current_queue{proxy="collectors"} 0`,
+		]).join('\n');
+		const docker = ['timestamp_utc,container_cpu_percent,container_memory_usage_and_limit,container_memory_percent,container_net_io,container_block_io,container_pids',
+			...Array.from({ length: 3 }, (_, second) => `2026-07-13T10:00:0${second}Z,${10 + second}%,1GiB / 2GiB,50%,1MB / 1MB,0B / 0B,8`)].join('\n');
+		const hostCpu = ['timestamp_utc\tuser\tnice\tsystem\tidle\tiowait\tirq\tsoftirq\tsteal\tprocs_running\tprocs_blocked\tload1\trunnable\tprocesses',
+			...Array.from({ length: 3 }, (_, second) => `2026-07-13T10:00:0${second}Z\t${100 + second * 10}\t0\t${50 + second * 10}\t${1000 + second * 80}\t0\t0\t0\t0\t2\t0\t0.5\t2\t100`)].join('\n');
+		writeFileSync(join(proxy, 'haproxy-prometheus.log.gz'), gzipSync(prometheus));
+		writeFileSync(join(proxy, 'docker-stats.csv.gz'), gzipSync(docker));
+		writeFileSync(join(proxy, 'host-cpu.tsv.gz'), gzipSync(hostCpu));
+	}
+	const output = join(root, 'summary.json');
+	execFileSync(process.execPath, [join(directory, 'summarize-haproxy-telemetry.mjs'), '--input-dir', root,
+		'--start-time', '2026-07-13T10:00:00Z', '--end-time', '2026-07-13T10:00:02Z', '--output', output]);
+	const summary = JSON.parse(readFileSync(output, 'utf8'));
+	assert.equal(summary.passed, true);
+	assert.equal(summary.nodes[0].prometheusSampleCount, 2);
+	assert.equal(summary.nodes[0].docker.maxCpuPercent, 12);
+	assert.equal(summary.nodes[0].metrics.haproxy_frontend_http_requests_total.deltaSum, 10);
+	assert.equal(summary.fleet.metrics.haproxy_frontend_http_requests_total.deltaSum, 20);
+	assert.equal(summary.fleet.metrics.haproxy_backend_current_queue.maxSum, 0);
+	assert.equal(summary.derived.hostRunQueueP95, 4);
+	assert.equal(summary.derived.backendQueueMax, 0);
+});
+
+test('hypothesis evaluator marks decode boundary supported and preserves unmeasured hypotheses', () => {
+    const root = mkdtempSync(join(tmpdir(), 'root-cause-evaluator-'));
+    writeStage(root, 'b_collector', 1, true, 30_000, 0);
+    writeStage(root, 'b_decode', 1, false, 20_000, .05);
+    const output = join(root, 'evaluation.json');
+    execFileSync(process.execPath, [join(directory, 'evaluate-latency-root-cause.mjs'), '--run-dir', root, '--output', output]);
+    const evaluation = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(evaluation.hypotheses.H6.verdict, 'supported');
+    assert.equal(evaluation.hypotheses.H2.verdict, 'inconclusive');
+    assert.equal(evaluation.firstLatencyIncreaseLayer, 'payload decode/validation');
+});
+
+test('hypothesis evaluator locates a collector-control failure before middleware', () => {
+    const root = mkdtempSync(join(tmpdir(), 'root-cause-pilot-boundary-'));
+    writeStage(root, 'pilot_10k_on', 1, false, 9_987, 0);
+    const stageDir = join(root, 'stages', 'pilot_10k_on', 'repetition-01');
+    const stagePath = join(stageDir, 'stage-summary.json');
+    const stage = JSON.parse(readFileSync(stagePath, 'utf8'));
+    writeFileSync(stagePath, JSON.stringify({ ...stage, targetPath: '/__collector_control', connections: 12_000, aggregate: { ...stage.aggregate, latencyMs: { p95: 1_020 }, maxSynSent: 1 } }));
+    for (let index = 1; index <= 4; index += 1) {
+        const collector = join(stageDir, 'collector-telemetry', `collector-${String(index).padStart(2, '0')}`);
+        mkdirSync(collector, { recursive: true });
+        writeFileSync(join(collector, 'process.tsv'), 'timestamp_utc\topen_fds\n2026-07-13T11:00:00Z\t50\n2026-07-13T11:00:01Z\t3050\n');
+    }
+    const traceDir = join(root, 'session-observability', 'trace-join');
+    mkdirSync(traceDir, { recursive: true });
+    writeFileSync(join(traceDir, 'join.json'), JSON.stringify({ joined: Array.from({ length: 100 }, () => ({ stage: 'pilot_10k_on', repetition: '1', requestTotalNanoseconds: 20_000, alb: { requestProcessingTime: 0, targetProcessingTime: .4 } })) }));
+    const output = join(root, 'evaluation.json');
+    execFileSync(process.execPath, [join(directory, 'evaluate-latency-root-cause.mjs'), '--run-dir', root, '--output', output]);
+    const evaluation = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(evaluation.hypotheses.H5.verdict, 'supported');
+    assert.equal(evaluation.firstLatencyIncreaseLayer, 'ALB-to-target/backend connection path before collector middleware');
+    assert.equal(evaluation.pilotBoundary.minimumCollectorFdIncrease, 3000);
+});
+
+test('repetition summarizer treats independent stages as comparison units', () => {
+    const root = mkdtempSync(join(tmpdir(), 'root-cause-repetitions-'));
+    writeStage(root, 'a_delay_100', 1, true, 29_900, 0);
+    writeStage(root, 'a_delay_100', 2, true, 30_000, 0);
+    writeStage(root, 'a_delay_100', 3, true, 29_800, 0);
+    writeStage(root, 'a_delay_100', 4, false, 10_000, 0.5);
+    const output = join(root, 'statistics.json');
+    execFileSync(process.execPath, [join(directory, 'summarize-latency-root-cause-repetitions.mjs'), '--run-dir', root, '--output', output, '--seed', '7']);
+    const summary = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(summary.stages.a_delay_100.metrics.actualRps.count, 3);
+    assert.equal(summary.stages.a_delay_100.metrics.actualRps.median, 29_900);
+    assert.equal(summary.stages.a_delay_100.attemptedRepetitions, 4);
+    assert.equal(summary.stages.a_delay_100.validRepetitions, 3);
+    assert.equal(summary.stages.a_delay_100.excludedRepetitions.length, 1);
+    assert.equal(summary.comparisonUnit, 'independent stage repetition');
+});
+
+function row(timestamp, count, total) {
+    return { timestamp_utc: timestamp, snapshot: { admission: { current_in_flight: 0 }, kinesis: { put_records: { queue_depth: 0, sender_queue_depth: 0, outstanding_records: 0, api_calls_in_flight: 0 } }, trace: { dropped: 0 }, requests: { phases: { '/events': { total: { count, total_nanoseconds: total, cumulative_buckets: { le_1000000ns: count, inf: count } } } } } } };
+}
+function writeStage(root, name, repetition, safetyPassed, actualRps, errorRate) {
+    const stageDir = join(root, 'stages', name, `repetition-${String(repetition).padStart(2, '0')}`);
+    mkdirSync(stageDir, { recursive: true });
+    writeFileSync(join(stageDir, 'stage-summary.json'), JSON.stringify({ stageLabel: name, repetition, safetyPassed, startEpoch: repetition,
+        aggregate: { actualRps, transportErrorRate: errorRate, latencyMs: { p95: safetyPassed ? 100 : 600 }, maxSynSent: safetyPassed ? 0 : 200 }, evidence: { stageDir } }));
+}

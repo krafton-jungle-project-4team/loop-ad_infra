@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "recordType": "stabilization-policy-decision",
+  "effectiveAt": "2026-07-19T09:50:54Z",
+  "phase": "7-2",
+  "phase5": "skipped",
+  "decision": "retire-dedicated-targeted-stack-use-attempt17-full-stack-definition",
+  "reason": "The dedicated archive diagnostic stack duplicated bootstrap behavior and Attempts 18 and 19 spent paid deployment time without reaching the 15M archive hypothesis. Further iteration on that stack would increase cost and delay.",
+  "retiredPath": {
+    "stack": "LoopAdPerfPhase7ArchiveDiagnosticStack",
+    "source": "src/perf-phase7-archive-diagnostic-stack.ts",
+    "attemptOrdinals": [
+      18,
+      19
+    ],
+    "futureDeploymentsAuthorized": false,
+    "historyRetention": "Keep source, tooling and evidence read-only for diagnosis; do not delete or rewrite them."
+  },
+  "replacementPath": {
+    "attemptType": "aws-full-stack-scoped-diagnostic",
+    "promotionEligible": false,
+    "imageStack": "LoopAdPerfPhase7IntegrationImageStack",
+    "runtimeStack": "LoopAdPerfPhase7IntegrationStack",
+    "topologyBaseline": "Attempt 17",
+    "identity": "Every probe uses a fresh standard Phase 7 Run ID, Session ID, readiness directory and runtime directory.",
+    "archiveStagePlan": [
+      "deploy-once",
+      "verify-full-stack-once",
+      "seed-15000000-once",
+      "retain-source-archive-once",
+      "committed-and-pre-drop-equivalence-once",
+      "collect-once",
+      "cleanup-to-authoritative-zero"
+    ],
+    "notRun": [
+      "correctness",
+      "consumer-replacement",
+      "warmup",
+      "score",
+      "source-drop"
+    ],
+    "deferredLocal": "Record focused checks and all missing whole-local coverage in issue-register.json; run the full local chain once after the AWS-confirmed fix batch and before the strict candidate."
+  },
+  "budget": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-18",
+    "activePriorUpperBoundUsd": "0.950000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000",
+    "freshDeterministicCostModelRequired": true
+  },
+  "supersededUnpaidCandidate": {
+    "runId": "run_20260719_094035_phase7_archive_diagnostic",
+    "sessionId": "phase7-archive-diagnostic-20260719T094035Z",
+    "path": "performance-tests/run_20260719_094035_phase7_2_aws_targeted_diagnostic",
+    "paidBoundaryCrossed": false,
+    "awsPriceQueries": 0,
+    "runOwnedResourcesCreated": 0,
+    "neverReusable": true
+  }
+}

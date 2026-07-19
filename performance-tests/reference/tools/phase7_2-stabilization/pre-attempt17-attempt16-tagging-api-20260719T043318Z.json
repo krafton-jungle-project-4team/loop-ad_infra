@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-19T04:33:18Z",
+  "account": "742711170910",
+  "region": "ap-northeast-2",
+  "operatorArn": "arn:aws:iam::742711170910:root",
+  "runId": "run_20260719_020156_phase7_integration",
+  "sessionId": "phase7-integration-20260719T020156Z",
+  "queries": [
+    {
+      "service": "resourcegroupstaggingapi",
+      "operation": "get-resources",
+      "tagFilter": {
+        "key": "RunId",
+        "values": [
+          "run_20260719_020156_phase7_integration"
+        ]
+      },
+      "residualCount": 0,
+      "residuals": []
+    },
+    {
+      "service": "resourcegroupstaggingapi",
+      "operation": "get-resources",
+      "tagFilter": {
+        "key": "SessionId",
+        "values": [
+          "phase7-integration-20260719T020156Z"
+        ]
+      },
+      "residualCount": 0,
+      "residuals": []
+    }
+  ],
+  "passed": true,
+  "mutatingCalls": 0
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "recordType": "attempt-failure-diagnosis",
+  "attemptOrdinal": 22,
+  "runId": "run_20260719_162701_phase7_integration",
+  "sessionId": "phase7-integration-20260719T162701Z",
+  "diagnosedAt": "2026-07-19T16:35:40Z",
+  "firstFailingGate": "image-preparation",
+  "rawError": "Command '['git', '-C', '/Users/sijun-yang/Documents/GitHub/krafton-jungle-project-4team/loop-ad_infra/loop-ad/perf-phase7/run_20260719_162701_phase7_integration/collector', 'cat-file', '-e', '497315137251af82d0d203ce34702d5543553942^{commit}']' returned non-zero exit status 128.",
+  "diagnosis": "The --collector-repository option expects the existing local loop-ad_event_collector Git working tree, but the command supplied the run-owned ECR repository name. The image stack was created before this local capability check ran.",
+  "correctLocalCollectorRepository": "../loop-ad_event_collector",
+  "pinnedCollectorCommit": "497315137251af82d0d203ce34702d5543553942",
+  "pinnedCommitPresent": true,
+  "runtimeDeployAttempts": 0,
+  "imagesPushed": 0,
+  "sourceDropExecuted": false,
+  "cleanup": {
+    "serviceClassCount": 35,
+    "allZero": true,
+    "globalRunOwnedTaggingApiResidualsZero": true
+  },
+  "failureEvidence": {
+    "path": "performance-tests/run_20260719_162701_phase7_2_deployment_readiness/image-manifest-failure.json",
+    "sha256": "50c8c9ad9049f961af883f8c78895c717116275415798710863859d417f71dc9"
+  }
+}

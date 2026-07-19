@@ -20,7 +20,9 @@
   "limitations": [
     "not_recorded"
   ],
-  "relatedIncidents": [],
+  "relatedIncidents": [
+    "incident-local-20260710-210531-phase1-debug-metrics"
+  ],
   "provenance": {
     "snapshotId": "snapshot_20260719T200907Z",
     "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",

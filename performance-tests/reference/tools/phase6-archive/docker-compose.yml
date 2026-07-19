@@ -1,0 +1,63 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797
+    platform: linux/arm64
+    mem_limit: 5g
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse-config/memory.xml:/etc/clickhouse-server/config.d/phase6-memory.xml:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+
+  localstack:
+    image: localstack/localstack:3.8.1
+    mem_limit: 1g
+    environment:
+      SERVICES: s3
+      EAGER_SERVICE_LOADING: "1"
+      PERSISTENCE: "1"
+      S3_SKIP_SIGNATURE_VALIDATION: "1"
+      DEBUG: "0"
+    volumes:
+      - object_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+
+  worker:
+    profiles: ["tools"]
+    image: localstack/localstack:3.8.1
+    entrypoint: ["python"]
+    working_dir: /work/phase6
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./:/work/phase6:ro
+      - ../../assets/clickhouse/phase4-schema.sql:/work/schema/phase4-schema.sql:ro
+      - ${LOCAL_RUN_DIR:?LOCAL_RUN_DIR is required}:/work/run
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+
+volumes:
+  clickhouse_data:
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+  object_data:
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}

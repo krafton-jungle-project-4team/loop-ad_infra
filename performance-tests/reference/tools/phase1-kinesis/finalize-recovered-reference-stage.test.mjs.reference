@@ -1,0 +1,78 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { buildRecoveredLatencyStage, buildRecoveredReferenceStage } from './finalize-recovered-reference-stage.mjs';
+
+test('rebuilds a fail-closed valid reference stage from four recovered nodes', () => {
+    const stageDir = mkdtempSync(join(tmpdir(), 'recovered-reference-stage-'));
+    for (let index = 1; index <= 4; index += 1) {
+        const nodeDir = join(stageDir, 'load', `node-0${index}`);
+        mkdirSync(nodeDir, { recursive: true });
+        writeFileSync(join(nodeDir, 'host-250ms.tsv'), 'timestamp_utc\tsyn_sent\ttime_wait\n2026-01-01T00:00:00Z\t0\t3\n');
+        writeFileSync(join(nodeDir, 'ssm-invocation.json'), JSON.stringify({ status: 'Success', responseCode: 0, startEpoch: 123 }));
+    }
+    const summary = {
+        startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:00:45Z', achieved_rps: 2500,
+        completedRequests: 112500, attemptedRequests: 112500, transportErrors: 0, http202: 112500, http429: 0, http5xx: 0,
+        latencyMs: { p50: 1, p95: 2, p99: 3 }, firstByteMs: { p95: 1, p99: 2 }, configured_connections: 1500,
+        trace_dropped: 0, valid: true, schedule_accuracy: 1, dispatch_accuracy: 1,
+        connection_establishment_accuracy: 1, hidden_retries: 0, silent_drops: 0,
+    };
+    const snapshot = { trace: { dropped: 0, write_errors: 0 }, backend_connections: { recorder: { dropped: 0, write_errors: 0 } },
+        admission: { rejected_total: 0, current_in_flight: 0 }, kinesis: { put_records: { queue_full: 0, queue_depth: 0,
+            sender_queue_depth: 0, outstanding_records: 0, api_calls_in_flight: 0, failures: 0, timeouts: 0 } } };
+    const manifest = { runId: 'run_20260101_000000_test', sessionId: 'session', stageLabel: 'condition', repetition: 3,
+        targetPath: '/__collector_control', targetRps: 10000, connections: 6000, durationSeconds: 45,
+        instrumentation: 'on', driver: 'reference', referenceBinaryS3Uri: 's3://example/reference',
+        referenceBinarySha256: 'a'.repeat(64), randomSeed: 1, directTarget: false, generators: [{}, {}, {}, {}],
+        albAccessLogPrefix: 'session/run_20260101_000000_test' };
+    const result = buildRecoveredReferenceStage({ manifest, summaries: [summary, summary, summary, summary],
+        afterSnapshots: [snapshot, snapshot, snapshot, snapshot], errorLogs: { categories: { fatal: 0 } },
+        telemetryPassed: true, recoveryPassed: true, loadInvocationsPassed: true, stageDir });
+    assert.equal(result.safetyPassed, true);
+    assert.equal(result.aggregate.actualRps, 10000);
+    assert.equal(result.aggregate.completedRequests, 450000);
+    assert.equal(result.aggregate.maxSynSent, 0);
+    assert.equal(result.aggregate.maxTimeWait, 3);
+    assert.equal(result.recoveredFromRunOwnedArtifacts, true);
+});
+
+test('rebuilds a fail-closed valid oha stage with oha telemetry field names', () => {
+    const stageDir = mkdtempSync(join(tmpdir(), 'recovered-oha-stage-'));
+    for (let index = 1; index <= 4; index += 1) {
+        const nodeDir = join(stageDir, 'load', `node-0${index}`);
+        mkdirSync(nodeDir, { recursive: true });
+        writeFileSync(join(nodeDir, 'load-generator-telemetry.tsv'),
+            'timestamp_utc\toha_syn_sent\ttcp_tw\n2026-01-01T00:00:00Z\t2\t7\n');
+        writeFileSync(join(nodeDir, 'ssm-invocation.json'), JSON.stringify({ status: 'Success', responseCode: 0, startEpoch: 123 }));
+    }
+    const summary = {
+        startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:00:45Z', actualRps: 2500,
+        completedRequests: 112500, attemptedRequests: 112500, transportErrors: 0, http202: 112500, http429: 0, http5xx: 0,
+        latencyMs: { p50: 1, p95: 2, p99: 3 }, firstByteMs: { p95: 1, p99: 2 },
+        connectionObservation: { maxOhaEstablished: 1500 },
+    };
+    const snapshot = { trace: { dropped: 0, write_errors: 0 }, backend_connections: { recorder: { dropped: 0, write_errors: 0 } },
+        admission: { rejected_total: 0, current_in_flight: 0 }, kinesis: { put_records: { queue_full: 0, queue_depth: 0,
+            sender_queue_depth: 0, outstanding_records: 0, api_calls_in_flight: 0, failures: 0, timeouts: 0 } } };
+    const manifest = { runId: 'run_20260101_000000_test', sessionId: 'session', stageLabel: 'condition', repetition: 4,
+        targetPath: '/__collector_control', targetRps: 10000, connections: 6000, durationSeconds: 45,
+        instrumentation: 'on', driver: 'oha', referenceBinaryS3Uri: null, referenceBinarySha256: null,
+        randomSeed: 1, directTarget: false, generators: [{}, {}, {}, {}], albAccessLogPrefix: 'session/run_20260101_000000_test' };
+    const result = buildRecoveredLatencyStage({ manifest, summaries: [summary, summary, summary, summary],
+        afterSnapshots: [snapshot, snapshot, snapshot, snapshot], errorLogs: { categories: { fatal: 0 } },
+        telemetryPassed: true, recoveryPassed: true, loadInvocationsPassed: true, stageDir });
+    assert.equal(result.safetyPassed, true);
+    assert.equal(result.aggregate.actualRps, 10000);
+    assert.equal(result.aggregate.maxEstablished, 6000);
+    assert.equal(result.aggregate.maxSynSent, 2);
+    assert.equal(result.aggregate.maxTimeWait, 7);
+    assert.equal(result.checks.referenceDriverContract, true);
+    const sixCollectorResult = buildRecoveredLatencyStage({ manifest, summaries: [summary, summary, summary, summary],
+        afterSnapshots: [snapshot, snapshot, snapshot, snapshot, snapshot, snapshot], errorLogs: { categories: { fatal: 0 } },
+        telemetryPassed: true, recoveryPassed: true, loadInvocationsPassed: true, stageDir });
+    assert.equal(sixCollectorResult.safetyPassed, true);
+    assert.equal(sixCollectorResult.collectorCount, 6);
+});

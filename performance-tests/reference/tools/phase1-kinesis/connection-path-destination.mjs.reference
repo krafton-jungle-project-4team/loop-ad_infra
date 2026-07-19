@@ -1,0 +1,36 @@
+const REGION = 'ap-northeast-2';
+const ALB_DNS = new RegExp(
+    `^internal-perf-p1-conn-alb-[a-z0-9]+\\.${REGION}\\.elb\\.amazonaws\\.com$`,
+);
+const NLB_DNS = new RegExp(
+    `^(?:internal-)?perf-p1-conn-(?:direct|proxy)-(?:[a-z0-9]+-)?[a-z0-9]+\\.elb\\.${REGION}\\.amazonaws\\.com$`,
+);
+// This is only a hostname-shape gate. Phase 7 verifies Scheme=internal,
+// the exact DNS inventory, listener and run ownership through ELBv2 first.
+const PHASE7_INTERNAL_PROXY_NLB_DNS = new RegExp(
+    `^(?:internal-)?perf-p1-conn-proxy-[0-9]{11}-[a-z0-9]+\\.elb\\.${REGION}\\.amazonaws\\.com$`,
+);
+
+export function isConnectionPathDestinationUrl(value) {
+    return isExactHttpsUrl(value, (hostname) => ALB_DNS.test(hostname) || NLB_DNS.test(hostname));
+}
+
+export function isPhase7InternalProxyNlbDnsName(value) {
+    return typeof value === 'string' && PHASE7_INTERNAL_PROXY_NLB_DNS.test(value);
+}
+
+export function isPhase7InternalProxyNlbDestinationUrl(value) {
+    return isExactHttpsUrl(value, isPhase7InternalProxyNlbDnsName);
+}
+
+function isExactHttpsUrl(value, isAllowedHostname) {
+    if (typeof value !== 'string') return false;
+    try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '' &&
+            parsed.port === '' && parsed.pathname === '/' && parsed.search === '' && parsed.hash === '' &&
+            isAllowedHostname(parsed.hostname) && value === `https://${parsed.hostname}`;
+    } catch {
+        return false;
+    }
+}

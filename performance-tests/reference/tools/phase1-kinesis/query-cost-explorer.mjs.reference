@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const outputPath = requiredOption('--output');
+const runStart = new Date(requiredOption('--run-start'));
+if (!Number.isFinite(runStart.getTime())) throw new Error('invalid run start');
+const start = runStart.toISOString().slice(0, 10);
+const endDate = new Date(`${start}T00:00:00Z`);
+endDate.setUTCDate(endDate.getUTCDate() + 1);
+const end = endDate.toISOString().slice(0, 10);
+const relevantServices = new Set([
+    'Amazon Elastic Compute Cloud - Compute',
+    'EC2 - Other',
+    'Amazon Kinesis',
+    'Elastic Load Balancing',
+    'AmazonCloudWatch',
+    'Amazon Virtual Private Cloud',
+    'EC2 Container Registry (ECR)',
+]);
+
+const response = awsJson([
+    'ce', 'get-cost-and-usage', '--region', 'us-east-1',
+    '--time-period', `Start=${start},End=${end}`,
+    '--granularity', 'DAILY', '--metrics', 'UnblendedCost',
+    '--group-by', 'Type=DIMENSION,Key=SERVICE',
+    '--filter', JSON.stringify({
+        Not: { Dimensions: { Key: 'RECORD_TYPE', Values: ['Credit', 'Refund'] } },
+    }),
+]);
+const relevantGroups = response.ResultsByTime.flatMap((period) => period.Groups)
+    .filter((group) => relevantServices.has(group.Keys[0]))
+    .map((group) => ({
+        service: group.Keys[0],
+        amount: Number(group.Metrics.UnblendedCost.Amount),
+        unit: group.Metrics.UnblendedCost.Unit,
+    }));
+const relevantAccountCostUsd = relevantGroups.reduce((sum, group) => sum + group.amount, 0);
+const result = {
+    queriedAt: new Date().toISOString(),
+    timePeriod: { start, end, endExclusive: true },
+    availability: relevantAccountCostUsd > 0 ? 'partial-account-data-available' : 'billing-delayed-or-zero',
+    attributableToRun: false,
+    reason: 'Same-day Cost Explorer data is delayed and service totals include unrelated account resources; realtime tagged-resource upper bounds remain authoritative.',
+    relevantAccountCostUsd,
+    services: relevantGroups,
+    apiChargeIncludedInRealtimeModelUsd: 0.01,
+};
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}

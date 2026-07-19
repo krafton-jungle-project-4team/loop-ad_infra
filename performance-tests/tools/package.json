@@ -5,8 +5,10 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "generate": "node generate-evidence.mjs",
+    "incidents": "node generate-incidents.mjs",
     "validate": "node validate-evidence.mjs",
     "check": "node check-curated-tree.mjs",
-    "reference": "node verify-reference.mjs"
+    "reference": "node verify-reference.mjs",
+    "links:rewrite": "node rewrite-broken-links.mjs"
   }
 }

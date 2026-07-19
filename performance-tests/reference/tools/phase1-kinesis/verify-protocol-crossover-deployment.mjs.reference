@@ -1,0 +1,70 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: '.env', quiet: true });
+const REGION = 'ap-northeast-2';
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const expectedDigest = requiredOption('--image-digest');
+const loadBalancerKind = requiredOption('--load-balancer-kind');
+const targetProtocolVersion = requiredOption('--target-protocol-version');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-protocol-crossover-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId)) throw new Error('invalid session or run ID');
+if (!/^sha256:[0-9a-f]{64}$/.test(expectedDigest) || !['alb', 'nlb'].includes(loadBalancerKind) || !['HTTP1', 'HTTP2', 'TCP', 'QUIC'].includes(targetProtocolVersion)) throw new Error('invalid deployment expectation');
+if ((loadBalancerKind === 'alb') !== ['HTTP1', 'HTTP2'].includes(targetProtocolVersion)) throw new Error('load balancer and target protocol are inconsistent');
+
+const stack = aws(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', 'LoopAdPerfPhase1KinesisProtocolCrossoverStack']).Stacks[0];
+const outputs = Object.fromEntries(stack.Outputs.map((item) => [item.OutputKey, item.OutputValue]));
+const lbName = loadBalancerKind === 'alb' ? 'perf-phase1-loop-ad-alb' : targetProtocolVersion === 'QUIC' ? 'perf-p1-protocol-n3' : 'perf-p1-protocol-n2';
+const loadBalancer = aws(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', lbName]).LoadBalancers[0];
+const listener = aws(['elbv2', 'describe-listeners', '--region', REGION, '--load-balancer-arn', loadBalancer.LoadBalancerArn]).Listeners.find((item) => item.Port === 443);
+const targetGroup = aws(['elbv2', 'describe-target-groups', '--region', REGION, '--target-group-arns', outputs.Phase1TargetGroupArn]).TargetGroups[0];
+const targetHealth = aws(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', outputs.Phase1TargetGroupArn]).TargetHealthDescriptions;
+const attributes = Object.fromEntries(aws(['elbv2', 'describe-load-balancer-attributes', '--region', REGION, '--load-balancer-arn', loadBalancer.LoadBalancerArn]).Attributes.map((item) => [item.Key, item.Value]));
+const bucket = outputs.Phase1AlbAccessLogBucketName;
+const encryption = bucket ? aws(['s3api', 'get-bucket-encryption', '--region', REGION, '--bucket', bucket]) : undefined;
+const publicAccess = bucket ? aws(['s3api', 'get-public-access-block', '--region', REGION, '--bucket', bucket]).PublicAccessBlockConfiguration : undefined;
+const versioning = bucket ? aws(['s3api', 'get-bucket-versioning', '--region', REGION, '--bucket', bucket]) : undefined;
+const placementPath = `${output}.generator-placement.json`;
+execFileSync(process.execPath, [new URL('./collect-generator-placement.mjs', import.meta.url).pathname, '--asg-names', outputs.Phase1LoadGeneratorAutoScalingGroupName, '--output', placementPath], { stdio: 'inherit' });
+const placement = JSON.parse(readFileSync(placementPath, 'utf8'));
+const taskStatePath = `${output}.task-state.json`;
+execFileSync(process.execPath, [new URL('./collect-capacity-task-state.mjs', import.meta.url).pathname,
+    '--image-digest', expectedDigest, '--target-group-arn', outputs.Phase1TargetGroupArn, '--output', taskStatePath], { stdio: 'inherit' });
+const taskState = JSON.parse(readFileSync(taskStatePath, 'utf8'));
+const checks = {
+    stackComplete: ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.StackStatus),
+    exactOutputs: outputs.Phase1ExperimentMode === 'protocol-crossover' && outputs.Phase1RunId === runId &&
+        outputs.Phase1ComparisonSessionId === sessionId && outputs.Phase1Candidate === 'go-batch' &&
+        outputs.Phase1CollectorCount === '4' && outputs.Phase1LoadGeneratorCount === '4' &&
+        outputs.Phase1ApplicationMaxInFlight === '2048' && outputs.Phase1KinesisMaxConnections === '1024' &&
+        outputs.Phase1LoadBalancerKind === loadBalancerKind && outputs.Phase1FrontendProtocol === (targetProtocolVersion === 'QUIC' ? 'QUIC' : 'HTTPS') &&
+        outputs.Phase1TargetProtocolVersion === targetProtocolVersion,
+    exactLoadBalancer: loadBalancer.Scheme === 'internal' && loadBalancer.Type === (loadBalancerKind === 'alb' ? 'application' : 'network'),
+    exactListener: listener?.Protocol === (loadBalancerKind === 'alb' ? 'HTTPS' : targetProtocolVersion) &&
+		(loadBalancerKind !== 'alb' || listener?.Certificates?.length === 1),
+    exactTargetProtocol: targetGroup.Protocol === (loadBalancerKind === 'alb' ? 'HTTP' : targetProtocolVersion) &&
+        (loadBalancerKind === 'nlb' || targetGroup.ProtocolVersion === targetProtocolVersion),
+    fourHealthyTargets: targetHealth.length === 4 && targetHealth.every((item) => item.TargetHealth?.State === 'healthy') &&
+		(targetProtocolVersion !== 'QUIC' || targetHealth.every((item) => /^0x[0-9a-f]{16}$/.test(item.Target?.QuicServerId ?? ''))),
+	nlbPassThrough: loadBalancerKind !== 'nlb' || (loadBalancer.IpAddressType === 'ipv4' && (loadBalancer.SecurityGroups?.length ?? 0) === 0),
+    accessLogging: loadBalancerKind === 'nlb' || attributes['access_logs.s3.enabled'] === 'true' && attributes['access_logs.s3.bucket'] === bucket &&
+        attributes['access_logs.s3.prefix'] === `${sessionId}/${runId}`,
+    bucketControls: loadBalancerKind === 'nlb' || Boolean(bucket &&
+        encryption?.ServerSideEncryptionConfiguration.Rules.some((rule) => rule.ApplyServerSideEncryptionByDefault?.SSEAlgorithm === 'AES256') &&
+        !versioning?.Status && publicAccess && Object.values(publicAccess).every(Boolean)),
+    generatorPlacement: placement.passed === true,
+    collectorTopology: taskState.topology?.passed === true,
+};
+const result = { verifiedAt: new Date().toISOString(), region: REGION, sessionId, runId, loadBalancerKind, targetProtocolVersion,
+    stackStatus: stack.StackStatus, outputs, loadBalancer, listener, targetGroup, targetHealth, attributes,
+    bucket: bucket ? { name: bucket, encryption, publicAccess, versioning } : null, placementPath, taskStatePath, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function aws(args) { const text = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).trim(); return text ? JSON.parse(text) : {}; }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

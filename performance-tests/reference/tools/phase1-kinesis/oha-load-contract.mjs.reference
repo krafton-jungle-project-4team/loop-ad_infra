@@ -1,0 +1,42 @@
+export const LEGACY_MAX_CONNECTIONS = 4_096;
+export const OHA12K_TOTAL_CONNECTIONS = 12_000;
+export const OHA12K_EXPERIMENT_MODE = 'capacity-oha12k';
+export const GENERATOR_DIAGNOSIS_EXPERIMENT_MODE = 'generator-diagnosis';
+export const ALB_WARMUP_EXPERIMENT_MODE = 'alb-warmup';
+export const TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE = 'tcp-alb-path-diagnosis';
+export const ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE = 'admission-scaleout-capacity';
+export const CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE = 'connection-path-crossover';
+export const PATH_EVIDENCE_EXPERIMENT_MODES = Object.freeze([
+    TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE,
+    ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE,
+    CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE,
+]);
+
+export const EXPLICIT_CONNECTION_EXPERIMENT_MODES = Object.freeze([
+    OHA12K_EXPERIMENT_MODE,
+    GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    ALB_WARMUP_EXPERIMENT_MODE,
+    TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE,
+    ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE,
+    CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE,
+]);
+
+export function resolveOhaConnections({ rps, explicitConnections, experimentMode = 'legacy' }) {
+    if (!Number.isInteger(rps) || rps < 1) throw new Error('rps must be a positive integer');
+    if (EXPLICIT_CONNECTION_EXPERIMENT_MODES.includes(experimentMode)) {
+        if (!Number.isInteger(explicitConnections) || explicitConnections < 1) {
+            throw new Error(`${experimentMode} mode requires an explicit positive --connections value`);
+        }
+        if (explicitConnections > OHA12K_TOTAL_CONNECTIONS) {
+            throw new Error(`${experimentMode} per-process connections cannot exceed 12000`);
+        }
+        return explicitConnections;
+    }
+    if (explicitConnections !== undefined) {
+        if (!Number.isInteger(explicitConnections) || explicitConnections < 1) {
+            throw new Error('explicit connections must be a positive integer');
+        }
+        return explicitConnections;
+    }
+    return Math.min(LEGACY_MAX_CONNECTIONS, Math.max(128, Math.ceil(rps / 12)));
+}

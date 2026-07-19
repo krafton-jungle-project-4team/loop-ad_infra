@@ -1,0 +1,130 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REQUIRED_REPETITIONS = 3;
+
+export function evaluateConnectionPathCrossover(input) {
+    const topologies = Object.fromEntries(['T1', 'T2', 'T3'].map((name) => [name, summarize(input[name] ?? [])]));
+    const passes = Object.fromEntries(Object.entries(topologies).map(([name, summary]) => [name, repeatablePass(summary)]));
+    const failures = Object.fromEntries(Object.entries(topologies).map(([name, summary]) => [name, repeatableFailure(summary)]));
+    const control = summarize(input.T0 ?? []);
+    const start = input.diagnostics?.connectionStart ?? {};
+    const cardinality = input.diagnostics?.cardinality ?? {};
+    const az = input.diagnostics?.sourceFrontendAz ?? {};
+    const albAssignment = input.diagnostics?.albAssignment ?? {};
+    const proxyPolicy = input.diagnostics?.proxyPolicy ?? {};
+    const hypotheses = {
+        H1: verdict(passes.T1, failures.T1, 'ALB client and backend HTTP/2 passed all three 30k repetitions.', 'ALB HTTP/2 failed all three valid repetitions.', 'T1 lacks three valid repetitions.'),
+        H2: explicitCausal(albAssignment.backendMultiplexingOrAssignment, albAssignment.falsified, 'ALB backend multiplexing or target assignment caused the observed hot target.', 'ALB assignment evidence falsified a backend multiplexing or target-assignment cause.'),
+        H3: explicitCausal(cardinality.nlbPinningOrFlowSkew, cardinality.nlbUniformAtFailure, 'NLB connection pinning or flow sampling caused target skew.', 'NLB targets were uniform at the repeatable failure.'),
+        H4: explicitCausal(start.synchronizedFailsStaggeredPasses, start.synchronizedAndStaggeredSame, 'Only synchronized connection start failed.', 'Synchronized and staggered starts had the same repeatable result.'),
+        H5: explicitCausal(az.dependent, az.uniform, 'Failure depends on a source AZ, frontend, or target combination.', 'Source AZ, frontend, and target crossovers were uniform.'),
+        H6: explicitCausal(cardinality.dependent, cardinality.independent, 'Physical connection cardinality changed the repeatable result.', '6k, 12k, and 24k connection conditions had the same repeatable result.'),
+        H7: verdict(failures.T1 && passes.T2, (passes.T1 && passes.T2) || (failures.T1 && failures.T2), 'NLB direct passed while ALB failed.', 'NLB direct was not more stable than ALB.', 'The ALB/NLB direct boundary is incomplete.'),
+        H8: verdict(failures.T2 && passes.T3, (passes.T2 && passes.T3) || failures.T3, 'HAProxy request-level redistribution passed after NLB direct failed.', 'HAProxy did not provide a causal success crossover over NLB direct.', 'The NLB direct/HAProxy boundary is incomplete.'),
+        H9: explicitCausal(proxyPolicy.proxySaturatedOrOnlyFailure, proxyPolicy.proxyHeadroomAndNotOnlyFailure, 'HAProxy CPU, softirq, network, FD, maxconn, or queue was the first bottleneck.', 'HAProxy retained headroom and was not the only repeatable failure.'),
+        H10: verdict(failures.T1 && failures.T2 && failures.T3, passes.T1 || passes.T2 || passes.T3, 'All three topology paths failed repeatably, leaving a common downstream cause.', 'At least one topology passed, falsifying an unavoidable common downstream limit.', 'All topology outcomes are not yet repeatable.'),
+        H11: verdict(repeatableFailure(control) || control.connectionInvalidRepetitions > 0, repeatablePass(control) && control.minimumPhysicalConnectionFraction >= .99, 'The generator failed offered-load or physical-connection correctness.', 'T0 met offered-load and physical-connection correctness in three repetitions.', 'T0 generator qualification is incomplete.'),
+        H12: explicitCausal(input.warmup?.failurePersistsAfterWarmup, input.warmup?.failureDisappearsAfterWarmup, 'The same failure persisted after the unscored 15-minute warm-up.', 'The failure disappeared after the required warm-up.'),
+    };
+    const successful = ['T1', 'T2', 'T3'].filter((name) => passes[name]);
+    const simplestSuccess = successful[0] ?? null;
+    const capacity50k = summarize(input.capacity50k ?? []);
+    const eligible50k = successful.length > 0;
+    return {
+        schemaVersion: 1,
+        requiredIndependentRepetitions: REQUIRED_REPETITIONS,
+        topology30k: topologies,
+        controlT0: control,
+        capacity50k: {
+            promotionEligible: eligible50k,
+            selectedTopology: input.capacity50kTopology ?? null,
+            verdict: !eligible50k ? { verdict: 'inconclusive', reason: 'No topology passed 30k three times; 50k was not eligible.' }
+                : repeatablePass(capacity50k) ? { verdict: 'supported', reason: '50k passed three valid repetitions.' }
+                    : repeatableFailure(capacity50k) ? { verdict: 'not-supported', reason: '50k failed three valid repetitions.' }
+                        : { verdict: 'inconclusive', reason: input.capacity50kSkippedReason ?? '50k repetitions are incomplete.' },
+            summary: capacity50k,
+        },
+        measurementStatus: input.measurementStatus ?? null,
+        topologyQualification: input.topologyQualification ?? {},
+        supportingArtifacts: input.supportingArtifacts ?? {},
+        hypothesisArtifacts: input.hypothesisArtifacts ?? {},
+        hypotheses,
+        physicalConnections: input.physicalConnections ?? null,
+        frontendBackendConnections: input.frontendBackendConnections ?? null,
+        firstLatencyIncreaseLayer: input.firstLatencyIncreaseLayer ?? 'not measured',
+        firstQueueIncreaseLayer: input.firstQueueIncreaseLayer ?? 'not measured',
+        firstConnectionChurnLayer: input.firstConnectionChurnLayer ?? 'not measured',
+        collectorSkew: input.collectorSkew ?? 'not measured',
+        synchronizedVsStaggered: start.summary ?? 'not measured',
+        crossZoneSourceFrontend: az.summary ?? 'not measured',
+        albRoundRobinVsLor: albAssignment.summary ?? 'not measured',
+        nlbDirectVsHAProxy: comparison(topologies.T2, topologies.T3),
+        haproxyLeastconnVsRoundrobin: proxyPolicy.summary ?? 'not measured',
+        kinesisServiceVsSdkLatency: input.kinesisServiceVsSdkLatency ?? 'not measured',
+        smallestSuccessfulTopology: simplestSuccess,
+        smallestFailureReproduction: input.smallestFailureReproduction ?? null,
+        smallestMitigation: input.smallestMitigation ?? null,
+        productionRecommendation: simplestSuccess === 'T1' ? 'ALB HTTP/2; it is the simplest repeatably successful topology.'
+            : simplestSuccess === 'T2' ? 'NLB direct TLS/HTTP2; HAProxy is not required.'
+                : simplestSuccess === 'T3' && failures.T2 ? 'NLB plus HAProxy only if the T2→T3 causal crossover artifacts are retained.'
+                    : 'none; no topology has a complete repeatable success or HAProxy lacks a causal advantage.',
+        remainingInconclusive: Object.entries(hypotheses).filter(([, value]) => value.verdict === 'inconclusive').map(([name]) => name),
+        nextExperiment: input.nextExperiment ?? nextExperiment(topologies, hypotheses),
+    };
+}
+
+function summarize(stages) {
+    const evaluated = stages.map((stage) => ({ stage, checks: stageChecks(stage) }));
+    const valid = evaluated.filter(({ checks }) => checks.evidenceComplete && checks.protocolAndConnectionCorrect).map(({ stage, checks }) => ({ stage, checks }));
+    const passing = valid.filter(({ checks }) => Object.values(checks).every(Boolean));
+    return {
+        attemptedRepetitions: stages.length,
+        validRepetitions: valid.length,
+        passRepetitions: passing.length,
+        failedRepetitions: valid.length - passing.length,
+        connectionInvalidRepetitions: evaluated.filter(({ checks }) => !checks.protocolAndConnectionCorrect).length,
+        minimumPhysicalConnectionFraction: minimum(valid.map(({ stage }) => stage.physicalConnectionFraction)),
+        medianOfferedAccuracy: median(valid.map(({ stage }) => stage.offeredAccuracy)),
+        medianAchievedRps: median(valid.map(({ stage }) => stage.achievedRps)),
+        medianTransportErrorFraction: median(valid.map(({ stage }) => stage.transportErrorFraction)),
+        medianTargetP95Ms: median(valid.map(({ stage }) => stage.targetP95Ms)),
+        artifacts: valid.map(({ stage }) => stage.artifact).filter(Boolean),
+        excluded: evaluated.filter(({ checks }) => !checks.evidenceComplete || !checks.protocolAndConnectionCorrect).map(({ stage, checks }) => ({ repetition: stage.repetition ?? null, checks })),
+    };
+}
+
+function stageChecks(stage = {}) {
+    return {
+        evidenceComplete: stage.telemetryEvidenceGaps === 0,
+        protocolAndConnectionCorrect: stage.httpVersion === '2' && stage.http1Fallbacks === 0 && stage.physicalConnectionFraction >= .99,
+        offeredAccuracy: stage.offeredAccuracy >= .99,
+        achievedRps: stage.achievedFraction >= .99,
+        transportErrors: stage.transportErrorFraction <= .001,
+        unexpectedStatuses: stage.unexpectedStatusFraction <= .001,
+        targetLatency: stage.targetP95Ms < 500,
+        queueStable: stage.queueOutstandingStable === true,
+        kinesisClean: stage.kinesisThrottleOrFailure === 0,
+        runtimeClean: stage.taskRestartOomFatal === 0,
+    };
+}
+
+function explicitCausal(positive, falsified, positiveReason, falsifiedReason) { return verdict(positive === true, falsified === true, positiveReason, falsifiedReason, 'Required causal crossover was not measured.'); }
+function verdict(positive, falsified, positiveReason, falsifiedReason, incompleteReason) { return { verdict: positive ? 'supported' : falsified ? 'not-supported' : 'inconclusive', reason: positive ? positiveReason : falsified ? falsifiedReason : incompleteReason }; }
+function repeatablePass(summary) { return summary.validRepetitions >= REQUIRED_REPETITIONS && summary.passRepetitions >= REQUIRED_REPETITIONS; }
+function repeatableFailure(summary) { return summary.validRepetitions >= REQUIRED_REPETITIONS && summary.passRepetitions === 0; }
+function comparison(left, right) { return { achievedRpsDelta: nullableDelta(right.medianAchievedRps, left.medianAchievedRps), transportErrorFractionDelta: nullableDelta(right.medianTransportErrorFraction, left.medianTransportErrorFraction), targetP95MsDelta: nullableDelta(right.medianTargetP95Ms, left.medianTargetP95Ms) }; }
+function nextExperiment(topologies, hypotheses) { if (topologies.T1.validRepetitions < 3) return 'Complete T1 30k repetitions.'; if (topologies.T2.validRepetitions < 3) return 'Complete T2 30k repetitions.'; if (hypotheses.H8.verdict === 'inconclusive') return 'Complete the T2/T3 causal boundary.'; return 'Measure the nearest remaining inconclusive causal boundary only.'; }
+function median(values) { const finite = values.filter(Number.isFinite).toSorted((a, b) => a - b); if (!finite.length) return null; const middle = Math.floor(finite.length / 2); return finite.length % 2 ? finite[middle] : (finite[middle - 1] + finite[middle]) / 2; }
+function minimum(values) { const finite = values.filter(Number.isFinite); return finite.length ? Math.min(...finite) : null; }
+function nullableDelta(right, left) { return Number.isFinite(right) && Number.isFinite(left) ? right - left : null; }
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const input = JSON.parse(readFileSync(requiredOption('--input'), 'utf8'));
+    const output = requiredOption('--output');
+    const result = evaluateConnectionPathCrossover(input);
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

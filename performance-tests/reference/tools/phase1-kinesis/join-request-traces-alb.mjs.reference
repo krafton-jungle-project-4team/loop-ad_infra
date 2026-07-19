@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+
+import { createReadStream, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { join } from 'node:path';
+import { createGunzip, gunzipSync } from 'node:zlib';
+import { parseAlbAccessLogLine } from './alb-access-log.mjs';
+
+const runDir = requiredOption('--run-dir');
+const accessLogDir = requiredOption('--access-log-dir');
+const output = requiredOption('--output');
+const selectedStage = optionValue('--stage-label');
+const selectedRepetition = optionValue('--repetition');
+if ((selectedStage && !selectedRepetition) || (!selectedStage && selectedRepetition)) throw new Error('--stage-label and --repetition must be provided together');
+if (selectedStage && (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(selectedStage) || !/^[1-9][0-9]{0,2}$/.test(selectedRepetition))) throw new Error('invalid selected stage identity');
+
+const traces = [];
+const stages = selectedStage ? [selectedStage] : directories(join(runDir, 'stages'));
+for (const stage of stages) for (const repetition of selectedStage ? [`repetition-${selectedRepetition.padStart(2, '0')}`] : directories(join(runDir, 'stages', stage))) {
+    const telemetry = join(runDir, 'stages', stage, repetition, 'collector-telemetry');
+    for (const collector of directories(telemetry)) {
+        if (!/^collector-[0-9]{2}$/.test(collector)) continue;
+        const path = join(telemetry, collector, 'request-traces.ndjson.gz');
+        try {
+            for (const line of gunzipSync(readFileSync(path)).toString('utf8').trim().split('\n').filter(Boolean)) {
+                const trace = JSON.parse(line);
+                if (trace.stage === stage && String(trace.repetition) === String(Number(repetition.replace('repetition-', '')))) traces.push({ ...trace, artifact: path });
+            }
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+}
+const unique = new Map(traces.filter((trace) => trace.x_amzn_trace_id).map((trace) => [trace.x_amzn_trace_id, trace]));
+const wantedTraceIds = new Set(unique.keys());
+const selectedWindow = selectedStage ? stageWindow(join(runDir, 'stages', selectedStage, `repetition-${selectedRepetition.padStart(2, '0')}`)) : null;
+const parseErrors = [];
+const byTrace = new Map();
+const perSecondMap = new Map();
+let albRecordCount = 0;
+let windowAlbRecordCount = 0;
+const accessLogNames = readdirSync(join(accessLogDir, 'raw')).filter((value) => value.endsWith('.log.gz')).sort();
+for (const name of accessLogNames) {
+    const lines = createInterface({ input: createReadStream(join(accessLogDir, 'raw', name)).pipe(createGunzip()), crlfDelay: Infinity });
+    let lineNumber = 0;
+    for await (const raw of lines) {
+        lineNumber += 1;
+        if (!raw.trim()) continue;
+        let record;
+        try {
+            record = parseAlbAccessLogLine(raw, { source: name, line: lineNumber });
+        } catch (error) {
+            parseErrors.push({ source: name, line: lineNumber, error: String(error.message ?? error), raw: raw.slice(0, 4_096) });
+            continue;
+        }
+        albRecordCount += 1;
+        const requestTime = Date.parse(record.requestCreationTime ?? record.responseTime);
+        if (selectedWindow && (!Number.isFinite(requestTime) || requestTime < selectedWindow.startMs || requestTime >= selectedWindow.endMs)) continue;
+        windowAlbRecordCount += 1;
+        if (wantedTraceIds.has(record.traceId)) byTrace.set(record.traceId, record);
+        addPerSecond(perSecondMap, record);
+    }
+}
+const joined = [];
+for (const [traceId, trace] of unique) {
+    const alb = byTrace.get(traceId);
+    if (alb) joined.push({ traceId, stage: trace.stage, repetition: trace.repetition, route: trace.route, collector: trace.collector,
+        requestTotalNanoseconds: trace.total_nanoseconds, requestPhases: trace.phases, alb: { requestProcessingTime: alb.requestProcessingTime,
+            targetProcessingTime: alb.targetProcessingTime, responseProcessingTime: alb.responseProcessingTime, elbStatusCode: alb.elbStatusCode,
+            targetStatusCode: alb.targetStatusCode, client: alb.client, target: alb.target, connectionTraceId: alb.connectionTraceId,
+            actionsExecuted: alb.actionsExecuted, requestCreationTime: alb.requestCreationTime, source: alb.source } });
+}
+const perSecond = [...perSecondMap.values()].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).map((value)=>({ timestamp:value.timestamp,count:value.count,status202:value.status202,status460:value.status460,targetMissing:value.targetMissing,
+    requestProcessingAverage:value.count?value.requestProcessingTotal/value.count:0,targetProcessingAverage:value.count?value.targetProcessingTotal/value.count:0,responseProcessingAverage:value.count?value.responseProcessingTotal/value.count:0,
+    uniqueConnections:value.connections.size,targets:[...value.targets].map(([target,count])=>({target,count})).sort((a,b)=>b.count-a.count) }));
+const result = { generatedAt: new Date().toISOString(), selectedStage: selectedStage ?? null, selectedRepetition: selectedRepetition ? Number(selectedRepetition) : null,
+    selectedWindow: selectedWindow ? { start: new Date(selectedWindow.startMs).toISOString(), end: new Date(selectedWindow.endMs).toISOString() } : null,
+    accessLogObjects: accessLogNames.length, albRecordCount, windowAlbRecordCount, parseErrors, traceRecords: traces.length, uniqueTraceIds: unique.size, joinedCount: joined.length,
+    joinRate: unique.size === 0 ? 0 : joined.length / unique.size, joined, perSecond,
+    checks: { albRecordsPresent: windowAlbRecordCount > 0, zeroParseErrors: parseErrors.length === 0, sampledTracesPresent: unique.size > 0, joinsPresent: joined.length > 0,
+        selectedStageComplete: !selectedStage || joined.length === unique.size } };
+result.passed = Object.values(result.checks).every(Boolean);
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, albRecordCount, windowAlbRecordCount, uniqueTraceIds: unique.size, joinedCount: joined.length, joinRate: result.joinRate, passed: result.passed }, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function addPerSecond(perSecondMap, record) {
+    const second = record.requestCreationTime?.slice(0, 19) + 'Z';
+    if (!second || second === 'nullZ') return;
+    const value = perSecondMap.get(second) ?? { timestamp: second, count: 0, status202: 0, status460: 0, targetMissing: 0, requestProcessingTotal: 0, targetProcessingTotal: 0, responseProcessingTotal: 0, connections: new Set(), targets: new Map() };
+    value.count += 1; if (record.elbStatusCode === 202) value.status202 += 1; if (record.elbStatusCode === 460) value.status460 += 1; if (record.target === '-') value.targetMissing += 1;
+    if (record.requestProcessingTime >= 0) value.requestProcessingTotal += record.requestProcessingTime;
+    if (record.targetProcessingTime >= 0) value.targetProcessingTotal += record.targetProcessingTime;
+    if (record.responseProcessingTime >= 0) value.responseProcessingTotal += record.responseProcessingTime;
+    value.connections.add(record.connectionKey); value.targets.set(record.target, (value.targets.get(record.target) ?? 0) + 1); perSecondMap.set(second, value);
+}
+function stageWindow(stageDir) {
+    const summary = JSON.parse(readFileSync(join(stageDir, 'stage-summary.json'), 'utf8'));
+    const startMs = Date.parse(summary.startedAt);
+    const endMs = Date.parse(summary.endedAt);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new Error('selected stage is missing a valid measurement window');
+    return { startMs, endMs };
+}
+function directories(path) { try { return readdirSync(path,{withFileTypes:true}).filter((entry)=>entry.isDirectory()).map((entry)=>entry.name).sort(); } catch(error) { if(error.code==='ENOENT')return[];throw error; } }
+function optionValue(name){const index=process.argv.indexOf(name);return index<0?undefined:process.argv[index+1];}
+function requiredOption(name){const value=optionValue(name);if(!value)throw new Error(`${name} is required`);return value;}

@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import {
+    CONNECTION_PATH_HAPROXY_PROFILES,
+    DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE,
+} from './connection-path-haproxy-profile.mjs';
+
+const pricesDocument = JSON.parse(readFileSync(requiredOption('--prices'), 'utf8'));
+const prices = pricesDocument.prices;
+const parallelWallSeconds = positiveInteger('--parallel-wall-seconds');
+const sequentialWallSeconds = positiveInteger('--sequential-wall-seconds');
+const requests = nonNegativeInteger('--requests-upper-bound');
+const putPayloadUnits = optionValue('--put-payload-units-upper-bound') === undefined
+    ? requests
+    : nonNegativeInteger('--put-payload-units-upper-bound');
+const accruedUpperBoundUsd = nonNegativeNumber('--accrued-upper-bound-usd');
+const albLcuHours = numberOption('--alb-lcu-hours-upper-bound', 200);
+const nlbLcuHours = numberOption('--nlb-lcu-hours-upper-bound', 400);
+const logIngestGiB = numberOption('--log-ingest-gib-upper-bound', 8);
+const evidenceUpperBoundUsd = numberOption('--evidence-upper-bound-usd', 1);
+const dataTransferUpperBoundUsd = numberOption('--data-transfer-upper-bound-usd', 2);
+const rollbackHours = numberOption('--rollback-hours-upper-bound', 1);
+const collectorCount = integerOption('--collector-count', 6);
+const generatorCount = integerOption('--generator-count', 8);
+const dedicatedHAProxyCount = integerOption('--haproxy-count', 2);
+const kinesisShardCount = integerOption('--kinesis-shard-count', 120);
+const publicIpv4UpperBound = integerOption('--public-ipv4-upper-bound', collectorCount + generatorCount + dedicatedHAProxyCount);
+const haproxyProfile = enumOption('--haproxy-profile', DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE, Object.keys(CONNECTION_PATH_HAPROXY_PROFILES));
+const output = optionValue('--output');
+const hardCapUsd = numberOption('--hard-cap-usd', 85);
+const cleanupReserveUsd = numberOption('--cleanup-reserve-usd', 12);
+const newDeployAccruedStopUsd = numberOption('--new-deploy-accrued-stop-usd', hardCapUsd - cleanupReserveUsd);
+if (cleanupReserveUsd >= hardCapUsd || newDeployAccruedStopUsd > hardCapUsd - cleanupReserveUsd) {
+    throw new Error('budget thresholds must preserve the cleanup reserve inside the hard cap');
+}
+
+for (const key of ['collectorInstanceHour', 'loadGeneratorInstanceHour', 'proxyInstanceHour', 'proxyCapacityInstanceHour', 'kinesisProvisionedShardHour',
+    'kinesisPutPayloadUnit', 'albHour', 'albLcuHour', 'nlbHour', 'nlbLcuHour', 'ebsGp3GbMonth', 'publicIpv4Hour',
+    'cloudWatchMetricMonth', 'cloudWatchLogIngestGb', 'cloudWatchLogStorageGbMonth', 'cloudWatchGetMetricDataMetric', 'ecrStorageGbMonth']) {
+    if (!Number.isFinite(prices[key]) || prices[key] < 0) throw new Error(`missing price: ${key}`);
+}
+
+const parallelHours = Math.ceil(parallelWallSeconds / 3_600);
+const sequentialHours = Math.ceil(sequentialWallSeconds / 3_600);
+const computeHours = parallelHours + rollbackHours;
+const hostCount = collectorCount + generatorCount + dedicatedHAProxyCount;
+const proxyInstanceType = haproxyProfile === 'sampled-202-capacity' ? 'c6in.2xlarge' : 'c6in.xlarge';
+const proxyInstanceHour = haproxyProfile === 'sampled-202-capacity' ? prices.proxyCapacityInstanceHour : prices.proxyInstanceHour;
+const components = {
+    collectors: collectorCount * computeHours * prices.collectorInstanceHour,
+    loadGenerators: generatorCount * computeHours * prices.loadGeneratorInstanceHour,
+    dedicatedHAProxy: dedicatedHAProxyCount * computeHours * proxyInstanceHour,
+    kinesisShardHours: kinesisShardCount * computeHours * prices.kinesisProvisionedShardHour,
+    kinesisPutPayloadUnits: putPayloadUnits * prices.kinesisPutPayloadUnit,
+    albHours: computeHours * prices.albHour,
+    albLcu: albLcuHours * prices.albLcuHour,
+    twoNlbHours: 2 * computeHours * prices.nlbHour,
+    twoNlbNlcus: nlbLcuHours * prices.nlbLcuHour,
+    ebsGp3: hostCount * 30 * computeHours / 730 * prices.ebsGp3GbMonth,
+    publicIpv4: publicIpv4UpperBound * computeHours * prices.publicIpv4Hour,
+    natGateway: 0,
+    detailedMonitoring: hostCount * 12 * computeHours / 730 * prices.cloudWatchMetricMonth,
+    cloudWatchLogsIngest: logIngestGiB * prices.cloudWatchLogIngestGb,
+    cloudWatchLogsStorage: logIngestGiB * computeHours / 730 * prices.cloudWatchLogStorageGbMonth,
+    cloudWatchGetMetricData: 100_000 * prices.cloudWatchGetMetricDataMetric,
+    ecrStorage: 1 * computeHours / 730 * prices.ecrStorageGbMonth,
+    s3EvidenceAndAccessLogs: evidenceUpperBoundUsd,
+    vpcFlowLogs: 0,
+    dataTransfer: dataTransferUpperBoundUsd,
+    failedRollbackComputeWindow: rollbackHours * (collectorCount * prices.collectorInstanceHour + generatorCount * prices.loadGeneratorInstanceHour + dedicatedHAProxyCount * proxyInstanceHour),
+    costExplorerApi: pricesDocument.fixedApiUpperBounds.costExplorerRequestUsd,
+};
+const runUpperBoundUsd = Object.values(components).reduce((sum, value) => sum + value, 0);
+const projectedTotalUpperBoundUsd = accruedUpperBoundUsd + runUpperBoundUsd;
+const checks = {
+    accruedBelowNewDeployStop: accruedUpperBoundUsd < newDeployAccruedStopUsd,
+    projectedPlusReserveBelowHardCap: projectedTotalUpperBoundUsd + cleanupReserveUsd < hardCapUsd,
+};
+const sequentialCoreUpperBoundUsd = sequentialHours * (
+    collectorCount * prices.collectorInstanceHour + generatorCount * prices.loadGeneratorInstanceHour + kinesisShardCount * prices.kinesisProvisionedShardHour +
+    prices.albHour + 2 * prices.nlbHour
+) + Math.ceil(sequentialHours / 3) * dedicatedHAProxyCount * proxyInstanceHour;
+const result = {
+    calculatedAt: new Date().toISOString(),
+    priceAsOf: pricesDocument.asOf,
+    currency: 'USD',
+    model: 'conservative connection-path upper bound; wall-clock resource hours are rounded up and topology counts are explicit inputs',
+    inputs: { parallelWallSeconds, parallelHours, sequentialWallSeconds, sequentialHours, requests, putPayloadUnits, accruedUpperBoundUsd, albLcuHours, nlbLcuHours, logIngestGiB, evidenceUpperBoundUsd, dataTransferUpperBoundUsd, rollbackHours, haproxyProfile },
+    topology: { collectors: collectorCount, generators: generatorCount, dedicatedHAProxy: dedicatedHAProxyCount, haproxyProfile, proxyInstanceType, alb: 1, nlb: 2, kinesisShards: kinesisShardCount, publicIpv4UpperBound, natGateways: 0 },
+    components,
+    alternatives: {
+        parallel: { estimatedWallHours: parallelHours, selected: true, runUpperBoundUsd },
+        sequential: { estimatedWallHours: sequentialHours, selected: false, coreResourceUpperBoundUsd: sequentialCoreUpperBoundUsd, excludesSharedEvidenceAndRequestCharges: true },
+    },
+    budget: {
+        hardCapUsd,
+        newDeployAccruedStopUsd,
+        cleanupReserveUsd,
+        accruedUpperBoundUsd,
+        runUpperBoundUsd,
+        projectedTotalUpperBoundUsd,
+        projectedPlusReserveUsd: projectedTotalUpperBoundUsd + cleanupReserveUsd,
+        checks,
+        mayStart: Object.values(checks).every(Boolean),
+    },
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (output) writeFileSync(output, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.budget.mayStart) process.exitCode = 2;
+
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function nonNegativeNumber(name) { const value = Number(requiredOption(name)); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }
+function nonNegativeInteger(name) { const value = nonNegativeNumber(name); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function positiveInteger(name) { const value = nonNegativeInteger(name); if (value < 1) throw new Error(`${name} must be positive`); return value; }
+function numberOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }
+function integerOption(name, fallback) { const value = numberOption(name, fallback); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`); return value; }
+function enumOption(name, fallback, allowed) { const value = optionValue(name) ?? fallback; if (!allowed.includes(value)) throw new Error(`${name} must be one of ${allowed.join(', ')}`); return value; }

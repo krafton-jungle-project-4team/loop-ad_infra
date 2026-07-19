@@ -1,0 +1,56 @@
+export const CAPACITY_COLLECTOR_COUNT = 4;
+export const CAPACITY_COLLECTOR_INSTANCE_TYPE = 'c6i.xlarge';
+
+export function analyzeCapacityTopology({ tasks, containerInstances, ec2Instances, expectedDigest,
+    expectedCollectorCount = CAPACITY_COLLECTOR_COUNT, expectedInstanceType = CAPACITY_COLLECTOR_INSTANCE_TYPE }) {
+    const containerInstanceByArn = new Map(containerInstances.map((instance) => [instance.containerInstanceArn, instance]));
+    const ec2ById = new Map(ec2Instances.map((instance) => [instance.InstanceId, instance]));
+    const placements = tasks.map((task) => {
+        const containerInstance = containerInstanceByArn.get(task.containerInstanceArn);
+        const ec2Instance = ec2ById.get(containerInstance?.ec2InstanceId);
+        const collector = task.containers?.find((container) => container.name === 'collector');
+        return {
+            taskArn: task.taskArn,
+            taskId: task.taskArn?.split('/').at(-1) ?? null,
+            containerInstanceArn: task.containerInstanceArn ?? null,
+            ec2InstanceId: containerInstance?.ec2InstanceId ?? null,
+            instanceType: ec2Instance?.InstanceType ?? null,
+            availabilityZone: ec2Instance?.Placement?.AvailabilityZone ?? null,
+            lastStatus: task.lastStatus ?? null,
+            healthStatus: task.healthStatus ?? null,
+            image: collector?.image ?? null,
+            imageDigest: collector?.imageDigest ?? null,
+        };
+    }).sort((left, right) => (left.taskArn ?? '').localeCompare(right.taskArn ?? ''));
+    const hostIds = placements.map((placement) => placement.ec2InstanceId).filter(Boolean);
+    const checks = {
+        exactlyFourTasks: placements.length === expectedCollectorCount,
+        allTasksRunningAndHealthy: placements.every((placement) => placement.lastStatus === 'RUNNING' && placement.healthStatus === 'HEALTHY'),
+        exactlyFourDistinctHosts: hostIds.length === expectedCollectorCount && new Set(hostIds).size === expectedCollectorCount,
+        oneTaskPerHost: hostIds.every((hostId) => hostIds.filter((value) => value === hostId).length === 1),
+        allHostsC6iXlarge: placements.every((placement) => placement.instanceType === expectedInstanceType),
+        allTasksUseExpectedDigest: placements.every((placement) => placement.imageDigest === expectedDigest),
+    };
+    return { expectedCollectorCount, expectedInstanceType, placements, checks, passed: Object.values(checks).every(Boolean) };
+}
+
+export function analyzeCapacityReplacement({ before, after, originalTaskArn, replacementObservation, stoppedTask }) {
+    const expectedCollectorCount = before.expectedCollectorCount ?? CAPACITY_COLLECTOR_COUNT;
+    const beforeTasks = new Set(before.placements.map((placement) => placement.taskArn));
+    const afterTasks = new Set(after.placements.map((placement) => placement.taskArn));
+    const survivors = [...beforeTasks].filter((taskArn) => taskArn !== originalTaskArn);
+    const replacements = [...afterTasks].filter((taskArn) => !beforeTasks.has(taskArn));
+    const stoppedText = JSON.stringify(stoppedTask ?? {}).toLowerCase();
+    const exitCodes = (stoppedTask?.containers ?? []).map((container) => container.exitCode).filter(Number.isInteger);
+    const checks = {
+        beforeTopologyPassed: before.passed,
+        afterTopologyPassed: after.passed,
+        deterministicTaskRemoved: beforeTasks.has(originalTaskArn) && !afterTasks.has(originalTaskArn),
+        unaffectedThreeStayedPresent: survivors.length === expectedCollectorCount - 1 && survivors.every((taskArn) => afterTasks.has(taskArn)),
+        exactlyOneReplacement: replacements.length === 1,
+        neverDroppedBelowThreeRunning: replacementObservation.minimumRunningCount >= expectedCollectorCount - 1,
+        noOomOrFatalStopReason: !/(oom|out of memory|panic|fatal)/.test(stoppedText),
+        gracefulExitCode: exitCodes.length > 0 && exitCodes.every((exitCode) => exitCode === 0 || exitCode === 143),
+    };
+    return { checks, survivorTaskArns: survivors.sort(), replacementTaskArns: replacements.sort(), passed: Object.values(checks).every(Boolean) };
+}

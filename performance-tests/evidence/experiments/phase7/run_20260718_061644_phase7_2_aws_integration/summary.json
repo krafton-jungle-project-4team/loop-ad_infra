@@ -81,7 +81,9 @@
   "limitations": [
     "not_recorded"
   ],
-  "relatedIncidents": [],
+  "relatedIncidents": [
+    "incident-phase7-20260718-061644"
+  ],
   "provenance": {
     "snapshotId": "snapshot_20260719T200907Z",
     "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",

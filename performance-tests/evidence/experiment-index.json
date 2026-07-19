@@ -5,8 +5,8 @@
   "experimentCount": 224,
   "counts": {
     "phase": {
-      "phase0": 27,
-      "phase1": 79,
+      "phase0": 21,
+      "phase1": 85,
       "phase4": 7,
       "phase6": 5,
       "phase7": 106
@@ -81,7 +81,9 @@
       "sourcePaths": [
         "local_20260710_210531_phase1_debug_metrics"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-local-20260710-210531-phase1-debug-metrics"
+      ]
     },
     {
       "runId": "run_20260709_190153_phase0_alb_smoke",
@@ -380,7 +382,9 @@
       "sourcePaths": [
         "run_20260710_225534_phase1_kinesis_smoke_retry"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-smoke"
+      ]
     },
     {
       "runId": "run_20260710_232642_phase1_kinesis_explore_1c_5krps",
@@ -458,7 +462,9 @@
       "sourcePaths": [
         "run_20260711_013903_phase1_kinesis_2c_10k_retry"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
     },
     {
       "runId": "run_20260711_015921_phase1_kinesis_2c_10k_retry2",
@@ -471,7 +477,9 @@
       "sourcePaths": [
         "run_20260711_015921_phase1_kinesis_2c_10k_retry2"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
     },
     {
       "runId": "run_20260711_101443_phase1_kinesis_2c_10k_retry3",
@@ -484,7 +492,9 @@
       "sourcePaths": [
         "run_20260711_101443_phase1_kinesis_2c_10k_retry3"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
     },
     {
       "runId": "run_20260711_103455_phase1_kinesis_4c_10krps",
@@ -670,12 +680,12 @@
     },
     {
       "runId": "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "aborted",
       "validity": "unknown",
-      "summaryPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/report.md",
       "sourcePaths": [
         "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics"
       ],
@@ -683,12 +693,12 @@
     },
     {
       "runId": "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "failed",
       "validity": "unknown",
-      "summaryPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/report.md",
       "sourcePaths": [
         "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period"
       ],
@@ -696,12 +706,12 @@
     },
     {
       "runId": "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "inconclusive",
       "validity": "invalidated",
-      "summaryPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/report.md",
       "sourcePaths": [
         "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order"
       ],
@@ -813,12 +823,12 @@
     },
     {
       "runId": "run_20260712_120232_capacity_go_batch",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "unknown",
       "validity": "unknown",
-      "summaryPath": "experiments/phase0/run_20260712_120232_capacity_go_batch/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_120232_capacity_go_batch/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_go_batch/report.md",
       "sourcePaths": [
         "run_20260712_120232_capacity_go_batch"
       ],
@@ -826,12 +836,12 @@
     },
     {
       "runId": "run_20260712_120232_capacity_go_sync",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "unknown",
       "validity": "unknown",
-      "summaryPath": "experiments/phase0/run_20260712_120232_capacity_go_sync/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_120232_capacity_go_sync/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_go_sync/report.md",
       "sourcePaths": [
         "run_20260712_120232_capacity_go_sync"
       ],
@@ -839,12 +849,12 @@
     },
     {
       "runId": "run_20260712_120232_capacity_java_kpl",
-      "phase": "phase0",
+      "phase": "phase1",
       "category": "experiment",
       "status": "unknown",
       "validity": "unknown",
-      "summaryPath": "experiments/phase0/run_20260712_120232_capacity_java_kpl/summary.json",
-      "reportPath": "experiments/phase0/run_20260712_120232_capacity_java_kpl/report.md",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_java_kpl/report.md",
       "sourcePaths": [
         "run_20260712_120232_capacity_java_kpl"
       ],
@@ -965,7 +975,9 @@
       "sourcePaths": [
         "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-capacity-oha12k-java-kpl-diagnostic"
+      ]
     },
     {
       "runId": "run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup",
@@ -991,7 +1003,9 @@
       "sourcePaths": [
         "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p",
@@ -1004,7 +1018,9 @@
       "sourcePaths": [
         "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p",
@@ -1017,7 +1033,9 @@
       "sourcePaths": [
         "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p",
@@ -1030,7 +1048,9 @@
       "sourcePaths": [
         "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p",
@@ -1043,7 +1063,9 @@
       "sourcePaths": [
         "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync",
@@ -1056,7 +1078,9 @@
       "sourcePaths": [
         "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch",
@@ -1069,7 +1093,9 @@
       "sourcePaths": [
         "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl",
@@ -1082,7 +1108,9 @@
       "sourcePaths": [
         "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
     },
     {
       "runId": "run_20260712_181327_phase1_kinesis_alb_warmup_go_batch",
@@ -1134,7 +1162,9 @@
       "sourcePaths": [
         "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase1-kinesis-tcp-alb-path-diagnosis-session"
+      ]
     },
     {
       "runId": "run_20260713_163800_phase1_kinesis_admission_scaleout_session",
@@ -1318,7 +1348,9 @@
       "sourcePaths": [
         "run_20260715_002706_connection_path_retry"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-connection-path"
+      ]
     },
     {
       "runId": "run_20260715_011247_connection_path_60usd",
@@ -1528,7 +1560,9 @@
       "sourcePaths": [
         "run_20260717_050834_phase6_archive_local_bootstrap_fix"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase6-archive-local-fixes"
+      ]
     },
     {
       "runId": "run_20260717_055837_phase6_clickhouse_s3_archive",
@@ -1736,7 +1770,9 @@
       "sourcePaths": [
         "run_20260717_100126_phase6_archive_local_retry"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase6-archive-local-fixes"
+      ]
     },
     {
       "runId": "run_20260717_112554_phase7_1_local_integration",
@@ -1762,7 +1798,9 @@
       "sourcePaths": [
         "run_20260717_114232_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-114232"
+      ]
     },
     {
       "runId": "run_20260717_115310_phase7_1_local_integration",
@@ -1788,7 +1826,9 @@
       "sourcePaths": [
         "run_20260717_120032_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-120032"
+      ]
     },
     {
       "runId": "run_20260717_121121_phase7_1_local_integration",
@@ -1814,7 +1854,9 @@
       "sourcePaths": [
         "run_20260717_121922_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-121922"
+      ]
     },
     {
       "runId": "run_20260717_122819_phase7_1_local_integration",
@@ -1853,7 +1895,9 @@
       "sourcePaths": [
         "run_20260717_123647_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-123647"
+      ]
     },
     {
       "runId": "run_20260717_123647_phase7_2_deployment_readiness",
@@ -1866,7 +1910,9 @@
       "sourcePaths": [
         "run_20260717_123647_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-123647"
+      ]
     },
     {
       "runId": "run_20260717_135302_phase7_1_local_integration",
@@ -1892,7 +1938,9 @@
       "sourcePaths": [
         "run_20260717_140022_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-140022"
+      ]
     },
     {
       "runId": "run_20260717_145409_phase7_1_local_integration",
@@ -1931,7 +1979,9 @@
       "sourcePaths": [
         "run_20260717_150129_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-150129"
+      ]
     },
     {
       "runId": "run_20260717_223832_phase7_1_local_integration",
@@ -1970,7 +2020,9 @@
       "sourcePaths": [
         "run_20260717_225316_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-225316"
+      ]
     },
     {
       "runId": "run_20260717_225316_phase7_2_deployment_readiness",
@@ -1983,7 +2035,9 @@
       "sourcePaths": [
         "run_20260717_225316_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260717-225316"
+      ]
     },
     {
       "runId": "run_20260718_002925_phase7_1_local_integration",
@@ -2022,7 +2076,9 @@
       "sourcePaths": [
         "run_20260718_004921_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-004921"
+      ]
     },
     {
       "runId": "run_20260718_004921_phase7_2_deployment_readiness",
@@ -2035,7 +2091,9 @@
       "sourcePaths": [
         "run_20260718_004921_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-004921"
+      ]
     },
     {
       "runId": "run_20260718_011725_phase7_1_local_integration",
@@ -2087,7 +2145,9 @@
       "sourcePaths": [
         "run_20260718_025510_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-025510"
+      ]
     },
     {
       "runId": "run_20260718_025510_phase7_2_deployment_readiness",
@@ -2100,7 +2160,9 @@
       "sourcePaths": [
         "run_20260718_025510_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-025510"
+      ]
     },
     {
       "runId": "run_20260718_041110_phase7_1_local_integration",
@@ -2139,7 +2201,9 @@
       "sourcePaths": [
         "run_20260718_042130_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-042130"
+      ]
     },
     {
       "runId": "run_20260718_042130_phase7_2_deployment_readiness",
@@ -2152,7 +2216,9 @@
       "sourcePaths": [
         "run_20260718_042130_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-042130"
+      ]
     },
     {
       "runId": "run_20260718_055034_phase7_1_local_integration",
@@ -2204,7 +2270,9 @@
       "sourcePaths": [
         "run_20260718_061644_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-061644"
+      ]
     },
     {
       "runId": "run_20260718_061644_phase7_2_deployment_readiness",
@@ -2217,7 +2285,9 @@
       "sourcePaths": [
         "run_20260718_061644_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-061644"
+      ]
     },
     {
       "runId": "run_20260718_074333_phase7_1_local_integration",
@@ -2256,7 +2326,9 @@
       "sourcePaths": [
         "run_20260718_075926_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-075926"
+      ]
     },
     {
       "runId": "run_20260718_075926_phase7_2_deployment_readiness",
@@ -2269,7 +2341,9 @@
       "sourcePaths": [
         "run_20260718_075926_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-075926"
+      ]
     },
     {
       "runId": "run_20260718_104859_phase7_1_local_integration",
@@ -2295,7 +2369,9 @@
       "sourcePaths": [
         "run_20260718_105848_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-105848"
+      ]
     },
     {
       "runId": "run_20260718_105848_phase7_2_deployment_readiness",
@@ -2308,7 +2384,9 @@
       "sourcePaths": [
         "run_20260718_105848_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-105848"
+      ]
     },
     {
       "runId": "run_20260718_120309_phase7_1_local_integration",
@@ -2347,7 +2425,9 @@
       "sourcePaths": [
         "run_20260718_124510_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-124510"
+      ]
     },
     {
       "runId": "run_20260718_124510_phase7_2_deployment_readiness",
@@ -2360,7 +2440,9 @@
       "sourcePaths": [
         "run_20260718_124510_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-124510"
+      ]
     },
     {
       "runId": "run_20260718_140208_phase7_1_local_integration",
@@ -2399,7 +2481,9 @@
       "sourcePaths": [
         "run_20260718_141425_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-141425"
+      ]
     },
     {
       "runId": "run_20260718_143442_phase7_1_local_integration",
@@ -2425,7 +2509,9 @@
       "sourcePaths": [
         "run_20260718_144405_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-144405"
+      ]
     },
     {
       "runId": "run_20260718_144405_phase7_2_deployment_readiness",
@@ -2438,7 +2524,9 @@
       "sourcePaths": [
         "run_20260718_144405_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-144405"
+      ]
     },
     {
       "runId": "run_20260718_160954_phase7_1_local_integration",
@@ -2477,7 +2565,9 @@
       "sourcePaths": [
         "run_20260718_162042_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-162042"
+      ]
     },
     {
       "runId": "run_20260718_162042_phase7_2_deployment_readiness",
@@ -2490,7 +2580,9 @@
       "sourcePaths": [
         "run_20260718_162042_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-162042"
+      ]
     },
     {
       "runId": "run_20260718_175009_phase7_1_local_integration",
@@ -2516,7 +2608,9 @@
       "sourcePaths": [
         "run_20260718_175720_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-175720"
+      ]
     },
     {
       "runId": "run_20260718_175720_phase7_2_deployment_readiness",
@@ -2529,7 +2623,9 @@
       "sourcePaths": [
         "run_20260718_175720_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-175720"
+      ]
     },
     {
       "runId": "run_20260718_192234_phase7_1_local_integration",
@@ -2568,7 +2664,9 @@
       "sourcePaths": [
         "run_20260718_193035_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-193035"
+      ]
     },
     {
       "runId": "run_20260718_193035_phase7_2_deployment_readiness",
@@ -2581,7 +2679,9 @@
       "sourcePaths": [
         "run_20260718_193035_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-193035"
+      ]
     },
     {
       "runId": "run_20260718_205704_phase7_1_local_integration",
@@ -2607,7 +2707,9 @@
       "sourcePaths": [
         "run_20260718_210703_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-210703"
+      ]
     },
     {
       "runId": "run_20260718_210703_phase7_2_deployment_readiness",
@@ -2620,7 +2722,9 @@
       "sourcePaths": [
         "run_20260718_210703_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-210703"
+      ]
     },
     {
       "runId": "run_20260718_224032_phase7_1_local_integration",
@@ -2659,7 +2763,9 @@
       "sourcePaths": [
         "run_20260718_225218_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-225218"
+      ]
     },
     {
       "runId": "run_20260718_225218_phase7_2_deployment_readiness",
@@ -2672,7 +2778,9 @@
       "sourcePaths": [
         "run_20260718_225218_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260718-225218"
+      ]
     },
     {
       "runId": "run_20260719_003924_phase7_1_local_integration",
@@ -2724,7 +2832,9 @@
       "sourcePaths": [
         "run_20260719_020156_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-020156"
+      ]
     },
     {
       "runId": "run_20260719_020156_phase7_2_deployment_readiness",
@@ -2737,7 +2847,9 @@
       "sourcePaths": [
         "run_20260719_020156_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-020156"
+      ]
     },
     {
       "runId": "run_20260719_034506_phase7_1_local_integration",
@@ -2776,7 +2888,9 @@
       "sourcePaths": [
         "run_20260719_043415_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-043415"
+      ]
     },
     {
       "runId": "run_20260719_043415_phase7_2_deployment_readiness",
@@ -2789,7 +2903,9 @@
       "sourcePaths": [
         "run_20260719_043415_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-043415"
+      ]
     },
     {
       "runId": "run_20260719_071857_phase7_2_aws_targeted_diagnostic",
@@ -2802,7 +2918,9 @@
       "sourcePaths": [
         "run_20260719_071857_phase7_2_aws_targeted_diagnostic"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-071857"
+      ]
     },
     {
       "runId": "run_20260719_071857_phase7_2_targeted_archive_readiness",
@@ -2815,7 +2933,9 @@
       "sourcePaths": [
         "run_20260719_071857_phase7_2_targeted_archive_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-071857"
+      ]
     },
     {
       "runId": "run_20260719_083356_phase7_2_aws_targeted_diagnostic",
@@ -2828,7 +2948,9 @@
       "sourcePaths": [
         "run_20260719_083356_phase7_2_aws_targeted_diagnostic"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-083356"
+      ]
     },
     {
       "runId": "run_20260719_083356_phase7_2_targeted_archive_readiness",
@@ -2841,7 +2963,9 @@
       "sourcePaths": [
         "run_20260719_083356_phase7_2_targeted_archive_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-083356"
+      ]
     },
     {
       "runId": "run_20260719_094035_phase7_2_aws_targeted_diagnostic",
@@ -2854,7 +2978,9 @@
       "sourcePaths": [
         "run_20260719_094035_phase7_2_aws_targeted_diagnostic"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-094035"
+      ]
     },
     {
       "runId": "run_20260719_125547_phase7_2_aws_integration",
@@ -2867,7 +2993,9 @@
       "sourcePaths": [
         "run_20260719_125547_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-125547"
+      ]
     },
     {
       "runId": "run_20260719_125547_phase7_2_deployment_readiness",
@@ -2880,7 +3008,9 @@
       "sourcePaths": [
         "run_20260719_125547_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-125547"
+      ]
     },
     {
       "runId": "run_20260719_144544_phase7_2_aws_integration",
@@ -2893,7 +3023,9 @@
       "sourcePaths": [
         "run_20260719_144544_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-144544"
+      ]
     },
     {
       "runId": "run_20260719_144544_phase7_2_deployment_readiness",
@@ -2906,7 +3038,9 @@
       "sourcePaths": [
         "run_20260719_144544_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-144544"
+      ]
     },
     {
       "runId": "run_20260719_162701_phase7_2_deployment_readiness",
@@ -2919,7 +3053,9 @@
       "sourcePaths": [
         "run_20260719_162701_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-162701"
+      ]
     },
     {
       "runId": "run_20260719_164311_phase7_2_aws_integration",
@@ -2932,7 +3068,9 @@
       "sourcePaths": [
         "run_20260719_164311_phase7_2_aws_integration"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-164311"
+      ]
     },
     {
       "runId": "run_20260719_164311_phase7_2_deployment_readiness",
@@ -2945,7 +3083,10 @@
       "sourcePaths": [
         "run_20260719_164311_phase7_2_deployment_readiness"
       ],
-      "incidentIds": []
+      "incidentIds": [
+        "incident-phase7-20260719-164311"
+      ]
     }
-  ]
+  ],
+  "incidentCount": 38
 }

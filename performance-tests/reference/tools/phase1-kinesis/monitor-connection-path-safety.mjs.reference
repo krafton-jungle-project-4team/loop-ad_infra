@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { evaluateConnectionPathSafety } from './connection-path-safety-evaluator.mjs';
+import { histogramLatencyMs } from './merge-fixed-latency-histograms.mjs';
+import { aggregateLiveProgress, emptyLiveHistogram, liveHistogramDelta } from './live-progress-histogram.mjs';
+
+const REGION = 'ap-northeast-2';
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const stageLabel = requiredOption('--stage-label');
+const repetition = requiredInteger('--repetition');
+const startEpoch = requiredInteger('--start-epoch');
+const warmupSeconds = nonNegativeInteger('--warmup-seconds');
+const durationSeconds = requiredInteger('--duration-seconds');
+const expectedRps = requiredInteger('--expected-rps');
+const expectedConnections = requiredInteger('--expected-connections');
+const generatorInstanceIds = requiredOption('--generator-instance-ids').split(',');
+const collectorBaselineDir = requiredOption('--collector-baseline-dir');
+const collectorCollectionStart = requiredOption('--collector-collection-start');
+const proxyCollectionStart = requiredOption('--proxy-collection-start');
+const costModelPath = requiredOption('--cost-model');
+const newWorkEnd = Date.parse(requiredOption('--new-work-end'));
+const hardDeadline = Date.parse(requiredOption('--hard-deadline'));
+const outputDir = requiredOption('--output-dir');
+const sampleIntervalSeconds = integerOption('--sample-interval-seconds', 10);
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId) ||
+    !/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) ||
+    !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel) || repetition < 1 || repetition > 999) throw new Error('invalid safety monitor identity');
+if (generatorInstanceIds.length !== 8 || new Set(generatorInstanceIds).size !== 8 || generatorInstanceIds.some((id) => !/^i-[0-9a-f]+$/.test(id))) throw new Error('safety monitor requires eight unique generators');
+if (!Number.isFinite(newWorkEnd) || !Number.isFinite(hardDeadline) || newWorkEnd >= hardDeadline) throw new Error('invalid absolute deadlines');
+if (expectedRps !== 50_000 || expectedConnections !== 12_000 || warmupSeconds > 900 || durationSeconds !== 300) throw new Error('safety monitor load contract mismatch');
+
+mkdirSync(outputDir, { recursive: true });
+const baselines = collectorBaselines();
+let collectorStart;
+let proxyStart;
+try {
+    [collectorStart, proxyStart] = await Promise.all([waitForJson(collectorCollectionStart, 30_000), waitForJson(proxyCollectionStart, 30_000)]);
+} catch (error) {
+    const sample = failureSample(error, 1);
+    const evaluation = evaluateConnectionPathSafety([sample], { expectedRps, expectedConnections });
+    const commands = { generators: sendAbort(generatorInstanceIds, generatorAbortCommand(), 'generator initialization abort') };
+    writeSample(1, { sample, evaluation, error: String(error.stack ?? error) });
+    writeJson(join(outputDir, 'abort.json'), { requestedAt: new Date().toISOString(), reasons: evaluation.reasons, commands });
+    const summary = { completedAt: new Date().toISOString(), runId, sessionId, stageLabel, repetition, startEpoch, warmupSeconds,
+        durationSeconds, expectedRps, expectedConnections, sampleIntervalSeconds, sampleCount: 1, finalEvaluation: evaluation,
+        abortCommands: commands, passed: false };
+    writeJson(join(outputDir, 'summary.json'), summary);
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    process.exit(2);
+}
+if (collectorStart.instanceIds?.length !== 6 || proxyStart.invocations?.length !== 2) throw new Error('safety telemetry topology is incomplete');
+const collectorInstanceIds = collectorStart.instanceIds;
+const proxyInstanceIds = proxyStart.invocations.map((item) => item.instanceId);
+const endEpoch = startEpoch + warmupSeconds + 10 + durationSeconds;
+const stageSince = new Date(startEpoch * 1_000).toISOString();
+const samples = [];
+let previousProgress = null;
+let finalEvaluation = null;
+let abortCommands = null;
+let transitionStartedAt = null;
+let runtimeBaseline = {};
+try {
+    runtimeBaseline = await captureRuntimeBaseline();
+    writeJson(join(outputDir, 'runtime-baseline.json'), runtimeBaseline);
+} catch (error) {
+    const sample = failureSample(error, 1);
+    samples.push(sample);
+    finalEvaluation = evaluateConnectionPathSafety(samples, { expectedRps, expectedConnections });
+    writeSample(1, { sample, evaluation: finalEvaluation, error: String(error.stack ?? error) });
+    abortCommands = abortStage(finalEvaluation.reasons);
+}
+
+while (abortCommands === null && Date.now() < (endEpoch - 2) * 1_000) {
+    const nowSeconds = Math.floor(Date.now() / 1_000);
+    if (nowSeconds < startEpoch) {
+        await sleep(Math.min(5_000, Math.max(250, (startEpoch - nowSeconds) * 1_000)));
+        continue;
+    }
+    const sequence = samples.length + 1;
+    let raw;
+    try {
+        const [generators, collectors, proxies] = await Promise.all([
+            runGroup(generatorInstanceIds, generatorSampleCommand(), `safety generators ${stageLabel}`),
+            runGroup(collectorInstanceIds, collectorSampleCommand(), `safety collectors ${stageLabel}`),
+            runGroup(proxyInstanceIds, proxySampleCommand(), `safety proxies ${stageLabel}`),
+        ]);
+        raw = { generators, collectors, proxies };
+    } catch (error) {
+        const sample = failureSample(error, sequence);
+        samples.push(sample);
+        finalEvaluation = evaluateConnectionPathSafety(samples, { expectedRps, expectedConnections });
+        writeSample(sequence, { sample, evaluation: finalEvaluation, error: String(error.stack ?? error) });
+        abortCommands = abortStage(finalEvaluation.reasons);
+        break;
+    }
+    const built = buildSample(raw, previousProgress, baselines, runtimeBaseline, sequence);
+    if (built.transition) {
+        writeSample(sequence, { transition: true, rawCommandIds: commandIds(raw), phaseIds: built.phaseIds });
+        transitionStartedAt ??= Date.now();
+        if (Date.now() - transitionStartedAt > 25_000) {
+            const sample = failureSample(new Error('live progress reset transition exceeded 25 seconds'), sequence);
+            samples.push(sample);
+            finalEvaluation = evaluateConnectionPathSafety(samples, { expectedRps, expectedConnections });
+            abortCommands = abortStage(finalEvaluation.reasons);
+            break;
+        }
+        await sleep(sampleIntervalSeconds * 1_000);
+        continue;
+    }
+    transitionStartedAt = null;
+    previousProgress = built.progress;
+    samples.push(built.sample);
+    finalEvaluation = evaluateConnectionPathSafety(samples, { expectedRps, expectedConnections });
+    writeSample(sequence, { sample: built.sample, evaluation: finalEvaluation, rawCommandIds: commandIds(raw) });
+    if (finalEvaluation.abort) {
+        abortCommands = abortStage(finalEvaluation.reasons);
+        break;
+    }
+    const remaining = sampleIntervalSeconds * 1_000 - (Date.now() - built.sample.timestampMs);
+    if (remaining > 0) await sleep(remaining);
+}
+
+const summary = {
+    completedAt: new Date().toISOString(), runId, sessionId, stageLabel, repetition, startEpoch, warmupSeconds, durationSeconds,
+    expectedRps, expectedConnections, sampleIntervalSeconds, sampleCount: samples.length,
+    finalEvaluation: finalEvaluation ?? evaluateConnectionPathSafety(samples, { expectedRps, expectedConnections }),
+    abortCommands, passed: abortCommands === null && finalEvaluation?.passed === true,
+};
+writeJson(join(outputDir, 'summary.json'), summary);
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+if (!summary.passed) process.exitCode = 2;
+
+function buildSample(raw, previous, baseline, runtimeBaseline, sequence) {
+    const progressRows = raw.generators.results.flatMap((item) => item.lines.map(JSON.parse));
+    const progress = aggregateLiveProgress(progressRows);
+    if (progress.transition) return progress;
+    const compatiblePrevious = previous?.phaseId === progress.phaseId ? previous : null;
+    const intervalSeconds = compatiblePrevious ? Math.max(0, (Date.now() - compatiblePrevious.timestampMs) / 1_000) : 0;
+    const histogram = compatiblePrevious ? liveHistogramDelta(progress.histogram, compatiblePrevious.histogram) : emptyLiveHistogram(progress.histogram);
+    const pooledP95Ms = histogram.count > 0 ? histogramLatencyMs(histogram).p95 : 0;
+    progress.timestampMs = Date.now();
+    const collectorRows = raw.collectors.results.map((item) => ({ instanceId: item.instanceId, ...parseCollectorLines(item.lines) }));
+    const proxyRows = raw.proxies.results.map((item) => ({ instanceId: item.instanceId, ...parseRuntimeLines(item.lines) }));
+    const kinesisThrottleRetryFailure = collectorRows.reduce((total, row, index) => total + collectorFaultDelta(row.snapshot, baseline[index]), 0);
+    const queueOutstanding = collectorRows.reduce((total, row) => total + number(row.snapshot.queue_depth) + number(row.snapshot.sender_queue_depth) + number(row.snapshot.outstanding_records), 0);
+    const taskRestartOomFatal = [...collectorRows, ...proxyRows].reduce((total, row) => total + runtimeFaults(row, runtimeBaseline[row.instanceId]), 0);
+    const now = Date.now();
+    const gatePassed = json(costModelPath).budget?.mayStart === true && now < newWorkEnd && now < hardDeadline;
+    const telemetryComplete = raw.generators.results.length === 8 && collectorRows.length === 6 && proxyRows.length === 2 &&
+        progress.plannedRps === expectedRps && progress.targetConnections === expectedConnections && progress.traceDropped === 0 &&
+        progress.protocolErrors === 0 && progress.hiddenRetries === 0;
+    const sample = {
+        sequence, timestampMs: progress.timestampMs, phaseId: progress.phaseId, intervalSeconds,
+        telemetryComplete, histogramComplete: histogram.overflow_count === 0 && histogram.count === histogram.counts.reduce((sum, value) => sum + value, 0),
+        gatePassed, kinesisThrottleRetryFailure, taskRestartOomFatal, queueOutstanding,
+        completedDelta: compatiblePrevious ? progress.completed - compatiblePrevious.completed : 0,
+        badStatusDelta: compatiblePrevious ? progress.http429 + progress.http5xx - compatiblePrevious.http429 - compatiblePrevious.http5xx : 0,
+        physicalConnections: progress.physicalConnections,
+        achievedRps: intervalSeconds > 0 && compatiblePrevious ? (progress.completed - compatiblePrevious.completed) / intervalSeconds : 0,
+        pooledP95Ms, enforceAccuracy: progress.elapsedSeconds >= 60 && intervalSeconds > 0,
+        progressElapsedSeconds: progress.elapsedSeconds,
+    };
+    return { transition: false, sample, progress };
+}
+
+async function captureRuntimeBaseline() {
+    const [collectors, proxies] = await Promise.all([
+        runGroup(collectorInstanceIds, collectorSampleCommand(), `safety collector baseline ${stageLabel}`),
+        runGroup(proxyInstanceIds, proxySampleCommand(), `safety proxy baseline ${stageLabel}`),
+    ]);
+    const rows = [
+        ...collectors.results.map((item) => ({ instanceId: item.instanceId, ...parseCollectorLines(item.lines) })),
+        ...proxies.results.map((item) => ({ instanceId: item.instanceId, ...parseRuntimeLines(item.lines) })),
+    ];
+    if (rows.some((row) => row.runtime.oom_killed === true || row.runtime.status !== 'running')) throw new Error('runtime baseline is not healthy');
+    return Object.fromEntries(rows.map((row) => [row.instanceId, { restartCount: number(row.runtime.restart_count), capturedAt: new Date().toISOString() }]));
+}
+
+function generatorSampleCommand() {
+    const prefix = `/tmp/loopad-reference-${runId}-${stageLabel}-${repetition}-node-`;
+    return `set -euo pipefail; count=0; for file in ${prefix}*/process-*/live-progress.json; do test -s "$file"; jq -c . "$file"; count=$((count + 1)); done; test "$count" -eq 2`;
+}
+
+function collectorSampleCommand() {
+    const selector = `{queue_depth:(.kinesis.put_records.queue_depth//0),sender_queue_depth:(.kinesis.put_records.sender_queue_depth//0),outstanding_records:(.kinesis.put_records.outstanding_records//0),batch_failures:(.kinesis.put_records.failures//0),batch_retries:(.kinesis.put_records.retries//0),partial_failures:(.kinesis.put_records.partial_failures//0),timeouts:(.kinesis.put_records.timeouts//0),queue_full:(.kinesis.put_records.queue_full//0),throttles:(.kinesis.put_record_throttles_total//0),failures:(.kinesis.put_record_failures_total//0),retries:(.kinesis.put_record_retries_total//0)}`;
+    return `set -euo pipefail; curl -fsS --max-time 3 http://127.0.0.1:8080/debug/vars | jq -c '${selector}'; cid=$(sudo -n docker ps --filter 'label=com.amazonaws.ecs.container-name=collector' --format '{{.ID}}'); test -n "$cid"; sudo -n docker inspect "$cid" | jq -c '.[0]|{restart_count:.RestartCount,oom_killed:.State.OOMKilled,status:.State.Status}'; fatal=$(sudo -n docker logs --since '${stageSince}' "$cid" 2>&1 | grep -Eic '(^|[^a-z])(fatal|panic|out of memory|oom-kill)([^a-z]|$)' || true); jq -cn --argjson fatal "$fatal" '{fatal:$fatal}'`;
+}
+
+function proxySampleCommand() {
+    return `set -euo pipefail; cid=$(sudo -n docker ps --filter 'label=com.amazonaws.ecs.container-name=haproxy' --format '{{.ID}}' | head -n 1); test -n "$cid"; sudo -n docker inspect "$cid" | jq -c '.[0]|{restart_count:.RestartCount,oom_killed:.State.OOMKilled,status:.State.Status}'; fatal=$(sudo -n docker logs --since '${stageSince}' "$cid" 2>&1 | grep -Eic '(^|[^a-z])(fatal|panic|out of memory|oom-kill)([^a-z]|$)' || true); jq -cn --argjson fatal "$fatal" '{fatal:$fatal}'`;
+}
+
+async function runGroup(instanceIds, command, comment) {
+    const sent = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', ...instanceIds,
+        '--timeout-seconds', '45', '--parameters', JSON.stringify({ commands: [command], executionTimeout: ['30'] }), '--comment', `${runId} ${comment}`]);
+    const results = await Promise.all(instanceIds.map(async (instanceId) => {
+        const invocation = await waitInvocation(sent.Command.CommandId, instanceId, 45_000);
+        if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0) throw new Error(`safety sample ${sent.Command.CommandId} failed on ${instanceId}: ${invocation.Status}`);
+        return { instanceId, commandId: sent.Command.CommandId, lines: (invocation.StandardOutputContent ?? '').trim().split('\n').filter(Boolean) };
+    }));
+    return { commandId: sent.Command.CommandId, results };
+}
+
+function abortStage(reasons) {
+    const generatorCommand = generatorAbortCommand();
+    const collectorCommand = `set -euo pipefail; touch '/var/tmp/loopad-root-cause-${runId}-${stageLabel}/abort-requested'`;
+    const proxyCommand = `set -euo pipefail; touch '/tmp/loopad-haproxy-telemetry/${runId}-${stageLabel}-${repetition}/abort-requested'`;
+    const commands = {
+        generators: sendAbort(generatorInstanceIds, generatorCommand, 'generator abort'),
+        collectors: sendAbort(collectorInstanceIds, collectorCommand, 'collector telemetry abort'),
+        proxies: sendAbort(proxyInstanceIds, proxyCommand, 'proxy telemetry abort'),
+    };
+    writeJson(join(outputDir, 'abort.json'), { requestedAt: new Date().toISOString(), reasons, commands });
+    return commands;
+}
+
+function generatorAbortCommand() {
+    return `set -euo pipefail; matched=0; for pid in $(pgrep -f '/tmp/loopad-reference-${runId}-${stageLabel}-${repetition}-node-[0-9][0-9]/reference-driver' || true); do kill -TERM "$pid"; matched=$((matched + 1)); done; printf 'signaled=%s\\n' "$matched"`;
+}
+
+function sendAbort(instanceIds, command, label) {
+    const sent = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', ...instanceIds,
+        '--timeout-seconds', '45', '--parameters', JSON.stringify({ commands: [command], executionTimeout: ['30'] }), '--comment', `${runId} safety ${label}`]);
+    return { commandId: sent.Command.CommandId, instanceIds };
+}
+
+function collectorBaselines() {
+    const index = json(join(collectorBaselineDir, 'index.json'));
+    if (index.collectors?.length !== 6) throw new Error('collector baseline requires six snapshots');
+    return index.collectors.map((item) => compactCollector(json(join(collectorBaselineDir, `${item.hostLabel}.json`))));
+}
+
+function compactCollector(snapshot) {
+    return {
+        queue_depth: number(snapshot.kinesis?.put_records?.queue_depth), sender_queue_depth: number(snapshot.kinesis?.put_records?.sender_queue_depth),
+        outstanding_records: number(snapshot.kinesis?.put_records?.outstanding_records), batch_failures: number(snapshot.kinesis?.put_records?.failures),
+        batch_retries: number(snapshot.kinesis?.put_records?.retries), partial_failures: number(snapshot.kinesis?.put_records?.partial_failures),
+        timeouts: number(snapshot.kinesis?.put_records?.timeouts), queue_full: number(snapshot.kinesis?.put_records?.queue_full),
+        throttles: number(snapshot.kinesis?.put_record_throttles_total), failures: number(snapshot.kinesis?.put_record_failures_total),
+        retries: number(snapshot.kinesis?.put_record_retries_total),
+    };
+}
+
+function collectorFaultDelta(current, baseline) {
+    return ['batch_failures', 'batch_retries', 'partial_failures', 'timeouts', 'queue_full', 'throttles', 'failures', 'retries']
+        .reduce((total, field) => total + Math.max(0, number(current[field]) - number(baseline[field])), 0);
+}
+
+function parseCollectorLines(lines) {
+    if (lines.length !== 3) throw new Error('collector safety response is incomplete');
+    return { snapshot: JSON.parse(lines[0]), runtime: JSON.parse(lines[1]), fatal: number(JSON.parse(lines[2]).fatal) };
+}
+
+function parseRuntimeLines(lines) {
+    if (lines.length !== 2) throw new Error('proxy safety response is incomplete');
+    return { runtime: JSON.parse(lines[0]), fatal: number(JSON.parse(lines[1]).fatal) };
+}
+
+function runtimeFaults(row, baseline) {
+    if (!baseline) return 1;
+    return Math.max(0, number(row.runtime.restart_count) - number(baseline.restartCount)) +
+        (row.runtime.oom_killed === true ? 1 : 0) + (row.runtime.status === 'running' ? 0 : 1) + number(row.fatal);
+}
+
+function failureSample(error, sequence) {
+    return { sequence, timestampMs: Date.now(), phaseId: 'unknown', intervalSeconds: 0, telemetryComplete: false,
+        histogramComplete: false, gatePassed: Date.now() < newWorkEnd && Date.now() < hardDeadline,
+        kinesisThrottleRetryFailure: 0, taskRestartOomFatal: 0, queueOutstanding: 0, completedDelta: 0,
+        badStatusDelta: 0, physicalConnections: 0, achievedRps: 0, pooledP95Ms: 0, enforceAccuracy: false,
+        error: String(error.message ?? error) };
+}
+
+async function waitInvocation(commandId, instanceId, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        await sleep(1_000);
+        try {
+            const invocation = aws(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!String(error.stderr ?? '').includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`safety sample timed out for ${instanceId}`);
+}
+
+async function waitForJson(path, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (existsSync(path)) return json(path);
+        await sleep(250);
+    }
+    throw new Error(`timed out waiting for ${path}`);
+}
+
+function writeSample(sequence, value) {
+    writeJson(join(outputDir, 'samples', `sample-${String(sequence).padStart(4, '0')}.json`), value);
+}
+function commandIds(raw) { return Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, value.commandId])); }
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
+function number(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`); return value; }
+function nonNegativeInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`); return value; }
+function integerOption(name, fallback) { const raw = optionValue(name); if (raw === undefined) return fallback; const value = Number(raw); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }

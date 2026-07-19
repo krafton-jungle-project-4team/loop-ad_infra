@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 6,
+  "runId": "run_20260718_075926_phase7_integration",
+  "verifiedAt": "2026-07-18T10:36:16Z",
+  "fixCommit": "8cd1bcf1ff5e33fa2e6a521f6471bbac44db367f",
+  "status": "passed",
+  "change": {
+    "summary": "Replace the stale internal- DNS-prefix heuristic with the exact synthesized NLB name plus the existing authoritative scheme, type, state, VPC, security-group and ownership checks. Quiesce exact stack-owned ECS services, target groups and Auto Scaling groups before stack deletion, including failed stacks without Outputs and deletion races.",
+    "files": [
+      "performance-tests/phase7-integration/aws/runtime_stages.py",
+      "performance-tests/phase7-integration/aws/cleanup.py",
+      "performance-tests/phase7-integration/tests/test_deployment_verifier.py",
+      "performance-tests/phase7-integration/tests/test_phase7_cleanup_contract.py"
+    ]
+  },
+  "rootCause": {
+    "path": "performance-tests/run_20260718_075926_phase7_2_aws_integration/evidence/diagnosis/protocol-nlb-verifier-mismatch.json",
+    "sha256": "6d0cc816275dc26e841660c201c2d3ba936728c2211fdf24ab81d4391c8ec587",
+    "rawVerifyLogPath": "performance-tests/run_20260718_075926_phase7_2_aws_integration/evidence/control/verify.attempt-1.stderr.log",
+    "rawVerifyLogSha256": "54990d54fe9e48d57e06e217651c20cb703330bbb8c2c7d74d24a9c29672fbec"
+  },
+  "verification": {
+    "focusedPythonTests": {
+      "tests": 42,
+      "failed": 0,
+      "passed": true
+    },
+    "phase7Tests": {
+      "command": "npm run test:phase7",
+      "jestPassed": 13,
+      "nodePassed": 27,
+      "pythonPassed": 135,
+      "failed": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "passed": true
+    },
+    "exactContextSynth": {
+      "passed": true,
+      "runtimeTemplatePath": "performance-tests/phase7_2-stabilization/attempt-6-fix-validation/runtime-template.json",
+      "runtimeTemplateSha256": "ee07d685ada3e4f119b5f00b1847d00d903b4c0fe15adba446dcb64cd4e8dbb9",
+      "diagnosisOnlyHistoricalIdentity": true
+    },
+    "userData": {
+      "passed": true,
+      "launchTemplatesChecked": 5,
+      "ec2LimitBytes": 16384,
+      "loadGeneratorBytes": 15216,
+      "loadGeneratorMarginLimitBytes": 15360,
+      "loadGeneratorMarginRemainingBytes": 144,
+      "sha256": "b186059af8b61f036702c1ae63cc5e16ed346b0e4517eaf912ef608ecc04bad1"
+    },
+    "haproxyTask": {
+      "passed": true,
+      "nofileSoft": 200000,
+      "nofileHard": 200000,
+      "sha256": "ee95610cc75e6c5a4745864592221ef03d28203a2bd9e6bda5d820fd4b120387"
+    },
+    "repositoryTemplateValidator": {
+      "passed": true,
+      "taskDefinitionsChecked": 5,
+      "schemaGuardRetries": 10,
+      "sha256": "0e38045a0255d02d26f22bf968ed743699591f525be5fdd20c6f146ed3a59e4d"
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "rawExitCode": 6,
+      "expectedAssemblyOnlyE1022": 8,
+      "expectedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "passedUnderRepositoryPolicy": true,
+      "summarySha256": "2101cc69080b0ef2cb09d8c3e4971509397ec582d4b680966e6f1ed07a59eae4"
+    }
+  },
+  "assessment": "The exact live NLB is now selected by exact DNS inventory equality and exact synthesized LoadBalancerName, then checked by authoritative ELBv2 state and ownership. Cleanup now discovers capacity from the exact stack even without Outputs, validates the complete surviving set before mutation, does not re-delete DRAINING services, handles only confirmed deletion races, scales exact ASGs to zero and waits for ECS services to become INACTIVE or MISSING before stack deletion. A fresh Phase 7-1 handoff and fresh immutable AWS attempt remain required."
+}

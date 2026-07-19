@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const runId = requiredOption('--run-id');
+const action = requiredOption('--action');
+const output = requiredOption('--output');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId) || !['allow', 'revoke', 'verify-absent'].includes(action)) throw new Error('invalid direct-target access request');
+
+const groups = awsJson(['ec2', 'describe-security-groups', '--region', REGION, '--filters', `Name=tag:RunId,Values=${runId}`]).SecurityGroups ?? [];
+const collector = exactlyOne(groups.filter((group) => tagValue(group, 'aws:cloudformation:logical-id')?.startsWith('CollectorSecurityGroup')), 'collector security group');
+const generator = exactlyOne(groups.filter((group) => tagValue(group, 'aws:cloudformation:logical-id')?.startsWith('LoadGeneratorSecurityGroup')), 'generator security group');
+const ingressArgs = ['ec2', action === 'allow' ? 'authorize-security-group-ingress' : 'revoke-security-group-ingress', '--region', REGION,
+    '--group-id', collector.GroupId, '--protocol', 'tcp', '--port', '8080', '--source-group', generator.GroupId];
+const egressArgs = ['ec2', action === 'allow' ? 'authorize-security-group-egress' : 'revoke-security-group-egress', '--region', REGION,
+    '--group-id', generator.GroupId, '--protocol', 'tcp', '--port', '8080', '--source-group', collector.GroupId];
+if (action !== 'verify-absent') {
+    applyRule(ingressArgs, action);
+    applyRule(egressArgs, action);
+}
+const refreshed = awsJson(['ec2', 'describe-security-groups', '--region', REGION, '--group-ids', collector.GroupId, generator.GroupId]).SecurityGroups ?? [];
+const refreshedCollector = exactlyOne(refreshed.filter((group) => group.GroupId === collector.GroupId), 'refreshed collector security group');
+const refreshedGenerator = exactlyOne(refreshed.filter((group) => group.GroupId === generator.GroupId), 'refreshed generator security group');
+const ingressPresent = hasGroupRule(refreshedCollector.IpPermissions, generator.GroupId);
+const egressPresent = hasGroupRule(refreshedGenerator.IpPermissionsEgress, collector.GroupId);
+const passed = action === 'allow' ? ingressPresent && egressPresent : !ingressPresent && !egressPresent;
+const result = { checkedAt: new Date().toISOString(), runId, action, collectorSecurityGroupId: collector.GroupId, generatorSecurityGroupId: generator.GroupId,
+    directTcp8080IngressPresent: ingressPresent, directTcp8080EgressPresent: egressPresent, passed };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!passed) process.exitCode = 2;
+
+function awsJson(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })); }
+function applyRule(args, requestedAction) {
+    try { awsJson(args); } catch (error) {
+        const text = `${error.stderr ?? ''}`;
+        if (!(requestedAction === 'allow' && text.includes('InvalidPermission.Duplicate')) && !(requestedAction === 'revoke' && text.includes('InvalidPermission.NotFound'))) throw error;
+    }
+}
+function hasGroupRule(permissions, peerGroupId) {
+    return (permissions ?? []).some((permission) => permission.IpProtocol === 'tcp' && permission.FromPort === 8080 && permission.ToPort === 8080 &&
+        (permission.UserIdGroupPairs ?? []).some((pair) => pair.GroupId === peerGroupId));
+}
+function tagValue(group, key) { return group.Tags?.find((tag) => tag.Key === key)?.Value; }
+function exactlyOne(values, name) { if (values.length !== 1) throw new Error(`expected one ${name}, found ${values.length}`); return values[0]; }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

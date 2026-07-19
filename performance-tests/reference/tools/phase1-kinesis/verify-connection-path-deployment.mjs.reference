@@ -1,0 +1,238 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+import { analyzeReadinessInvocations, buildReadinessCommand, buildReadinessEndpoints } from './connection-path-readiness.mjs';
+import {
+    CONNECTION_PATH_HAPROXY_PROFILES,
+    DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE,
+    evaluateHAProxyRuntimeProfiles,
+    parseHAProxyRuntimeOutput,
+    PINNED_HAPROXY_IMAGE,
+} from './connection-path-haproxy-profile.mjs';
+
+loadDotenv({ path: '.env', quiet: true });
+const REGION = 'ap-northeast-2';
+const STACK_NAME = 'LoopAdPerfPhase1KinesisConnectionPathStack';
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const expectedDigest = requiredOption('--image-digest');
+const expectedCollectorCount = integerOption('--expected-collector-count', 6);
+const expectedLoadGeneratorCount = integerOption('--expected-load-generator-count', 8);
+const expectedHAProxyProfile = optionValue('--haproxy-profile') ?? DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE;
+const expectedHAProxy = CONNECTION_PATH_HAPROXY_PROFILES[expectedHAProxyProfile];
+const caCertificatePath = requiredOption('--ca-certificate');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId)) throw new Error('invalid run ID');
+if (!/^sha256:[0-9a-f]{64}$/.test(expectedDigest)) throw new Error('invalid image digest');
+if (![4, 6].includes(expectedCollectorCount)) throw new Error('expected collector count must be 4 or 6');
+if (![4, 8].includes(expectedLoadGeneratorCount)) throw new Error('expected load-generator count must be 4 or 8');
+if (!expectedHAProxy) throw new Error('invalid HAProxy profile');
+const caCertificate = readFileSync(caCertificatePath, 'utf8');
+if (!caCertificate.includes('-----BEGIN CERTIFICATE-----') || caCertificate.includes('PRIVATE KEY')) throw new Error('readiness requires a public CA certificate only');
+const caCertificateSha256 = createHash('sha256').update(caCertificate).digest('hex');
+const caCertificateBase64 = Buffer.from(caCertificate).toString('base64');
+
+const stack = aws(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', STACK_NAME]).Stacks[0];
+const outputs = Object.fromEntries((stack.Outputs ?? []).map((entry) => [entry.OutputKey, entry.OutputValue]));
+const loadBalancers = Object.fromEntries(['perf-p1-conn-alb', 'perf-p1-conn-direct', 'perf-p1-conn-proxy'].map((name) => {
+    const loadBalancer = aws(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name]).LoadBalancers[0];
+    const listeners = aws(['elbv2', 'describe-listeners', '--region', REGION, '--load-balancer-arn', loadBalancer.LoadBalancerArn]).Listeners;
+    const attributes = Object.fromEntries(aws(['elbv2', 'describe-load-balancer-attributes', '--region', REGION, '--load-balancer-arn', loadBalancer.LoadBalancerArn]).Attributes.map((item) => [item.Key, item.Value]));
+    return [name, { ...loadBalancer, listeners, attributes }];
+}));
+const targetGroups = Object.fromEntries([
+    ['T1', outputs.Phase1ConnectionPathAlbTargetGroupArn],
+    ['T2', outputs.Phase1ConnectionPathDirectTargetGroupArn],
+    ['T3', outputs.Phase1ConnectionPathProxyTargetGroupArn],
+].map(([name, arn]) => {
+    const targetGroup = aws(['elbv2', 'describe-target-groups', '--region', REGION, '--target-group-arns', arn]).TargetGroups[0];
+    const health = aws(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', arn]).TargetHealthDescriptions;
+    const attributes = Object.fromEntries(aws(['elbv2', 'describe-target-group-attributes', '--region', REGION, '--target-group-arn', arn]).Attributes.map((item) => [item.Key, item.Value]));
+    return [name, { targetGroup, health, attributes }];
+}));
+const proxyAsgNames = outputs.Phase1ConnectionPathProxyAutoScalingGroupNames.split(',');
+const proxyAsgs = aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION, '--auto-scaling-group-names', ...proxyAsgNames]).AutoScalingGroups;
+const proxyInstanceIds = proxyAsgs.flatMap((group) => group.Instances.map((instance) => instance.InstanceId));
+const proxyInstances = proxyInstanceIds.length
+    ? aws(['ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...proxyInstanceIds]).Reservations.flatMap((reservation) => reservation.Instances)
+    : [];
+const proxyServiceNames = ['perf-p1-conn-proxy-2a', 'perf-p1-conn-proxy-2c'];
+const proxyServices = aws(['ecs', 'describe-services', '--region', REGION, '--cluster', 'perf-p1-conn-proxy', '--services', ...proxyServiceNames]).services ?? [];
+const proxyTaskArns = proxyServiceNames.flatMap((serviceName) => aws(['ecs', 'list-tasks', '--region', REGION,
+    '--cluster', 'perf-p1-conn-proxy', '--service-name', serviceName, '--desired-status', 'RUNNING']).taskArns ?? []);
+const proxyTasks = proxyTaskArns.length ? aws(['ecs', 'describe-tasks', '--region', REGION, '--cluster', 'perf-p1-conn-proxy', '--tasks', ...proxyTaskArns]).tasks ?? [] : [];
+const proxyRuntimeCommands = proxyInstanceIds.map((instanceId) => {
+    const response = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', instanceId, '--timeout-seconds', '90',
+        '--parameters', JSON.stringify({ commands: [proxyRuntimeCommand()], executionTimeout: ['60'] }),
+        '--comment', `${runId} HAProxy runtime profile verification`]);
+    return { instanceId, commandId: response.Command.CommandId };
+});
+const proxyRuntimeInvocations = await Promise.all(proxyRuntimeCommands.map(async (command) => {
+    const invocation = await waitInvocation(command.commandId, command.instanceId, 120);
+    return {
+        ...command,
+        status: invocation.Status,
+        responseCode: invocation.ResponseCode,
+        ...parseHAProxyRuntimeOutput(invocation.StandardOutputContent, command.instanceId),
+    };
+}));
+const proxyRuntimeProfiles = evaluateHAProxyRuntimeProfiles({
+    expectedProfileName: expectedHAProxyProfile,
+    outputs,
+    expectedInstanceIds: proxyInstanceIds,
+    invocations: proxyRuntimeInvocations,
+});
+const proxyRuntimePath = `${output}.proxy-runtime.json`;
+writeFileSync(proxyRuntimePath, `${JSON.stringify({ collectedAt: new Date().toISOString(), ...proxyRuntimeProfiles }, null, 2)}\n`, 'utf8');
+const namespaces = aws(['servicediscovery', 'list-namespaces', '--region', REGION]).Namespaces ?? [];
+const namespace = namespaces.find((item) => item.Name === 'connection-path.internal');
+const services = namespace ? aws(['servicediscovery', 'list-services', '--region', REGION, '--filters', `Name=NAMESPACE_ID,Values=${namespace.Id},Condition=EQ`]).Services ?? [] : [];
+const discoveryService = services.find((service) => service.Name === '_collector._tcp');
+const discoveryInstances = discoveryService ? aws(['servicediscovery', 'list-instances', '--region', REGION, '--service-id', discoveryService.Id]).Instances ?? [] : [];
+
+const placementPath = `${output}.generator-placement.json`;
+execFileSync(process.execPath, [new URL('./collect-generator-placement.mjs', import.meta.url).pathname, '--asg-names', outputs.Phase1LoadGeneratorAutoScalingGroupName,
+    '--expected-count', `${expectedLoadGeneratorCount}`, '--output', placementPath], { stdio: 'inherit' });
+const placement = JSON.parse(readFileSync(placementPath, 'utf8'));
+const taskStatePath = `${output}.task-state.json`;
+execFileSync(process.execPath, [new URL('./collect-capacity-task-state.mjs', import.meta.url).pathname,
+    '--image-digest', expectedDigest, '--expected-collector-count', `${expectedCollectorCount}`,
+    '--target-group-arn', outputs.Phase1ConnectionPathAlbTargetGroupArn, '--output', taskStatePath], { stdio: 'inherit' });
+const taskState = JSON.parse(readFileSync(taskStatePath, 'utf8'));
+const collectorInstanceIds = [...new Set((taskState.topology?.placements ?? []).map((item) => item.ec2InstanceId).filter(Boolean))];
+const collectorDescriptions = collectorInstanceIds.length === 0 ? [] : aws(['ec2', 'describe-instances', '--region', REGION,
+    '--instance-ids', ...collectorInstanceIds]).Reservations.flatMap((reservation) => reservation.Instances);
+const collectorInstances = collectorDescriptions.map((instance) => ({
+    instanceId: instance.InstanceId,
+    privateIp: instance.PrivateIpAddress,
+    availabilityZone: instance.Placement.AvailabilityZone,
+    runId: tagValue(instance.Tags, 'RunId'),
+    sessionId: tagValue(instance.Tags, 'ComparisonSessionId'),
+})).toSorted((a, b) => a.instanceId.localeCompare(b.instanceId));
+
+const alb = loadBalancers['perf-p1-conn-alb'];
+const direct = loadBalancers['perf-p1-conn-direct'];
+const proxy = loadBalancers['perf-p1-conn-proxy'];
+const readinessEndpoints = buildReadinessEndpoints({
+    albDnsName: alb.DNSName,
+    directNlbDnsName: direct.DNSName,
+    proxyNlbDnsName: proxy.DNSName,
+    collectorInstances,
+});
+const readinessCommand = buildReadinessCommand({
+    runId, tlsServerName: 'loopad-protocol.internal', caCertificateBase64, caCertificateSha256, endpoints: readinessEndpoints,
+});
+const runtimeOwnership = placement.instances.every((instance) => instance.runId === runId && instance.sessionId === sessionId) &&
+    collectorInstances.length === expectedCollectorCount && collectorInstances.every((instance) => instance.runId === runId && instance.sessionId === sessionId);
+const readinessPrerequisitesPassed = placement.passed === true && taskState.topology?.passed === true && runtimeOwnership;
+const readinessCommands = readinessPrerequisitesPassed ? placement.instances.map((generator) => {
+    const response = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', generator.instanceId, '--timeout-seconds', '90',
+        '--parameters', JSON.stringify({ commands: [readinessCommand], executionTimeout: ['90'] }),
+        '--comment', `${runId} connection path TLS readiness`]);
+    return { instanceId: generator.instanceId, commandId: response.Command.CommandId };
+}) : [];
+const readinessInvocations = await Promise.all(readinessCommands.map(async (command) => {
+    const invocation = await waitInvocation(command.commandId, command.instanceId, 120);
+    return { ...command, status: invocation.Status, responseCode: invocation.ResponseCode,
+        standardOutput: invocation.StandardOutputContent ?? '' };
+}));
+const readiness = {
+    collectedAt: new Date().toISOString(),
+    caCertificateSha256,
+    skippedReason: readinessPrerequisitesPassed ? null : 'topology, placement, or ownership prerequisite failed',
+    ...analyzeReadinessInvocations({
+        invocations: readinessInvocations,
+        expectedGeneratorIds: placement.instances.map((instance) => instance.instanceId),
+        endpoints: readinessEndpoints,
+    }),
+};
+const checks = {
+    stackComplete: ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.StackStatus),
+    immutableOutputs: outputs.Phase1ExperimentMode === 'connection-path-crossover' && outputs.Phase1ComparisonSessionId === sessionId &&
+        outputs.Phase1RunId === runId && outputs.Phase1Candidate === 'go-batch' && outputs.Phase1CollectorCount === `${expectedCollectorCount}` &&
+        outputs.Phase1LoadGeneratorCount === `${expectedLoadGeneratorCount}` && outputs.Phase1ApplicationMaxInFlight === '2048' &&
+        outputs.Phase1KinesisMaxConnections === '1024' && outputs.Phase1ConnectionPathDefault === 'T3_NLB_HAPROXY' &&
+        outputs.Phase1LoadBalancerKind === 'nlb' && outputs.Phase1TargetProtocolVersion === 'TCP' &&
+        outputs.Phase1LoadBalancerDnsName === outputs.Phase1ConnectionPathProxyNlbDnsName &&
+		outputs.Phase1ConnectionPathProxyImage === PINNED_HAPROXY_IMAGE &&
+		outputs.Phase1ConnectionPathProxyProfile === expectedHAProxyProfile && outputs.Phase1ConnectionPathProxyInstanceType === expectedHAProxy.instanceType &&
+		outputs.Phase1ConnectionPathProxyLoggingPolicy === expectedHAProxy.loggingPolicy && outputs.Phase1ConnectionPathProxyThreadMode === expectedHAProxy.threadMode &&
+		outputs.Phase1ConnectionPathProxyVcpusPerInstance === `${expectedHAProxy.vcpus}` &&
+		/^[0-9a-f]{64}$/.test(outputs.Phase1ConnectionPathProxyConfigSha256 ?? ''),
+    loadBalancerKinds: alb.Type === 'application' && direct.Type === 'network' && proxy.Type === 'network' && [alb, direct, proxy].every((item) => item.Scheme === 'internal'),
+    listeners: alb.listeners.length === 1 && alb.listeners[0].Port === 443 && alb.listeners[0].Protocol === 'HTTPS' &&
+        direct.listeners.length === 1 && direct.listeners[0].Protocol === 'TCP' && direct.listeners[0].Port === 443 &&
+        proxy.listeners.length === 1 && proxy.listeners[0].Protocol === 'TCP' && proxy.listeners[0].Port === 443,
+    crossZone: direct.attributes['load_balancing.cross_zone.enabled'] === 'true' && proxy.attributes['load_balancing.cross_zone.enabled'] === 'true',
+    distinctTargetGroups: new Set(Object.values(targetGroups).map((entry) => entry.targetGroup.TargetGroupArn)).size === 3,
+    targetProtocols: targetGroups.T1.targetGroup.Protocol === 'HTTP' && targetGroups.T1.targetGroup.ProtocolVersion === 'HTTP2' &&
+        targetGroups.T2.targetGroup.Protocol === 'TCP' && targetGroups.T2.targetGroup.Port === 8443 &&
+        targetGroups.T3.targetGroup.Protocol === 'TCP' && targetGroups.T3.targetGroup.Port === 8443,
+	tlsHealthChecks: targetGroups.T2.targetGroup.HealthCheckProtocol === 'TCP' && targetGroups.T2.targetGroup.HealthCheckPort === '8443' &&
+		targetGroups.T3.targetGroup.HealthCheckProtocol === 'TCP' && targetGroups.T3.targetGroup.HealthCheckPort === '8443',
+    healthyTargets: targetGroups.T1.health.length === expectedCollectorCount && targetGroups.T1.health.every(healthy) &&
+        targetGroups.T2.health.length === expectedCollectorCount && targetGroups.T2.health.every(healthy) &&
+        targetGroups.T3.health.length === 2 && targetGroups.T3.health.every(healthy),
+    clientIpPreservation: targetGroups.T2.attributes['preserve_client_ip.enabled'] === 'true' && targetGroups.T3.attributes['preserve_client_ip.enabled'] === 'true',
+    collectorTopology: taskState.topology?.passed === true,
+    generatorPlacement: placement.passed === true,
+    runtimeOwnership,
+    tlsReadiness: readiness.passed === true,
+    proxyFleet: proxyAsgs.length === 2 && proxyAsgs.every((group) => group.MinSize === 1 && group.MaxSize === 1 && group.DesiredCapacity === 1) &&
+		proxyInstances.length === 2 && proxyInstances.every((instance) => instance.InstanceType === expectedHAProxy.instanceType && instance.State.Name === 'running') &&
+        new Set(proxyInstances.map((instance) => instance.Placement.AvailabilityZone)).size === 2,
+    proxyServices: proxyServices.length === 2 && proxyServices.every((service) => service.desiredCount === 1 && service.runningCount === 1 && service.pendingCount === 0) &&
+        proxyTasks.length === 2 && new Set(proxyTasks.map((task) => task.containerInstanceArn)).size === 2 &&
+        proxyTasks.every((task) => task.lastStatus === 'RUNNING' && task.containers?.length === 1 && task.containers[0].name === 'haproxy' &&
+            task.containers[0].image === PINNED_HAPROXY_IMAGE),
+    proxyRuntimeProfile: proxyRuntimeProfiles.passed === true,
+    serviceDiscovery: namespace?.Type === 'DNS_PRIVATE' && discoveryService?.DnsConfig?.DnsRecords?.some((record) => record.Type === 'SRV' && record.TTL === 1) && discoveryInstances.length === expectedCollectorCount,
+    accessLogs: alb.attributes['access_logs.s3.enabled'] === 'true' && alb.attributes['access_logs.s3.prefix'] === `${sessionId}/${runId}`,
+};
+const result = {
+	verifiedAt: new Date().toISOString(), region: REGION, sessionId, runId, expectedCollectorCount, expectedHAProxyProfile, expectedHAProxy, stackStatus: stack.StackStatus,
+    outputs, loadBalancers, targetGroups, proxyAsgs, proxyInstances, proxyServices, proxyTasks, namespace, discoveryService, discoveryInstances,
+    collectorInstances, readiness, proxyRuntimeProfiles,
+    placementPath, taskStatePath, proxyRuntimePath, checks, passed: Object.values(checks).every(Boolean),
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function healthy(item) { return item.TargetHealth?.State === 'healthy'; }
+function proxyRuntimeCommand() {
+    return `set -euo pipefail
+cid=$(sudo -n docker ps --filter 'label=com.amazonaws.ecs.container-name=haproxy' --format '{{.ID}}' | head -n 1)
+test -n "$cid"
+runtime=$(sudo -n docker exec "$cid" sh -c 'for status in /proc/[0-9]*/status; do grep -E "^(Name|Threads):" "$status"; done')
+thread_count=$(printf '%s\n' "$runtime" | awk '$1=="Name:" {haproxy=($2=="haproxy"); next} haproxy && $1=="Threads:" {if ($2>max) max=$2; haproxy=0} END {print max+0}')
+available_cpu_count=$(sudo -n docker exec "$cid" nproc)
+config_sha256=$(sudo -n docker exec "$cid" sha256sum /tmp/haproxy.cfg | awk '{print $1}')
+config_valid=false
+if sudo -n docker exec "$cid" haproxy -c -f /tmp/haproxy.cfg >/dev/null 2>&1; then config_valid=true; fi
+jq -cn --argjson runtimeThreadCount "$thread_count" --argjson availableCpuCount "$available_cpu_count" --arg configSha256 "$config_sha256" --argjson configValid "$config_valid" '{runtimeThreadCount:$runtimeThreadCount,availableCpuCount:$availableCpuCount,configSha256:$configSha256,configValid:$configValid}'`;
+}
+function aws(args) { const value = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).trim(); return value ? JSON.parse(value) : {}; }
+async function waitInvocation(commandId, instanceId, timeoutSeconds) {
+    const deadline = Date.now() + timeoutSeconds * 1_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        try {
+            const value = aws(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(value.Status)) return value;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    return { Status: 'TimedOut', ResponseCode: -1, StandardOutputContent: '' };
+}
+function tagValue(tags, key) { return tags?.find((tag) => tag.Key === key)?.Value ?? null; }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function integerOption(name, fallback) { const value = Number(optionValue(name) ?? fallback); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }

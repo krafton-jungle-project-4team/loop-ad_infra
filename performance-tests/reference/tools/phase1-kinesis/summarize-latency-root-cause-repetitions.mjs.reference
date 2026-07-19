@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const runDir = requiredOption('--run-dir');
+const output = requiredOption('--output');
+const seed = integerOption('--seed', 20260713);
+const groups = {};
+for (const stage of safeDirectories(join(runDir, 'stages'))) {
+    const summaries = [];
+    for (const repetition of safeDirectories(join(runDir, 'stages', stage))) {
+        const path = join(runDir, 'stages', stage, repetition, 'stage-summary.json');
+        try { summaries.push(JSON.parse(readFileSync(path, 'utf8'))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    if (summaries.length > 0) groups[stage] = summarizeStage(summaries, seed ^ hash(stage));
+}
+const result = { generatedAt: new Date().toISOString(), seed, comparisonUnit: 'independent stage repetition', bootstrapSamples: 2000, stages: groups };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, stages: Object.keys(groups), seed }, null, 2)}\n`);
+
+function summarizeStage(summaries, stageSeed) {
+    const valid = summaries.filter((item) => item.safetyPassed === true);
+    const metrics = { actualRps: valid.map((item) => item.aggregate.actualRps), transportErrorRate: valid.map((item) => item.aggregate.transportErrorRate), p95Ms: valid.map((item) => item.aggregate.latencyMs.p95), maxSynSent: valid.map((item) => item.aggregate.maxSynSent) };
+    return { attemptedRepetitions: summaries.length, validRepetitions: valid.length,
+        excludedRepetitions: summaries.filter((item) => item.safetyPassed !== true).map((item) => ({ repetition: item.repetition,
+            artifact: item.evidence?.stageDir ?? null, reason: item.stopReason ?? ['stage safety did not pass'] })),
+        repetitions: valid.map((item) => ({ repetition: item.repetition, artifact: item.evidence.stageDir })),
+        metrics: Object.fromEntries(Object.entries(metrics).map(([name, values]) => [name, distribution(values, stageSeed ^ hash(name))])) };
+}
+function distribution(values, distributionSeed) {
+    if (values.length === 0) return { count: 0, min: null, median: null, max: null, range: null, q1: null, q3: null, iqr: null,
+        blockBootstrapMedian95CI: { low: null, high: null } };
+    const sorted = [...values].sort((a, b) => a - b); const q1 = quantile(sorted, .25); const q3 = quantile(sorted, .75); const random = xorshift(distributionSeed); const medians = [];
+    for (let sample = 0; sample < 2000; sample += 1) { const resample = Array.from({ length: values.length }, () => values[Math.floor(random() * values.length)]).sort((a, b) => a - b); medians.push(quantile(resample, .5)); }
+    medians.sort((a, b) => a - b);
+    return { count: values.length, min: sorted[0], median: quantile(sorted, .5), max: sorted.at(-1), range: sorted.at(-1) - sorted[0], q1, q3, iqr: q3 - q1, blockBootstrapMedian95CI: { low: quantile(medians, .025), high: quantile(medians, .975) } };
+}
+function quantile(sorted, probability) { if (sorted.length === 0) return null; const index = (sorted.length - 1) * probability; const lower = Math.floor(index); return sorted[lower] + (sorted[lower + 1] === undefined ? 0 : (index - lower) * (sorted[lower + 1] - sorted[lower])); }
+function xorshift(initial) { let state = initial >>> 0 || 1; return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; }; }
+function hash(value) { let result = 2166136261; for (const byte of Buffer.from(value)) { result ^= byte; result = Math.imul(result, 16777619); } return result >>> 0; }
+function safeDirectories(path) { try { return readdirSync(path, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function integerOption(name, fallback) { const index = process.argv.indexOf(name); if (index < 0) return fallback; const value = Number(process.argv[index + 1]); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }

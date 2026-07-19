@@ -1,0 +1,148 @@
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+import { TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE } from './oha-load-contract.mjs';
+
+export const TCP_ALB_STAGES = Object.freeze({
+    A1: Object.freeze({ targetPath: '/events', nodeCount: 2, processesPerNode: 2, durationSeconds: 120 }),
+    A2: Object.freeze({ targetPath: '/__generator_control', nodeCount: 2, processesPerNode: 2, durationSeconds: 120 }),
+    A3: Object.freeze({ targetPath: '/events', nodeCount: 4, processesPerNode: 1, durationSeconds: 120 }),
+    A3_CONTROL: Object.freeze({ targetPath: '/__generator_control', nodeCount: 4, processesPerNode: 1, durationSeconds: 120 }),
+    B1: Object.freeze({ targetPath: '/__generator_control', nodeCount: 2, processesPerNode: 2, durationSeconds: 120 }),
+    B2: Object.freeze({ targetPath: '/events', nodeCount: 2, processesPerNode: 2, durationSeconds: 120 }),
+});
+
+export function tcpAlbStagePlan(stageName) {
+    const stage = TCP_ALB_STAGES[stageName];
+    if (!stage) throw new Error('unknown TCP/ALB diagnosis stage');
+    return {
+        stageName,
+        ...stage,
+        ...oha12kNodePlan({
+            nodeCount: stage.nodeCount,
+            processesPerNode: stage.processesPerNode,
+            targetRps: 30_000,
+            experimentMode: TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE,
+        }),
+    };
+}
+
+export function validateGeneratorPlacement(instances, expectedCount = 4) {
+    if (![4, 8].includes(expectedCount)) throw new Error('generator placement expects four or eight instances');
+    const expectedPerAz = expectedCount / 2;
+    const normalized = instances.map((instance) => ({
+        instanceId: instance.instanceId,
+        instanceType: instance.instanceType,
+        availabilityZone: instance.availabilityZone,
+        subnetId: instance.subnetId,
+        privateIp: instance.privateIp,
+        eniId: instance.eniId,
+    }));
+    const counts = Object.fromEntries(['ap-northeast-2a', 'ap-northeast-2c']
+        .map((availabilityZone) => [availabilityZone,
+            normalized.filter((instance) => instance.availabilityZone === availabilityZone).length]));
+    const checks = {
+        expectedInstanceCount: normalized.length === expectedCount,
+        uniqueInstances: new Set(normalized.map((instance) => instance.instanceId)).size === expectedCount,
+        allC6inLarge: normalized.every((instance) => instance.instanceType === 'c6in.large'),
+        balanced2a: counts['ap-northeast-2a'] === expectedPerAz,
+        balanced2c: counts['ap-northeast-2c'] === expectedPerAz,
+        identityComplete: normalized.every((instance) =>
+            /^i-[0-9a-f]+$/.test(instance.instanceId) &&
+            /^subnet-[0-9a-f]+$/.test(instance.subnetId) &&
+            /^eni-[0-9a-f]+$/.test(instance.eniId) &&
+            /^10\./.test(instance.privateIp)),
+    };
+    return { instances: normalized, counts, checks, passed: Object.values(checks).every(Boolean) };
+}
+
+export function selectBaselineNodes(instances) {
+    const placement = validateGeneratorPlacement(instances);
+    if (!placement.passed) throw new Error('generator placement contract failed');
+    return ['ap-northeast-2a', 'ap-northeast-2c'].map((availabilityZone) =>
+        placement.instances.filter((instance) => instance.availabilityZone === availabilityZone)
+            .toSorted((left, right) => left.instanceId.localeCompare(right.instanceId))[0]);
+}
+
+export function evaluateDiagnosisStage({ aggregate, safety = {} }) {
+    const attempted = aggregate.attemptedRequests ?? aggregate.completedRequests + aggregate.transportErrors;
+    const transportErrorRate = attempted === 0 ? null : aggregate.transportErrors / attempted;
+    const nodeChecks = (aggregate.nodes ?? []).map((node) => ({
+        nodeId: node.nodeId,
+        actualRps: node.actualRps,
+        transportErrors: node.transportErrors,
+        passed: node.actualRps >= node.offeredRps * 0.99 &&
+            node.transportErrors / Math.max(1, node.attemptedRequests) <= 0.001,
+    }));
+    const safetyPassed = !Object.values(safety).some((value) => value === true);
+    const checks = {
+        aggregateRps: aggregate.actualRps >= aggregate.offeredRps * 0.99,
+        transportErrors: transportErrorRate !== null && transportErrorRate <= 0.001,
+        allNodes: nodeChecks.length > 0 && nodeChecks.every((node) => node.passed),
+        safetyPassed,
+    };
+    return {
+        actualRps: aggregate.actualRps,
+        offeredRps: aggregate.offeredRps,
+        attemptedRequests: attempted,
+        transportErrors: aggregate.transportErrors,
+        transportErrorRate,
+        nodeChecks,
+        checks,
+        result: Object.values(checks).every(Boolean) ? 'success' : 'failure',
+    };
+}
+
+export function evaluateHypotheses({ A1, A2, A3, A3_CONTROL, B1, B2, matrix, ramp, replacement }) {
+    const result = {
+        H1: verdict('inconclusive', 'Actual-target latency feedback was not isolated.'),
+        H2: verdict('inconclusive', 'No repeatable instance or physical-host crossover result.'),
+        H3: verdict('inconclusive', 'No complete source-AZ crossover result.'),
+        H4: verdict('inconclusive', 'No fresh-ALB sudden-versus-stagger crossover result.'),
+    };
+
+    if (A1?.result === 'failure' && A2?.result === 'success') {
+        result.H1 = verdict('supported', 'Same-host fixed response succeeded after actual-target failure.');
+    } else if (A1?.result === 'success' && A1?.repetitionResult === 'success') {
+        result.H1 = verdict('inconclusive', 'Two fresh cold actual runs succeeded; the prior failure did not reproduce.');
+    } else if (A1?.result === 'success') {
+        result.H1 = verdict('inconclusive', 'One fresh cold actual run succeeded; one repetition is required.');
+    } else if (A1?.result === 'failure' && A2?.result === 'failure') {
+        result.H1 = verdict('not-supported', 'Actual and same-host fixed targets failed, so target latency is not isolated.');
+    }
+    if (B1?.result === 'success' && B2?.result === 'failure') {
+        result.H1 = verdict('supported', 'Cold fixed succeeded and warm actual failed on the same hosts and ALB.');
+        result.H4 = verdict('not-supported', 'A warm ALB still failed only on the actual target.');
+    }
+    if (A3?.result === 'failure' && A3_CONTROL?.result === 'success') {
+        result.H1 = verdict('supported', 'The same four-host topology failed on the actual target and succeeded on the fixed route.');
+    }
+
+    if (replacement?.failedInstanceRepeated === true && replacement?.replacementResult === 'success') {
+        result.H2 = verdict('supported', 'Replacing the run-owned instance in the same subnet/AZ removed the fixed-target failure.');
+    } else if (matrix?.instanceIndependent === true || replacement?.replacementResult === 'failure') {
+        result.H2 = verdict('not-supported', 'Failure followed an AZ/path rather than one instance, or repeated after replacement.');
+    } else if ([A1, A2, A3].filter(Boolean).length > 0 && [A1, A2, A3].filter(Boolean).every((stage) => stage.sameInstanceFailure !== true)) {
+        result.H2 = verdict('not-supported', 'No stage showed repeatable failure tied to one generator instance.');
+    }
+
+    if (matrix?.source2aFailsBothDestinations === true) {
+        result.H3 = verdict('supported', 'Both 2a source nodes failed independently of destination frontend.');
+    } else if (matrix?.complete === true && matrix?.sourceAzIndependent === true) {
+        result.H3 = verdict('not-supported', 'The complete matrix showed no source-AZ dependence.');
+    }
+
+    if (A1?.result === 'failure' && B1?.result === 'success' && B2?.result === 'success') {
+        result.H4 = verdict('supported', 'Cold actual failed, while cold fixed and warm actual succeeded on a fresh ALB.');
+    }
+    if (ramp?.suddenResult === 'failure' && ramp?.staggerResult === 'success') {
+        result.H4 = verdict('supported', ramp.rejectedConnections > 0
+            ? 'Only sudden ramp failed and ALB RejectedConnectionCount increased.'
+            : 'Only sudden ramp failed without hard rejection, supporting synchronized ramp interaction.');
+    } else if (ramp?.suddenResult === 'success' && ramp?.staggerResult === 'success') {
+        result.H4 = verdict('not-supported', 'Fresh sudden and staggered ramps both succeeded.');
+    }
+    return result;
+}
+
+function verdict(value, reason) {
+    return { verdict: value, reason };
+}

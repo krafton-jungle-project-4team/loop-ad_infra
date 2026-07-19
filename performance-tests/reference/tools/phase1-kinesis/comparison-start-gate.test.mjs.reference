@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./comparison-start-gate.mjs', import.meta.url).pathname;
+const session = 'phase1-compare-20260712-035928z';
+
+test('allows a repetition below all cost and time stops', () => {
+    const fixture = files(159, 4, 7);
+    const output = JSON.parse(execFileSync('node', args(fixture), { encoding: 'utf8' }));
+    assert.equal(output.passed, true);
+});
+
+test('blocks at the 160 minute start deadline', () => {
+    const fixture = files(160, 4, 7);
+    const result = spawnSync('node', args(fixture), { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.equal(JSON.parse(result.stdout).checks.startWindowOpen, false);
+});
+
+test('blocks at the accrued and projected cost stops', () => {
+    const fixture = files(150, 18, 20);
+    const result = spawnSync('node', args(fixture), { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.checks.accruedBelowNewRunStop, false);
+    assert.equal(output.checks.projectedBelowHardLimit, false);
+});
+
+test('requires cleanup at 170 minutes and hard-expires at 180 minutes', () => {
+    const cleanupFixture = files(170, 4, 7);
+    const cleanupResult = spawnSync('node', args(cleanupFixture), { encoding: 'utf8' });
+    const cleanupOutput = JSON.parse(cleanupResult.stdout);
+    assert.equal(cleanupResult.status, 2);
+    assert.equal(cleanupOutput.stream.cleanupRequired, true);
+    assert.equal(cleanupOutput.stream.hardExpired, false);
+
+    const expiredFixture = files(180, 4, 7);
+    const expiredResult = spawnSync('node', args(expiredFixture), { encoding: 'utf8' });
+    const expiredOutput = JSON.parse(expiredResult.stdout);
+    assert.equal(expiredResult.status, 2);
+    assert.equal(expiredOutput.stream.hardExpired, true);
+});
+
+function files(ageMinutes, accrued, projected) {
+    const dir = mkdtempSync(join(tmpdir(), 'loopad-comparison-gate-'));
+    const now = new Date('2026-07-12T06:00:00.000Z');
+    const created = new Date(now.getTime() - ageMinutes * 60_000);
+    const stream = join(dir, 'stream.json');
+    const accruedPath = join(dir, 'accrued.json');
+    const projectedPath = join(dir, 'projected.json');
+    writeFileSync(stream, JSON.stringify({
+        summary: { StreamCreationTimestamp: created.toISOString(), StreamStatus: 'ACTIVE', OpenShardCount: 80, RetentionPeriodHours: 24 },
+        tags: [
+            { Key: 'Project', Value: 'loop-ad' },
+            { Key: 'Environment', Value: 'perf-phase1-kinesis' },
+            { Key: 'ResourceScope', Value: 'shared-test-session' },
+            { Key: 'ComparisonSessionId', Value: session },
+        ],
+    }));
+    writeFileSync(accruedPath, JSON.stringify({ runUpperBoundUsd: accrued }));
+    writeFileSync(projectedPath, JSON.stringify({ projectedCumulativeUpperBoundUsd: projected }));
+    return { stream, accruedPath, projectedPath, now: now.toISOString() };
+}
+
+function args(fixture) {
+    return [script, '--session-id', session, '--candidate', 'go-sync', '--action', 'repetition',
+        '--stream-fixture', fixture.stream, '--accrued-cost', fixture.accruedPath,
+        '--projected-cost', fixture.projectedPath, '--now', fixture.now];
+}

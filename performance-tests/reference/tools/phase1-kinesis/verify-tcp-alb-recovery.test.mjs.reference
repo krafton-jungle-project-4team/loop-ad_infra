@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateTcpAlbRecovery, parseRecoverySamples } from './verify-tcp-alb-recovery.mjs';
+
+test('parses recovery samples and accepts a complete stable window', () => {
+    const text = Array.from({ length: 30 }, (_, index) => `SAMPLE\t2026-07-13T06:00:${index.toString().padStart(2, '0')}Z\t0\t0\t0\t${30 - index}\t${100 - index}`).join('\n');
+    const samples = parseRecoverySamples(text);
+    const result = evaluateTcpAlbRecovery({ 'i-00000000000000000': samples }, 30);
+    assert.equal(samples.length, 30);
+    assert.equal(result.passed, true);
+});
+
+test('rejects an incomplete or increasing recovery window', () => {
+    const samples = Array.from({ length: 30 }, (_, index) => ({
+        timestamp: `2026-07-13T06:00:${index.toString().padStart(2, '0')}Z`,
+        ohaProcesses: 0,
+        synSent: index === 10 ? 1 : 0,
+        tcpOrphan: index,
+        timeWait: 0,
+        conntrack: 100,
+    }));
+    const result = evaluateTcpAlbRecovery({ 'i-00000000000000000': samples }, 30);
+    assert.equal(result.passed, false);
+    assert.equal(result.nodes[0].checks.synSentZero, false);
+    assert.equal(result.nodes[0].checks.tcpOrphanDecreasingOrNormalized, false);
+});
+
+test('rejects malformed recovery samples', () => {
+    assert.throws(() => parseRecoverySamples('SAMPLE\tbad\tzero\t0\t0\t0\t0'), /invalid recovery sample/);
+});
+
+test('evaluates the full recovery trend while requiring the trailing stable window', () => {
+    const samples = [
+        { timestamp: '2026-07-13T06:00:00Z', ohaProcesses: 0, synSent: 2, tcpOrphan: 80, timeWait: 4000, conntrack: 14000 },
+        ...Array.from({ length: 30 }, (_, index) => ({
+            timestamp: `2026-07-13T06:01:${index.toString().padStart(2, '0')}Z`,
+            ohaProcesses: 0,
+            synSent: 0,
+            tcpOrphan: 0,
+            timeWait: 12 + index,
+            conntrack: 300 - index,
+        })),
+    ];
+    const result = evaluateTcpAlbRecovery({ 'i-00000000000000000': samples }, 30);
+    assert.equal(result.passed, true);
+    assert.equal(result.nodes[0].firstSample.timeWait, 4000);
+    assert.equal(result.nodes[0].lastSample.timeWait, 41);
+});
+
+test('accepts low idle TCP background noise as normalized', () => {
+    const samples = Array.from({ length: 30 }, (_, index) => ({
+        timestamp: `2026-07-13T06:02:${index.toString().padStart(2, '0')}Z`,
+        ohaProcesses: 0,
+        synSent: 0,
+        tcpOrphan: index === 29 ? 1 : 0,
+        timeWait: 20 + index,
+        conntrack: 200,
+    }));
+    const result = evaluateTcpAlbRecovery({ 'i-00000000000000000': samples }, 30);
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.normalizedThresholds, { tcpOrphanMax: 1, timeWaitMax: 100 });
+});

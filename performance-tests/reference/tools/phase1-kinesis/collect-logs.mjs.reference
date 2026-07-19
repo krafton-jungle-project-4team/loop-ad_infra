@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const startTime = requiredOption('--start-time');
+const endTime = requiredOption('--end-time');
+const outputDir = requiredOption('--output-dir');
+const startMilliseconds = Date.parse(startTime);
+const endMilliseconds = Date.parse(endTime);
+if (!Number.isFinite(startMilliseconds) || !Number.isFinite(endMilliseconds) || endMilliseconds <= startMilliseconds) {
+    throw new Error('invalid log time range');
+}
+
+mkdirSync(outputDir, { recursive: true });
+const logStreams = awsJson([
+    'logs', 'describe-log-streams', '--region', REGION,
+    '--log-group-name', '/loop-ad/perf-phase1/event-collector',
+    '--order-by', 'LastEventTime', '--descending', '--limit', '50',
+]).logStreams ?? [];
+const rawEventLimit = 1000;
+const maxPages = 100;
+const rawEvents = [];
+let nextToken;
+let pageCount = 0;
+while (pageCount < maxPages && rawEvents.length < rawEventLimit) {
+    const response = awsJson([
+        'logs', 'filter-log-events', '--region', REGION,
+        '--log-group-name', '/loop-ad/perf-phase1/event-collector',
+        '--start-time', startMilliseconds.toString(), '--end-time', endMilliseconds.toString(),
+        '--filter-pattern', '?panic ?fatal ?OOM ?"out of memory" ?killed ?AccessDenied ?permission ?ProvisionedThroughputExceeded ?throttl ?timeout ?"connection reset" ?network',
+        '--limit', Math.min(1000, rawEventLimit - rawEvents.length).toString(), '--no-paginate',
+        ...(nextToken ? ['--next-token', nextToken] : []),
+    ]);
+    pageCount += 1;
+    rawEvents.push(...(response.events ?? []));
+    if (!response.nextToken) {
+        nextToken = undefined;
+        break;
+    }
+    nextToken = response.nextToken;
+}
+const events = rawEvents.map((event) => ({
+    timestamp: new Date(event.timestamp).toISOString(),
+    ingestionTime: new Date(event.ingestionTime).toISOString(),
+    logStreamName: event.logStreamName,
+    message: event.message,
+}));
+const categories = {
+    oomOrKilled: events.filter((event) => /out of memory|oom|killed/i.test(event.message)).length,
+    panicOrFatal: events.filter((event) => /panic|fatal/i.test(event.message)).length,
+    permissionDenied: events.filter((event) => /accessdenied|not authorized|permission/i.test(event.message)).length,
+    throttling: events.filter((event) => /throttl|provisionedthroughputexceeded/i.test(event.message)).length,
+    network: events.filter((event) => /timeout|connection reset|network/i.test(event.message)).length,
+};
+const result = {
+    collectedAt: new Date().toISOString(),
+    startTime,
+    endTime,
+    delivery: {
+        streamCount: logStreams.length,
+        eventBearingStreamCount: logStreams.filter((stream) => Number.isFinite(stream.lastEventTimestamp)).length,
+        streams: logStreams.map((stream) => ({
+            logStreamName: stream.logStreamName,
+            creationTime: stream.creationTime ? new Date(stream.creationTime).toISOString() : null,
+            firstEventTimestamp: stream.firstEventTimestamp ? new Date(stream.firstEventTimestamp).toISOString() : null,
+            lastEventTimestamp: stream.lastEventTimestamp ? new Date(stream.lastEventTimestamp).toISOString() : null,
+            lastIngestionTime: stream.lastIngestionTime ? new Date(stream.lastIngestionTime).toISOString() : null,
+        })),
+        verified: logStreams.length > 0 && logStreams.some((stream) => Number.isFinite(stream.lastEventTimestamp)),
+    },
+    matchedEventCount: events.length,
+    complete: !nextToken,
+    nextTokenPresent: Boolean(nextToken),
+    pageCount,
+    maxPages,
+    rawEventLimit,
+    categories,
+    events,
+};
+writeFileSync(`${outputDir}/collector-error-logs.json`, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ ...result, events: undefined }, null, 2)}\n`);
+if (!result.delivery.verified) process.exitCode = 2;
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}

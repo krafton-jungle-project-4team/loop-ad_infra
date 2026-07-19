@@ -1,0 +1,216 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const candidateDir = requiredOption('--candidate-dir');
+const candidate = requiredOption('--candidate');
+const targetRps = requiredInteger('--target-rps');
+const durationSeconds = requiredInteger('--duration-seconds');
+const expectedRepetitions = requiredInteger('--expected-repetitions');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+
+const repetitionsDir = join(candidateDir, 'repetitions');
+const names = readdirSync(repetitionsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^repetition-[0-9]{2}$/.test(entry.name))
+    .map((entry) => entry.name).sort();
+if (names.length !== expectedRepetitions) {
+    throw new Error(`expected ${expectedRepetitions} repetitions, found ${names.length}`);
+}
+const repetitions = names.map((name) => summarizeRepetition(join(repetitionsDir, name), name));
+const fields = {
+    actualRps: repetitions.map((item) => item.http.actualRps),
+    acceptedRps: repetitions.map((item) => item.http.acceptedRps),
+    latencyP50Ms: repetitions.map((item) => item.http.latencyMs.p50),
+    latencyP95Ms: repetitions.map((item) => item.http.latencyMs.p95),
+    latencyP99Ms: repetitions.map((item) => item.http.latencyMs.p99),
+    http202: repetitions.map((item) => item.http.status202),
+    http429: repetitions.map((item) => item.http.status429),
+    http5xx: repetitions.map((item) => item.http.status5xx),
+    producerApiCalls: repetitions.map((item) => item.producer.apiCalls).filter(Number.isFinite),
+    recordsPerCall: repetitions.map((item) => item.producer.recordsPerCall).filter(Number.isFinite),
+    callsPerAcceptedEvent: repetitions.map((item) => item.producer.callsPerAcceptedEvent).filter(Number.isFinite),
+    retries: repetitions.map((item) => item.producer.retries).filter(Number.isFinite),
+    partialFailures: repetitions.map((item) => item.producer.partialFailures).filter(Number.isFinite),
+};
+const aggregate = Object.fromEntries(Object.entries(fields).map(([name, values]) => [name, distribution(values)]));
+const gates = {
+    exactlyTenRepetitions: repetitions.length === 10,
+    commonTargetRecorded: repetitions.every((item) => item.targetRps === targetRps),
+    noTransportErrors: repetitions.every((item) => item.http.transportErrors === 0),
+    noHttpSuccessBeforeProducerSuccess: repetitions.every((item) => item.producer.successes >= item.http.status202),
+    noLossAtHttpBoundary: repetitions.every((item) => item.producer.successes === item.http.status202),
+    noFinalFailures: repetitions.every((item) => item.producer.failures === 0),
+    noKinesisThrottle: repetitions.every((item) => item.kinesis.writeThrottle === 0),
+};
+const result = {
+    summarizedAt: new Date().toISOString(), candidate, targetRps, durationSeconds,
+    repetitionCount: repetitions.length, repetitions, aggregate, gates,
+    passed: Object.values(gates).every(Boolean),
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+writeFileSync(join(candidateDir, 'comparison-summary.json'), serialized, 'utf8');
+writeFileSync(join(candidateDir, 'metrics-summary.json'), serialized, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function summarizeRepetition(directory, name) {
+    const oha = json(join(directory, 'load', 'oha-summary.json'));
+    const before = onlySnapshot(join(directory, 'debug-vars', 'pre-load'));
+    const after = onlySnapshot(join(directory, 'debug-vars', 'post-load'));
+    const cloudwatch = json(join(directory, 'metrics', 'cloudwatch-summary.json'));
+    const producer = producerDelta(before, after);
+    return {
+        name, targetRps, startedAt: oha.startedAt, endedAt: oha.endedAt,
+        http: {
+            actualRps: oha.actualRps,
+            acceptedRps: oha.http202 / durationSeconds,
+            attempted: oha.attemptedRequests, status202: oha.http202,
+            status429: oha.http429, status5xx: oha.http5xx,
+            transportErrors: oha.transportErrors, latencyMs: oha.latencyMs,
+        },
+        producer,
+        runtime: runtimeDelta(before, after),
+        kinesis: {
+            incomingRecords: metric(cloudwatch, 'kinesis_incoming_records_sum', 'sum'),
+            incomingBytes: metric(cloudwatch, 'kinesis_incoming_bytes_sum', 'sum'),
+            writeThrottle: metric(cloudwatch, 'kinesis_write_throttle_sum', 'sum'),
+        },
+        alb: {
+            requests: metric(cloudwatch, 'alb_requests_sum', 'sum'),
+            target5xx: metric(cloudwatch, 'alb_target_5xx_sum', 'sum'),
+        },
+        rawKplMetrics: candidate === 'java-kpl' ? after.kpl_metrics : undefined,
+    };
+}
+
+function producerDelta(before, after) {
+    if (candidate === 'go-sync') {
+        const b = before.kinesis;
+        const a = after.kinesis;
+        const apiCalls = delta(a.put_record_operations_total, b.put_record_operations_total);
+        const successes = delta(a.put_record_successes_total, b.put_record_successes_total);
+        return rates({ apiCalls, successes,
+            failures: delta(a.put_record_failures_total, b.put_record_failures_total),
+            retries: delta(a.put_record_retries_total, b.put_record_retries_total),
+            partialFailures: 0, queueHighWater: after.admission.high_water_in_flight,
+            ackLatency: bucketDelta(b.put_record_latency.cumulative_buckets, a.put_record_latency.cumulative_buckets),
+        });
+    }
+    if (candidate === 'go-batch') {
+        const b = before.kinesis.put_records;
+        const a = after.kinesis.put_records;
+        const apiCalls = delta(a.api_calls, b.api_calls);
+        const successes = delta(a.successes, b.successes);
+        return rates({ apiCalls, successes,
+            failures: delta(a.failures, b.failures), retries: delta(a.retries, b.retries),
+            partialFailures: delta(a.partial_failures, b.partial_failures),
+            queueHighWater: a.queue_high_water,
+            batchSizeDistribution: mapDelta(b.batch_size_counts, a.batch_size_counts),
+            ackLatency: bucketDelta(before.kinesis.put_record_latency.cumulative_buckets, after.kinesis.put_record_latency.cumulative_buckets),
+        });
+    }
+    const apiCalls = delta(
+        kplMetric(after.kpl_metrics, 'UserRecordsPerPutRecordsRequest', 'sample_count'),
+        kplMetric(before.kpl_metrics, 'UserRecordsPerPutRecordsRequest', 'sample_count'),
+    );
+    const successes = delta(after.kpl.successes, before.kpl.successes);
+    return rates({ apiCalls, successes,
+        failures: delta(after.kpl.failures, before.kpl.failures),
+        retries: delta(
+            kplMetric(after.kpl_metrics, 'RetriesPerRecord', 'sum'),
+            kplMetric(before.kpl_metrics, 'RetriesPerRecord', 'sum'),
+        ),
+        partialFailures: 0, queueHighWater: after.kpl.recordHighWater,
+        outstandingBytesHighWater: after.kpl.byteHighWater,
+        timeouts: delta(after.kpl.timeouts, before.kpl.timeouts),
+        ackLatency: bucketDelta(before.ack_latency.buckets, after.ack_latency.buckets),
+    });
+}
+
+function rates(value) {
+    return {
+        ...value,
+        recordsPerCall: value.apiCalls > 0 ? value.successes / value.apiCalls : null,
+        callsPerAcceptedEvent: value.successes > 0 && Number.isFinite(value.apiCalls) ? value.apiCalls / value.successes : null,
+    };
+}
+
+function runtimeDelta(before, after) {
+    if (candidate === 'java-kpl') {
+        return {
+            jvmHeapBeforeBytes: before.jvm.heap_used_bytes,
+            jvmHeapAfterBytes: after.jvm.heap_used_bytes,
+            jvmGcCountDelta: sumGc(after.jvm.gc) - sumGc(before.jvm.gc),
+            jvmGcTimeMsDelta: sumGc(after.jvm.gc, 'collection_time_ms') - sumGc(before.jvm.gc, 'collection_time_ms'),
+            jvmThreadHighWater: after.jvm.peak_thread_count,
+            kplChildRssBytes: after.native.children.reduce((sum, child) => sum + Math.max(0, child.rss_bytes), 0),
+            kplChildCpuNanoseconds: after.native.children.reduce((sum, child) => sum + Math.max(0, child.cpu_nanoseconds), 0),
+            kplChildRestarts: delta(after.native.restart_count, before.native.restart_count),
+        };
+    }
+    return {
+        goHeapBeforeBytes: before.go.heap_alloc_bytes,
+        goHeapAfterBytes: after.go.heap_alloc_bytes,
+        goAllocBytes: delta(after.go.total_alloc_bytes, before.go.total_alloc_bytes),
+        goGcCount: delta(after.go.num_gc, before.go.num_gc),
+        goGcPauseNanoseconds: delta(after.go.gc_pause_total_nanoseconds, before.go.gc_pause_total_nanoseconds),
+        goroutinesBefore: before.go.goroutines, goroutinesAfter: after.go.goroutines,
+    };
+}
+
+function distribution(values) {
+    if (values.length === 0) return { measured: false };
+    const sorted = [...values].sort((a, b) => a - b);
+    const q1 = quantile(sorted, 0.25);
+    const q3 = quantile(sorted, 0.75);
+    return { measured: true, count: sorted.length, min: sorted[0], median: quantile(sorted, 0.5), max: sorted.at(-1), q1, q3, iqr: q3 - q1 };
+}
+
+function quantile(sorted, p) {
+    const index = (sorted.length - 1) * p;
+    const lower = Math.floor(index);
+    const fraction = index - lower;
+    return sorted[lower] + (sorted[lower + 1] === undefined ? 0 : fraction * (sorted[lower + 1] - sorted[lower]));
+}
+
+function bucketDelta(before, after) {
+    return Object.fromEntries(Object.keys(after).map((key) => [key, delta(after[key], before[key] ?? 0)]));
+}
+
+function mapDelta(before = {}, after = {}) {
+    return Object.fromEntries(Object.keys(after).map((key) => [key, delta(after[key], before[key] ?? 0)]));
+}
+
+function kplMetric(metrics = [], name, field) {
+    const matches = metrics.filter((metric) => metric.name === name && Number.isFinite(metric[field]));
+    const streamLevel = matches.filter((metric) =>
+        typeof metric.dimensions?.StreamName === 'string' && metric.dimensions?.ShardId === undefined);
+    const unscoped = matches.filter((metric) => Object.keys(metric.dimensions ?? {}).length === 0);
+    const selected = streamLevel.length > 0 ? streamLevel : unscoped;
+    if (selected.length !== 1) throw new Error(`expected one KPL metric ${name}/${field}, found ${selected.length}`);
+    return selected[0][field];
+}
+
+function sumGc(gc, field = 'collection_count') {
+    return gc.reduce((sum, item) => sum + Math.max(0, item[field]), 0);
+}
+
+function metric(summary, id, field) {
+    return summary.metrics[id]?.[field] ?? null;
+}
+
+function delta(after, before) {
+    const result = after - before;
+    if (!Number.isFinite(result) || result < 0) throw new Error('counter decreased or is not numeric');
+    return result;
+}
+
+function onlySnapshot(directory) {
+    const files = readdirSync(directory).filter((name) => /^collector-[0-9]{2}\.json$/.test(name));
+    if (files.length !== 1) throw new Error(`expected one collector snapshot in ${directory}`);
+    return json(join(directory, files[0]));
+}
+
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function requiredOption(name) { const i = process.argv.indexOf(name); const v = i >= 0 ? process.argv[i + 1] : undefined; if (!v) throw new Error(`${name} is required.`); return v; }
+function requiredInteger(name) { const v = Number(requiredOption(name)); if (!Number.isInteger(v) || v < 1) throw new Error(`${name} must be positive.`); return v; }

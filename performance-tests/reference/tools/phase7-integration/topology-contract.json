@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kinesisShards": 120,
+  "loadGeneratorHosts": 8,
+  "collectorHosts": 6,
+  "haproxyHosts": 2,
+  "consumerHosts": 2,
+  "clickHouseHosts": 1,
+  "activeCollectorBackendsPerProxy": 6,
+  "hostInstanceTypes": {
+    "loadGenerator": "c6in.large",
+    "collector": "c6i.xlarge",
+    "haproxy": "c6in.xlarge",
+    "consumer": "c7g.large",
+    "clickHouse": "r7g.2xlarge"
+  },
+  "fixedImages": {
+    "clickHouse": "clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797",
+    "haproxy": "haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
+    "oha": "ghcr.io/hatoo/oha@sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072"
+  }
+}

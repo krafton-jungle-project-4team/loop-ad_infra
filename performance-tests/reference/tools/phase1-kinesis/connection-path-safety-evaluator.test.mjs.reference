@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateConnectionPathSafety } from './connection-path-safety-evaluator.mjs';
+
+const healthy = (second, overrides = {}) => ({
+    timestampMs: second * 1_000, phaseId: 'measurement', intervalSeconds: 10,
+    telemetryComplete: true, histogramComplete: true, gatePassed: true,
+    kinesisThrottleRetryFailure: 0, kinesisRetries: 0, kinesisRetryRate: 0, taskRestartOomFatal: 0,
+    queueOutstanding: 0, completedDelta: 500_000, badStatusDelta: 0, fatalStatusDelta: 0,
+    physicalConnections: 12_000, achievedRps: 50_000, pooledP95Ms: 250,
+    enforceAccuracy: true, ...overrides,
+});
+
+test('healthy sustained samples do not abort', () => {
+    const samples = Array.from({ length: 14 }, (_, index) => healthy(index * 10));
+    assert.deepEqual(evaluateConnectionPathSafety(samples).reasons, []);
+});
+
+test('immediate safety faults abort without waiting for a window', () => {
+    const result = evaluateConnectionPathSafety([healthy(10, {
+        telemetryComplete: false, histogramComplete: false, gatePassed: false,
+        kinesisThrottleRetryFailure: 1, kinesisRetries: 1, kinesisRetryRate: .000011, taskRestartOomFatal: 1,
+        fatalStatusDelta: 1, physicalConnections: 11_399, achievedRps: 49_499,
+    })]);
+    for (const reason of ['telemetryMissing', 'histogramMissing', 'kinesisThrottleRetryFailure', 'kinesisRetryObserved', 'kinesisRetryRateAboveLimit',
+        'http429Or5xxObserved', 'taskRestartOomFatal', 'costOrDeadlineGateFailed', 'physicalConnectionAccuracyBelowMinimum']) {
+        assert.ok(result.reasons.includes(reason), reason);
+    }
+    assert.ok(!result.reasons.includes('loadAccuracyBelowMinimum'));
+});
+
+test('load accuracy uses a weighted sixty-second Kinesis-confirmed response window', () => {
+    const sustainedLow = Array.from({ length: 6 }, (_, index) => healthy(index * 10, {
+        achievedRps: 49_000, loadCompletedDelta: 490_000, finalAckDelta: 500_000,
+    }));
+    const low = evaluateConnectionPathSafety(sustainedLow, { enforceLiveLoadAccuracy: true });
+    assert.ok(low.reasons.includes('loadAccuracyBelowMinimum'));
+    assert.equal(low.details.accuracy.loadWindowComplete, true);
+
+    const transientLow = Array.from({ length: 6 }, (_, index) => healthy(index * 10, {
+        achievedRps: index === 5 ? 46_000 : 50_800,
+        loadCompletedDelta: index === 5 ? 460_000 : 508_000,
+        finalAckDelta: index === 5 ? 300_000 : 600_000,
+    }));
+    const recovered = evaluateConnectionPathSafety(transientLow, { enforceLiveLoadAccuracy: true });
+    assert.ok(!recovered.reasons.includes('loadAccuracyBelowMinimum'));
+    assert.ok(recovered.details.accuracy.currentLoadRatio < .99);
+    assert.ok(recovered.details.accuracy.loadRatio >= .99);
+});
+
+test('oha can record intermediate underload without aborting before the final aggregate', () => {
+    const underloaded = Array.from({ length: 6 }, (_, index) => healthy(index * 10, {
+        achievedRps: 47_000, loadCompletedDelta: 470_000,
+    }));
+    const result = evaluateConnectionPathSafety(underloaded, { enforceLiveLoadAccuracy: false });
+    assert.equal(result.passed, true);
+    assert.equal(result.details.accuracy.loadEnforced, false);
+    assert.ok(result.details.accuracy.loadRatio < .99);
+});
+
+test('monotonic queue growth for sixty seconds aborts but a decrease falsifies it', () => {
+    const growing = Array.from({ length: 7 }, (_, index) => healthy(index * 10, { queueOutstanding: index }));
+    assert.ok(evaluateConnectionPathSafety(growing).reasons.includes('queueOutstandingGrowing60Seconds'));
+    growing[4].queueOutstanding = 0;
+    assert.ok(!evaluateConnectionPathSafety(growing).reasons.includes('queueOutstandingGrowing60Seconds'));
+});
+
+test('aggregate 4xx/5xx counters are observation-only while exact 429/5xx logs abort immediately', () => {
+    const samples = Array.from({ length: 6 }, (_, index) => healthy(index * 10, { badStatusDelta: 501 }));
+    const observed = evaluateConnectionPathSafety(samples);
+    assert.equal(observed.passed, true);
+    assert.ok(observed.details.statuses.rate > .001);
+    samples.at(-1).fatalStatusDelta = 1;
+    assert.ok(evaluateConnectionPathSafety(samples).reasons.includes('http429Or5xxObserved'));
+});
+
+test('pooled p95 must remain twenty percent worse for a full 120 seconds', () => {
+    const regressed = Array.from({ length: 13 }, (_, index) => healthy(index * 10, { pooledP95Ms: 588 }));
+    assert.ok(evaluateConnectionPathSafety(regressed).reasons.includes('p95TwentyPercentWorseFor120Seconds'));
+    regressed[6].pooledP95Ms = 500;
+    assert.ok(!evaluateConnectionPathSafety(regressed).reasons.includes('p95TwentyPercentWorseFor120Seconds'));
+});
+
+test('accuracy is not enforced during connection establishment grace', () => {
+    const result = evaluateConnectionPathSafety([healthy(10, { enforceAccuracy: false, physicalConnections: 0, achievedRps: 0 })]);
+    assert.equal(result.passed, true);
+});
+
+test('oha mode explicitly defers unavailable live histogram and p95 checks', () => {
+    const sample = healthy(60, { histogramComplete: false, pooledP95Ms: null, achievedRps: 48_000, kinesisRetryRate: .000009 });
+    const result = evaluateConnectionPathSafety([sample], { minimumLoadAccuracy: .95, requireLiveHistogram: false, enforceLiveP95: false });
+    assert.equal(result.passed, true);
+    assert.equal(result.details.p95.available, false);
+});

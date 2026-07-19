@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 13,
+  "generatedAt": "2026-07-18T20:52:05Z",
+  "failure": {
+    "stage": "correctness",
+    "diagnosis": "The runner parsed only the closing brace of multi-line SSM JSON. The recovered aggregate also proved 0 HTTP 202 and 1,000 non-202 responses because every HTTP fixture included collector-forbidden producer_sent_at.",
+    "evidencePath": "performance-tests/run_20260718_193035_phase7_2_aws_integration/evidence/correctness-failure-diagnosis.json",
+    "evidenceSha256": "713a6665beedfdfced808a424910577c7a6a167ed20cf1cb689ccad36875545a"
+  },
+  "fix": {
+    "description": "Parse complete SSM JSON, emit compact bounded-curl aggregate output, persist a non-secret HTTP receipt before validation, and make every AWS HTTP correctness fixture exactly collector-compatible.",
+    "commit": "ac1d7372a308f934dfe1dbb7e52400dd452e50b3",
+    "source": {
+      "path": "performance-tests/phase7-integration/aws/runtime_stages.py",
+      "sha256": "d6d54441aa931ab4f70a50b3afc5e21c3bfe1ff8633a122f9f8fc956c6c81b49"
+    },
+    "regressionTest": {
+      "path": "performance-tests/phase7-integration/tests/test_aws_tooling.py",
+      "sha256": "d3af2eb21610a005806593a32097ba1af8259fd40c93895830cf496162ba2326",
+      "exactCollectorKeySet": true,
+      "producerSentAtAbsent": true,
+      "runIdAbsent": true,
+      "multilineSsmJsonParsedAsWholeDocument": true,
+      "invalidAggregateRejected": true,
+      "curlTimeBounded": true,
+      "compactJqOutput": true
+    }
+  },
+  "verification": {
+    "focusedAwsToolingTests": 14,
+    "phase7JestTests": 14,
+    "nodeTests": 27,
+    "pythonTests": 140,
+    "build": "passed",
+    "exactContextSynth": {
+      "status": "passed",
+      "templateSha256": "1bd9f36d548ac5deac4d43f0720ba821fed8ca0cd4fb2eff8ab7cdfee07689cb",
+      "byteIdenticalToAttempt13SealedTemplate": true,
+      "noLookups": true,
+      "strict": true
+    },
+    "repositoryTemplateValidation": {
+      "status": "passed",
+      "taskDefinitionsChecked": 5,
+      "healthChecksChecked": 4,
+      "schemaGuardRetries": 10
+    },
+    "decodedUserData": {
+      "status": "passed",
+      "evidencePath": "performance-tests/run_20260718_193035_phase7_2_deployment_readiness/user-data-validation.json",
+      "evidenceSha256": "367f9ddccf5cccb1cb3977d6a40f2d0bfed9737674449ecb55c27b260aeb9089",
+      "ec2LimitBytes": 16384,
+      "loadGeneratorMarginLimitBytes": 15360,
+      "maximumDecodedBytes": 15224,
+      "loadGeneratorRemainingMarginBytes": 136,
+      "launchTemplateCount": 5
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "rawExitCode": 6,
+      "acceptedAssemblyOnlyE1022": 8,
+      "acceptedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "status": "passed"
+    }
+  },
+  "budget": {
+    "activeEpochAccruedUpperBoundUsd": "6.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "44.870718",
+    "hardCapUsd": "60.000000",
+    "passed": true
+  },
+  "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+  "status": "passed"
+}

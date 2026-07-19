@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "recordType": "campaign-tooling-diagnosis",
+  "attemptOrdinal": 21,
+  "runId": "run_20260719_144544_phase7_integration",
+  "sessionId": "phase7-integration-20260719T144544Z",
+  "observedAt": "2026-07-19T16:21:27.122Z",
+  "stage": "terminal-ledger-append",
+  "awsRequests": 0,
+  "rawError": "RuntimeError: terminal ledger entry hash or active identity is invalid",
+  "diagnosis": "After repricing the next retry, the code recalculated entrySha256 while the old entrySha256 field was still present. The claimed hash therefore did not match the canonical hash definition, which excludes that field.",
+  "fix": {
+    "summary": "Remove the prior entrySha256 before canonical recomputation and exercise the repriced-failed-attempt path in the finalizer regression test.",
+    "commit": "038b6f8727e758eab49e6e3dcdc966db421a63d2"
+  },
+  "verification": {
+    "status": "passed",
+    "focusedTests": "25/25",
+    "terminalLedgerEntrySha256": "e7cd7e5c7d85b4c1862372a3842fa549d06ecceb771848b38f28c32a26735c57",
+    "ledgerAppendCompleted": true
+  }
+}

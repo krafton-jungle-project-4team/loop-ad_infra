@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { analyzeAlbAccessLogs, parseAlbAccessLogGzip } from './alb-access-log.mjs';
+
+const rawDir = requiredOption('--raw-dir');
+const output = requiredOption('--output');
+const measurementStart = requiredOption('--measurement-start');
+const measurementEnd = requiredOption('--measurement-end');
+const expectedNodeCount = Number(optionValue('--expected-node-count') ?? 2);
+if (!Number.isInteger(expectedNodeCount) || expectedNodeCount < 1) throw new Error('invalid expected node count');
+
+const files = readdirSync(rawDir).filter((name) => name.endsWith('.log.gz')).sort();
+const records = [];
+const parseErrors = [];
+for (const file of files) {
+    const parsed = parseAlbAccessLogGzip(readFileSync(join(rawDir, file)), file);
+    for (const record of parsed.records) records.push(record);
+    for (const error of parsed.errors) parseErrors.push(error);
+}
+const analysis = analyzeAlbAccessLogs({ records, parseErrors, measurementStart, measurementEnd, expectedNodeCount });
+writeFileSync(output, `${JSON.stringify({ rawFiles: files, ...analysis }, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ rawFiles: files, ...analysis }, null, 2)}\n`);
+if (!analysis.passed) process.exitCode = 2;
+
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { buildFanoutCrossoverPlan } from './fanout-crossover-contract.mjs';
+
+test('pins crossover arithmetic and deterministically shuffles only B/C/D', () => {
+    const first = buildFanoutCrossoverPlan(20260713);
+    const second = buildFanoutCrossoverPlan(20260713);
+    assert.deepEqual(first, second);
+    assert.equal(first.topology.rpsPerProcess * first.topology.processesPerNode * first.topology.generators, first.topology.offeredRps);
+    assert.equal(first.topology.connectionsPerProcess * first.topology.processesPerNode * first.topology.generators, first.topology.connections);
+    assert.deepEqual(new Set(first.conditionalOrderAfterReproduction.map((item) => item.label)), new Set(['b_oha_direct', 'c_reference_alb', 'd_reference_direct']));
+});
+
+test('stage and worker contracts preserve driver, direct access, packet privacy, and emergency revoke', () => {
+    const stage = readFileSync(new URL('./run-latency-root-cause-stage.mjs', import.meta.url), 'utf8');
+    const invoke = readFileSync(new URL('./invoke-reference-driver.mjs', import.meta.url), 'utf8');
+    const worker = readFileSync(new URL('./run-ec2-reference-worker.sh', import.meta.url), 'utf8');
+    assert.match(stage, /--driver/);
+    assert.match(stage, /referenceDriverContract/);
+    assert.match(stage, /direct-access-emergency-revoke/);
+    assert.match(stage, /direct-access-emergency-verify-absent/);
+    assert.match(invoke, /--direct-target-ip/);
+    assert.match(invoke, /TARGET_HOST_HEADER/);
+    assert.match(worker, /-s 96/);
+    assert.match(worker, /tcp-syn\|tcp-rst/);
+    assert.match(worker, /tcp-fin/);
+    assert.match(worker, /ip\[2:2\]/);
+    assert.match(worker, /rm -f "\$pcap"/);
+    assert.match(worker, /hidden_retries/);
+    assert.match(worker, /silent_drops/);
+});

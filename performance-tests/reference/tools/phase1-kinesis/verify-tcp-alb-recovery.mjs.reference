@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const NORMALIZED_ORPHAN_MAX = 1;
+const NORMALIZED_TIME_WAIT_MAX = 100;
+
+export function evaluateTcpAlbRecovery(samplesByInstance, stableSeconds = 30) {
+    const nodes = Object.entries(samplesByInstance).map(([instanceId, samples]) => {
+        const stableWindow = samples.slice(-stableSeconds);
+        const checks = {
+            completeStableWindow: stableWindow.length === stableSeconds,
+            allOhaEnded: stableWindow.length === stableSeconds && stableWindow.every((sample) => sample.ohaProcesses === 0),
+            synSentZero: stableWindow.length === stableSeconds && stableWindow.every((sample) => sample.synSent === 0),
+            conntrackBelow5000: stableWindow.length === stableSeconds && stableWindow.every((sample) => sample.conntrack < 5_000),
+            tcpOrphanDecreasingOrNormalized: stableWindow.length === stableSeconds &&
+                (samples.at(-1).tcpOrphan <= samples[0].tcpOrphan || samples.at(-1).tcpOrphan <= NORMALIZED_ORPHAN_MAX),
+            timeWaitDecreasingOrNormalized: stableWindow.length === stableSeconds &&
+                (samples.at(-1).timeWait <= samples[0].timeWait || samples.at(-1).timeWait <= NORMALIZED_TIME_WAIT_MAX),
+        };
+        return {
+            instanceId,
+            sampleCount: samples.length,
+            firstSample: samples[0] ?? null,
+            lastSample: samples.at(-1) ?? null,
+            stableWindow,
+            checks,
+            passed: Object.values(checks).every(Boolean),
+        };
+    });
+    return {
+        evaluatedAt: new Date().toISOString(),
+        stableSeconds,
+        normalizedThresholds: { tcpOrphanMax: NORMALIZED_ORPHAN_MAX, timeWaitMax: NORMALIZED_TIME_WAIT_MAX },
+        nodes,
+        passed: nodes.length > 0 && nodes.every((node) => node.passed),
+    };
+}
+
+export function parseRecoverySamples(text) {
+    return text.split(/\r?\n/).filter((line) => line.startsWith('SAMPLE\t')).map((line) => {
+        const [marker, timestamp, ohaProcesses, synSent, tcpOrphan, timeWait, conntrack] = line.split('\t');
+        if (marker !== 'SAMPLE' || !timestamp || [ohaProcesses, synSent, tcpOrphan, timeWait, conntrack].some((value) => !/^\d+$/.test(value))) {
+            throw new Error(`invalid recovery sample: ${line}`);
+        }
+        return {
+            timestamp,
+            ohaProcesses: Number(ohaProcesses),
+            synSent: Number(synSent),
+            tcpOrphan: Number(tcpOrphan),
+            timeWait: Number(timeWait),
+            conntrack: Number(conntrack),
+        };
+    });
+}
+
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+    const instanceIds = requiredOption('--instance-ids').split(',').filter(Boolean);
+    const outputDir = requiredOption('--output-dir');
+    const stableSeconds = integerOption('--stable-seconds', 30);
+    const maxSeconds = integerOption('--max-seconds', 600);
+    if (instanceIds.length === 0 || instanceIds.some((id) => !/^i-[0-9a-f]{17}$/.test(id))) throw new Error('invalid --instance-ids');
+    if (stableSeconds > maxSeconds) throw new Error('--stable-seconds must not exceed --max-seconds');
+
+    mkdirSync(outputDir, { recursive: true });
+    const shell = `set -euo pipefail
+stable=0
+baseline_orphan=0
+baseline_time_wait=0
+for ((i=0; i<${maxSeconds}; i++)); do
+  timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  oha_processes=$(pgrep -af '[o]ha' | wc -l || true)
+  reference_processes=$(pgrep -af '[r]eference-driver' | wc -l || true)
+  oha_processes=$((oha_processes + reference_processes))
+  syn_sent=$(ss -Htan state syn-sent | wc -l)
+  read -r tcp_orphan time_wait < <(awk '$1=="TCP:" {for(i=2;i<=NF;i+=2)v[$i]=$(i+1); print v["orphan"]+0,v["tw"]+0}' /proc/net/sockstat)
+  conntrack=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || printf '0')
+  printf 'SAMPLE\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$timestamp" "$oha_processes" "$syn_sent" "$tcp_orphan" "$time_wait" "$conntrack"
+  if (( oha_processes == 0 && syn_sent == 0 && conntrack < 5000 )); then
+    if (( stable == 0 )); then baseline_orphan=$tcp_orphan; baseline_time_wait=$time_wait; fi
+    stable=$((stable + 1))
+  else
+    stable=0
+  fi
+  if (( stable >= ${stableSeconds} && (tcp_orphan <= baseline_orphan || tcp_orphan <= ${NORMALIZED_ORPHAN_MAX}) && (time_wait <= baseline_time_wait || time_wait <= ${NORMALIZED_TIME_WAIT_MAX}) )); then
+    printf 'STABLE\\t%s\\n' "$stable"
+    exit 0
+  fi
+  sleep 1
+done
+exit 42`;
+    const response = awsJson([
+        'ssm', 'send-command', '--region', REGION,
+        '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', ...instanceIds,
+        '--timeout-seconds', `${maxSeconds + 120}`,
+        '--parameters', JSON.stringify({ commands: [shell], executionTimeout: [`${maxSeconds + 60}`] }),
+        '--comment', 'loop-ad tcp-alb recovery verification',
+    ]);
+    const commandId = response.Command.CommandId;
+    const samplesByInstance = {};
+    const invocations = [];
+    for (const instanceId of instanceIds) {
+        const invocation = await waitForInvocation(commandId, instanceId, maxSeconds + 90);
+        invocations.push({
+            instanceId,
+            commandId,
+            status: invocation.Status,
+            responseCode: invocation.ResponseCode,
+            standardOutputContent: invocation.StandardOutputContent,
+            standardErrorContent: invocation.StandardErrorContent,
+        });
+        samplesByInstance[instanceId] = parseRecoverySamples(invocation.StandardOutputContent ?? '');
+    }
+    const evaluation = evaluateTcpAlbRecovery(samplesByInstance, stableSeconds);
+    evaluation.commandId = commandId;
+    evaluation.invocations = invocations.map(({ standardOutputContent: _stdout, standardErrorContent: _stderr, ...invocation }) => invocation);
+    evaluation.ssmPassed = invocations.every((invocation) => invocation.status === 'Success' && invocation.responseCode === 0);
+    evaluation.passed = evaluation.passed && evaluation.ssmPassed;
+    for (const invocation of invocations) {
+        writeFileSync(`${outputDir}/${invocation.instanceId}.stdout`, invocation.standardOutputContent ?? '', 'utf8');
+        writeFileSync(`${outputDir}/${invocation.instanceId}.stderr`, invocation.standardErrorContent ?? '', 'utf8');
+    }
+    writeFileSync(`${outputDir}/summary.json`, `${JSON.stringify(evaluation, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(evaluation, null, 2)}\n`);
+    if (!evaluation.passed) process.exitCode = 2;
+}
+
+async function waitForInvocation(commandId, instanceId, timeoutSeconds) {
+    const deadline = Date.now() + timeoutSeconds * 1_000;
+    while (Date.now() < deadline) {
+        await sleep(1_000);
+        try {
+            const invocation = awsJson(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`recovery SSM command timed out for ${instanceId}`);
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function integerOption(name, fallback) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? Number(process.argv[index + 1]) : fallback;
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}
+
+function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }

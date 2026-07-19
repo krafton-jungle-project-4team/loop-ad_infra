@@ -1,0 +1,175 @@
+{
+  "attemptType": "aws-integration-strict",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1,
+      "postFinalReadonlyInventory": 1
+    },
+    "deadline": "2026-07-19T05:19:01.221086Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "7a7c7216b4b542abc7fe915ee5edaa4d607e112a89c5139c38707a5e5890568d"
+      },
+      {
+        "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "6714577736f6811763f55ba826e16677e1b05c6c185d148412d53fec19fe8b58"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-19T03:16:11.077Z",
+    "postFinalConfirmedAt": "2026-07-19T03:21:44.490Z",
+    "startToAuthoritativeZeroSeconds": "887.235000"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "16.000000",
+    "admissionMaximumIncludingCleanupUsd": "38.870718",
+    "campaignChargedUpperBoundUsd": "16.000000",
+    "chargedUpperBoundUsd": "16.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-16-cost-explorer-20260719.json",
+    "costExplorerEvidenceSha256": "222d5cc22e082069a398f9ac75c55d1ed5106772a48c1def8bd13e559738106f",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "115.000000",
+    "maximumIncludingCleanupUsd": "38.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "15.356545",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-16-cost-reconciliation.json",
+    "reconciliationSha256": "f75cdf9132dcdc458a658c3c4c2a0486691c1b88b1ed042b5ab9cc6b489d9216"
+  },
+  "evidenceCommit": "0dc054e9c4f21f0b4f0a5304c4b6ec336a6ecd9f",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260719_020156_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260719_020156_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260719_012539_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "All eight one-shot SSM load commands completed successfully, but all eight local result observers terminated on transient SSM endpoint connect/read timeouts because the polling helper retried only OAuth2 rate-limit errors. Promise.all surfaced node 08 first. Worker artifacts and the aggregate warmup summary were not recovered, so acceptance remained untrustworthy.",
+    "diagnosisEvidencePath": "performance-tests/phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+    "diagnosisEvidenceSha256": "76d5e0851ef50e2687f1346eaf4e85df15abe5c51351869d25c9f410124508f0",
+    "firstFailingGate": "warmup-orchestration",
+    "rawAwsError": "Connect timeout on endpoint URL: https://ssm.ap-northeast-2.amazonaws.com/; nodes 03, 05 and 06 reported the equivalent read timeout.",
+    "rawEvidencePath": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/control/warmup.attempt-1.stderr.log",
+    "rawEvidenceSha256": "eab20ae61baeeacb54e722968ce4a76bb15c7002596ae83b4d0c431d6f65e3d1",
+    "remoteCommandReconciliation": {
+      "commandCount": 8,
+      "responseCodeZeroCount": 8,
+      "successCount": 8,
+      "terminalWorkerCleanupCount": 8
+    },
+    "runnerError": "Error: node-08 oha invocation failed with 1; RuntimeError: warmup orchestration failed",
+    "terminalHardStopGate": "warmup"
+  },
+  "fix": {
+    "applied": "Keep SendCommand exactly one-shot. Add absolute-deadline bounded exponential backoff and jitter only to read-only GetCommandInvocation and exact S3-to-local artifact recovery, persist transient retry evidence, use short CLI timeouts only for those reads and fail credentials, authorization, validation and unknown errors immediately.",
+    "fixCommit": "0a8238b2af2494733f8dcdec26e817cf276285e0",
+    "verification": {
+      "awsRequests": 0,
+      "diffCheck": "passed",
+      "focusedRetryTests": 11,
+      "implementationManifestTests": 2,
+      "nodeSyntax": "passed",
+      "phase1ConnectionPathTests": 70,
+      "status": "passed"
+    },
+    "verificationEvidenceCommit": "0dc054e9c4f21f0b4f0a5304c4b6ec336a6ecd9f",
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-16-fix-verification.json",
+    "verificationSha256": "fa6512eb5400be1cf9aab4690d45b445aa32eb2c8fe931aa309661a052537473"
+  },
+  "gitCommit": "11f747ada2ba8df30455c13a9d0270eaddd48bdd",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "commandSeal": "685d1263158033207b605824c238f63826360d881c67245abb23f12b56667cdf",
+    "commandSet": "4426a7f925d7e623328b2a5e901913b4533c640644048c8f625526e352a5c54e",
+    "costModel": "82a7b5426deae1def8bb98575dea5b80153a4ca74501d378358e2ebffee9e5c4",
+    "identityContract": "309a27e41a7e7a64f42aed99c105d58ff830c04c6fb9b706c650119b820700a8",
+    "imageManifest": "c1bfbe65986465d191fb593bdbe6d6e655a2548bf4b46db06e56eb6b069432c3",
+    "localHandoff": "f0869a7fb2353508f5ccbfaf07100b209334e3a316f57c8c147cdab97ec7555c",
+    "preparedPreflight": "09616776a3c316448bf8b8e0a190221a25fbeb5f3974a98c896594f1cc99a67b",
+    "runAtSeal": "add8e8723398e3ad4ea961a00de9d828c67ee5dd623abdb1243f3d6e7f78ad18",
+    "runtimeTemplate": "027f6d87df31bbcf8686bc04de2fff8593cbcced7cabb53e375c1dc5c8840900"
+  },
+  "implementationTreeSha256": "33927ba171c04015ac19b373db95e885feb4ed67afb1892ee0b0f7dcec9ff309",
+  "ordinal": 16,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T05:19:01.221086Z",
+    "elapsedSeconds": "2229.856000",
+    "endedAt": "2026-07-19T03:16:11.077Z",
+    "hardDeadline": "2026-07-19T05:39:01.221086Z",
+    "imagePaidStartedAt": "2026-07-19T02:14:53.066Z",
+    "imageStartToAuthoritativeZeroSeconds": "3678.011000",
+    "startedAt": "2026-07-19T02:39:01.221086Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "3e70802108d7b43920e07eac23f9363c771f41b99ecc07c4ecc935de6a145a32",
+  "promotionEligible": true,
+  "readinessCommit": "4c17166476afd7b58a29511fc738b904387cab7e",
+  "runId": "run_20260719_020156_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "eb9c8e3df881e389eac187328af82a751d3fe2ee",
+  "sealedCommandSetSha256": "4426a7f925d7e623328b2a5e901913b4533c640644048c8f625526e352a5c54e",
+  "sessionId": "phase7-integration-20260719T020156Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 1,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 0,
+    "seed": 1,
+    "verify": 1,
+    "warmup": 1
+  },
+  "terminalEvidenceHashes": {
+    "archiveValidation": "261db6b1082bb5c38d4faf7d62e3a90490eba517e75677091c68086260ceb629",
+    "cancellationEvidence": "609d410b8642122903cfd749476da38545863be83ea35d5e3a6db7b90655e3bf",
+    "cleanupInventory": "7a7c7216b4b542abc7fe915ee5edaa4d607e112a89c5139c38707a5e5890568d",
+    "cleanupVerification": "6714577736f6811763f55ba826e16677e1b05c6c185d148412d53fec19fe8b58",
+    "commands": "36bf3ab648efe54631f6db88e6f20fb4b3e57751e521ad7e181e68b80a3a1e87",
+    "correctness": "0b2b108aebd5b7a0ac14f9a800943b8400e80f1e9888db5adae83dfa046b5f85",
+    "costReconciliation": "f75cdf9132dcdc458a658c3c4c2a0486691c1b88b1ed042b5ab9cc6b489d9216",
+    "costStatus": "6d1a1992d071f34b81444af43641f08c8c4b086cc9b833482f425c930d60c57c",
+    "deploymentVerification": "b32d278f0b83c0a70c055fc881750d347693782b0bde03b6f6a1a482f43a49e9",
+    "diagnosis": "76d5e0851ef50e2687f1346eaf4e85df15abe5c51351869d25c9f410124508f0",
+    "failures": "7f5f6818d021fa7a6045171e92e45e3c91be01ba4b7d015a8c1a03b80159517c",
+    "finalEvaluation": "ea63cf7fbd4730b7be766bc6ec843536acbfc2d38845de27724c3fda64ed7497",
+    "finalEvidenceStatus": "9ab826788dbc6930a0cfece79e55137da80a5e1e15666f5c30f3a6fdaf69b047",
+    "fixVerification": "fa6512eb5400be1cf9aab4690d45b445aa32eb2c8fe931aa309661a052537473",
+    "hardStopMonitor": "46ab92b0fc029154f0efb3f7cbcd4187920883a0cfc9cd861443e30f02ad7b64",
+    "improvementBacklog": "bc8f51814436ce68b8fa76b56f3514093f3aafae1eb7a2d72772f43101116140",
+    "infra": "eb92563ef76dff5f591296c3d3d8fa3deedd431e643f468d7edbec42cf2579a2",
+    "metricsSummary": "3ee8e3f152f297b820d9e4da69ba3e6ebbc661462200c9df28df7f170ad8d9f4",
+    "report": "25f35172a2cc8e83319b9806ed045f5bc3564642a399c42ef5c7478b24479a68",
+    "run": "68c855a69ef41b7e6f01f90c3c540d533a1ef05d0050e0b366970abdb9f7cd0c",
+    "seed": "1c0b3ffcaedec70e479029c4b871cc4948aa0d6d0776719e83465b0202662c11",
+    "ssmCommandReconciliation": "bcc0c8348606f9e19bd156d3891e3345d229037f190798d55566010f7d79c442",
+    "warmupControlStderr": "eab20ae61baeeacb54e722968ce4a76bb15c7002596ae83b4d0c431d6f65e3d1"
+  },
+  "verdict": "failed",
+  "entrySha256": "ea457a2c153485b4ca66cd0c164e588e864189eaa523376fa76b74133604a54a"
+}

@@ -1,0 +1,149 @@
+import { gunzipSync } from 'node:zlib';
+
+const FIELD_NAMES = [
+    'type', 'time', 'elb', 'client', 'target', 'requestProcessingTime', 'targetProcessingTime',
+    'responseProcessingTime', 'elbStatusCode', 'targetStatusCode', 'receivedBytes', 'sentBytes',
+    'request', 'userAgent', 'sslCipher', 'sslProtocol', 'targetGroupArn', 'traceId', 'domainName',
+    'chosenCertArn', 'matchedRulePriority', 'requestCreationTime', 'actionsExecuted', 'redirectUrl',
+    'errorReason', 'targetPortList', 'targetStatusCodeList', 'classification', 'classificationReason',
+    'connectionTraceId', 'transformedHost', 'transformedUri', 'requestTransformStatus',
+];
+
+export function parseAlbAccessLogGzip(buffer, source = '<buffer>') {
+    return parseAlbAccessLogText(gunzipSync(buffer).toString('utf8'), source);
+}
+
+export function parseAlbAccessLogText(text, source = '<text>') {
+    const records = [];
+    const errors = [];
+    for (const [offset, raw] of text.split(/\r?\n/).entries()) {
+        if (!raw.trim()) continue;
+        try {
+            records.push(parseAlbAccessLogLine(raw, { source, line: offset + 1 }));
+        } catch (error) {
+            errors.push({ source, line: offset + 1, error: String(error.message ?? error), raw });
+        }
+    }
+    return { records, errors };
+}
+
+export function parseAlbAccessLogLine(line, location = {}) {
+    const fields = line.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+    if (fields.length < FIELD_NAMES.length) {
+        throw new Error(`expected at least ${FIELD_NAMES.length} ALB fields, found ${fields.length}`);
+    }
+    const record = Object.fromEntries(FIELD_NAMES.map((name, index) => [name, unquote(fields[index])]));
+    record.additionalFields = fields.slice(FIELD_NAMES.length).map(unquote);
+    record.source = location.source ?? null;
+    record.sourceLine = location.line ?? null;
+    for (const name of ['requestProcessingTime', 'targetProcessingTime', 'responseProcessingTime']) {
+        record[name] = finiteOrNull(record[name]);
+    }
+    for (const name of ['elbStatusCode', 'targetStatusCode', 'receivedBytes', 'sentBytes']) {
+        record[name] = integerOrNull(record[name]);
+    }
+    record.responseTime = isoOrNull(record.time);
+    record.requestCreationTime = isoOrNull(record.requestCreationTime);
+    record.connectionKey = record.connectionTraceId && record.connectionTraceId !== '-'
+        ? record.connectionTraceId : record.client;
+    return record;
+}
+
+export function analyzeAlbAccessLogs({ records, parseErrors = [], measurementStart, measurementEnd, expectedNodeCount = 2 }) {
+    const startMs = Date.parse(measurementStart);
+    const endMs = Date.parse(measurementEnd);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new Error('invalid measurement window');
+    const ordered = records.toSorted((a, b) => Date.parse(a.responseTime) - Date.parse(b.responseTime));
+    const windowRecords = records.filter((record) => {
+        const timestamp = Date.parse(record.requestCreationTime ?? record.responseTime);
+        return Number.isFinite(timestamp) && timestamp >= startMs && timestamp < endMs;
+    });
+    const sourceNodes = [...new Set(records.map((record) => sourceNode(record.source)).filter(Boolean))].sort();
+    const earliest = ordered[0]?.responseTime ?? null;
+    const latest = ordered.at(-1)?.responseTime ?? null;
+    const checks = {
+        zeroParseErrors: parseErrors.length === 0,
+        recordsPresent: records.length > 0,
+        expectedNodesPresent: sourceNodes.length >= expectedNodeCount,
+        startsBeforeMeasurement: earliest !== null && Date.parse(earliest) <= startMs,
+        endsAfterMeasurement: latest !== null && Date.parse(latest) >= endMs,
+        measurementRecordsPresent: windowRecords.length > 0,
+    };
+    const complete = Object.values(checks).every(Boolean);
+    return {
+        analyzedAt: new Date().toISOString(),
+        measurement: { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString(), durationSeconds: (endMs - startMs) / 1_000 },
+        completeness: {
+            status: complete ? 'complete-enough-for-analysis' : 'access-log-inconclusive',
+            note: 'ALB access logs are best-effort; these checks establish file/time/node coverage, not complete request accounting.',
+            sourceNodes, expectedNodeCount, earliestResponseTime: earliest, latestResponseTime: latest, checks,
+        },
+        parse: { recordCount: records.length, errorCount: parseErrors.length, errors: parseErrors },
+        full: summarize(records),
+        measurementWindow: summarize(windowRecords),
+        passed: complete,
+    };
+}
+
+function summarize(records) {
+    const summary = createAlbAccessLogSummary();
+    for (const record of records) addAlbAccessLogRecord(summary, record);
+    return finalizeAlbAccessLogSummary(summary);
+}
+
+export function createAlbAccessLogSummary() {
+    return {
+        count: 0,
+        statuses: { '202': 0, '400': 0, '408': 0, '413': 0, '429': 0, '460': 0, '5xx': 0, other: 0 },
+        targetStatuses: { '202': 0, '400': 0, '408': 0, '413': 0, '429': 0, '460': 0, '5xx': 0, other: 0 },
+        perConnection: new Map(),
+        perTarget: new Map(),
+        targetMissing: 0,
+        requestProcessingNegativeOne: 0,
+        targetProcessingNegativeOne: 0,
+        responseProcessingNegativeOne: 0,
+    };
+}
+
+export function addAlbAccessLogRecord(summary, record) {
+    summary.count += 1;
+    addStatus(summary.statuses, record.elbStatusCode);
+    addStatus(summary.targetStatuses, record.targetStatusCode);
+    if (record.target === '-') summary.targetMissing += 1;
+    if (record.requestProcessingTime === -1) summary.requestProcessingNegativeOne += 1;
+    if (record.targetProcessingTime === -1) summary.targetProcessingNegativeOne += 1;
+    if (record.responseProcessingTime === -1) summary.responseProcessingNegativeOne += 1;
+    increment(summary.perConnection, record.connectionKey || '-');
+    increment(summary.perTarget, record.target || '-');
+}
+
+export function finalizeAlbAccessLogSummary(summary) {
+    return {
+        count: summary.count,
+        elbStatusDistribution: summary.statuses,
+        targetStatusDistribution: summary.targetStatuses,
+        targetMissing: summary.targetMissing,
+        processingNegativeOne: {
+            request: summary.requestProcessingNegativeOne,
+            target: summary.targetProcessingNegativeOne,
+            response: summary.responseProcessingNegativeOne,
+        },
+        perConnection: sortedEntries(summary.perConnection),
+        perTarget: sortedEntries(summary.perTarget),
+    };
+}
+
+function addStatus(distribution, status) {
+    const key = status === null ? 'other' : status >= 500 && status <= 599 ? '5xx' : String(status);
+    distribution[Object.hasOwn(distribution, key) ? key : 'other'] += 1;
+}
+function increment(map, key) { map.set(key, (map.get(key) ?? 0) + 1); }
+function sortedEntries(map) { return [...map].map(([key, count]) => ({ key, count })).toSorted((a, b) => b.count - a.count || a.key.localeCompare(b.key)); }
+function unquote(value) { return value?.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value; }
+function finiteOrNull(value) { if (value === '-') return null; const number = Number(value); return Number.isFinite(number) ? number : null; }
+function integerOrNull(value) { if (value === '-') return null; const number = Number(value); return Number.isInteger(number) ? number : null; }
+function isoOrNull(value) { const time = Date.parse(value); return Number.isFinite(time) ? new Date(time).toISOString() : null; }
+function sourceNode(source) {
+    const match = /_([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)_[^/]+\.log\.gz$/.exec(source ?? '');
+    return match?.[1] ?? null;
+}

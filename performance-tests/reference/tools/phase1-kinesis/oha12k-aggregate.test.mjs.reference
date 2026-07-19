@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { aggregateOha12k, parseCounterText } from './oha12k-aggregate.mjs';
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+
+test('checked aggregation preserves total offered load, connections, counts, and separated latency', () => {
+    const plan = oha12kNodePlan({ nodeCount: 2, targetRps: 30_000 });
+    const manifest = {
+        experimentMode: 'capacity-oha12k', runId: 'run_20260712_130000_oha12k_topology2',
+        nodeCount: 2, targetRps: 30_000, durationSeconds: 15, startEpoch: 1_784_000_000,
+        nodes: plan.nodes.map((node, index) => ({ ...node, instanceId: `i-${index + 1}`, startEpoch: 1_784_000_000 })),
+    };
+    const nodes = manifest.nodes.map((node, index) => fixtureNode(node, index));
+    const result = aggregateOha12k({ manifest, nodes });
+    assert.equal(result.passed, true);
+    assert.equal(result.offeredRps, 30_000);
+    assert.equal(result.actualRps, 30_000);
+    assert.equal(result.configuredConnections, 12_000);
+    assert.equal(result.completedRequests, 450_000);
+    assert.equal(result.http202, 450_000);
+    assert.equal(result.firstByteMs.average, 60);
+    assert.equal(result.firstByteMs.p95, 100);
+    assert.equal(result.latencyCorrectedMs.p95, 200);
+    assert.deepEqual(result.enaAllowanceDelta, { bw_out_allowance_exceeded: 0, pps_allowance_exceeded: 0 });
+});
+
+test('aggregation fails closed when a command connection value differs from its node plan', () => {
+    const plan = oha12kNodePlan({ nodeCount: 1, targetRps: 30_000 });
+    const manifest = { experimentMode: 'capacity-oha12k', runId: 'run_20260712_130000_oha12k_topology1', nodeCount: 1,
+        targetRps: 30_000, durationSeconds: 15, startEpoch: 1_784_000_000,
+        nodes: [{ ...plan.nodes[0], instanceId: 'i-1', startEpoch: 1_784_000_000 }] };
+    const node = fixtureNode(manifest.nodes[0], 0);
+    node.command.arguments[node.command.arguments.indexOf('-c') + 1] = '4096';
+    const result = aggregateOha12k({ manifest, nodes: [node] });
+    assert.equal(result.passed, false);
+    assert.equal(result.checks.exactTotalConnections, false);
+    assert.equal(result.checks.commandsMatchManifest, false);
+});
+
+test('checked aggregation separates host telemetry from multiple oha process results', () => {
+    const plan = oha12kNodePlan({ nodeCount: 1, processesPerNode: 2, targetRps: 30_000 });
+    const manifest = {
+        experimentMode: 'generator-diagnosis', runId: 'run_20260712_130000_fastctl_1n2p',
+        nodeCount: 1, processesPerNode: 2, processCount: 2, targetRps: 30_000,
+        durationSeconds: 15, startEpoch: 1_784_000_000,
+        nodes: plan.nodes.map((node) => ({ ...node, instanceId: 'i-1', startEpoch: 1_784_000_000 })),
+    };
+    const node = fixtureNode(manifest.nodes[0], 0);
+    node.summary = {
+        ...node.summary,
+        actualRps: 30_000,
+        completedRequests: 450_000,
+        attemptedRequests: 450_000,
+        statusCodeDistribution: { '202': 450_000 },
+    };
+    node.processes = manifest.nodes[0].processes.map((process) => ({
+        processId: process.processId,
+        summary: {
+            ...node.summary,
+            actualRps: process.offeredRps,
+            completedRequests: 225_000,
+            attemptedRequests: 225_000,
+            statusCodeDistribution: { '202': 225_000 },
+        },
+        report: node.report,
+        command: { executable: 'docker', arguments: ['run', 'image', '-q', `${process.offeredRps}`, '-c', `${process.connections}`] },
+    }));
+    const result = aggregateOha12k({ manifest, nodes: [node] });
+    assert.equal(result.passed, true);
+    assert.equal(result.nodeCount, 1);
+    assert.equal(result.processCount, 2);
+    assert.equal(result.actualRps, 30_000);
+    assert.equal(result.configuredConnections, 12_000);
+    assert.equal(result.nodes[0].socketTelemetry.tcp_inuse, 6_100);
+});
+
+test('parses ENA allowance counter evidence without inference', () => {
+    assert.deepEqual(parseCounterText('bw_out_allowance_exceeded 2\npps_allowance_exceeded 0\n'), {
+        bw_out_allowance_exceeded: 2,
+        pps_allowance_exceeded: 0,
+    });
+});
+
+function fixtureNode(plan, index) {
+    const completed = 225_000;
+    return {
+        nodeId: plan.nodeId,
+        summary: {
+            startEpoch: plan.startEpoch,
+            actualRps: 15_000,
+            completedRequests: completed,
+            attemptedRequests: completed,
+            transportErrors: 0,
+            firstByteMs: { average: index === 0 ? 50 : 70, p50: 50, p95: 100, p99: 100 },
+            latencyCorrectedMs: { p50: 100, p95: 200, p99: 200 },
+            connectionObservation: { maxTcpInuse: 6_100, maxOhaEstablished: 6_000 },
+            processObservation: { maxOhaCpuPercent: 70, maxOhaRssKib: 100_000 },
+            statusCodeDistribution: { '202': completed }, errorDistribution: {},
+        },
+        report: {
+            firstByteHistogram: { '0.05': 100_000, '0.1': 125_000 },
+            responseTimeHistogram: { '0.1': 100_000, '0.2': 125_000 },
+        },
+        command: { executable: 'docker', arguments: ['run', 'image', '-q', `${plan.offeredRps}`, '-c', `${plan.connections}`] },
+        bootstrap: { ulimitNofile: 1_048_576, systemFileMax: 9_223_372_036_854_000_000,
+            ephemeralPortRange: { low: 1_024, high: 65_535 }, conntrack: { count: 0, max: 262_144 } },
+        telemetryTsv: 'timestamp_utc\trx_bytes\ttx_bytes\ttcp_inuse\ttcp_orphan\ttcp_tw\ttcp_alloc\tconntrack_count\toha_established\toha_syn_sent\toha_open_fds\n2026-07-12T13:00:00Z\t100\t200\t6000\t0\t1\t6001\t6000\t6000\t0\t6005\n2026-07-12T13:00:15Z\t15000100\t7500200\t6100\t0\t2\t6101\t6100\t6000\t0\t6005\n',
+        enaBefore: { bw_out_allowance_exceeded: 1, pps_allowance_exceeded: 0 },
+        enaAfter: { bw_out_allowance_exceeded: 1, pps_allowance_exceeded: 0 },
+    };
+}

@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const STREAM_NAME = 'perf-phase1-loop-ad-events';
+const START_DEADLINE_MINUTES = 160;
+const CLEANUP_DEADLINE_MINUTES = 170;
+const HARD_STREAM_LIFETIME_MINUTES = 180;
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const action = requiredOption('--action');
+const outputPath = optionValue('--output');
+const now = new Date(optionValue('--now') ?? Date.now());
+if (!/^phase1-compare-[0-9]{8}-[0-9]{6}z$/.test(sessionId)) throw new Error('invalid --session-id');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid --candidate');
+if (!['candidate', 'repetition', 'cleanup'].includes(action)) throw new Error('invalid --action');
+if (!Number.isFinite(now.getTime())) throw new Error('invalid --now');
+
+const fixturePath = optionValue('--stream-fixture');
+const stream = fixturePath ? JSON.parse(readFileSync(fixturePath, 'utf8')) : readStream();
+const creation = new Date(stream.summary.StreamCreationTimestamp);
+const ageMinutes = (now.getTime() - creation.getTime()) / 60_000;
+const expectedTags = {
+    Project: 'loop-ad',
+    Environment: 'perf-phase1-kinesis',
+    ResourceScope: 'shared-test-session',
+    ComparisonSessionId: sessionId,
+};
+const ownershipSafe = tagsMatch(stream.tags, expectedTags);
+const streamHealthy = stream.summary.StreamStatus === 'ACTIVE' &&
+    stream.summary.OpenShardCount === 80 && stream.summary.RetentionPeriodHours === 24;
+
+let cost = null;
+let modeledAccruedUsd = null;
+let projectedTotalUsd = null;
+if (action !== 'cleanup') {
+    const accrued = JSON.parse(readFileSync(requiredOption('--accrued-cost'), 'utf8'));
+    const projected = JSON.parse(readFileSync(requiredOption('--projected-cost'), 'utf8'));
+    modeledAccruedUsd = accrued.runUpperBoundUsd;
+    projectedTotalUsd = projected.projectedCumulativeUpperBoundUsd;
+    cost = {
+        modeledAccruedUsd,
+        projectedTotalUsd,
+        belowNewRunStop: Number.isFinite(modeledAccruedUsd) && modeledAccruedUsd < 18,
+        belowHardLimit: Number.isFinite(projectedTotalUsd) && projectedTotalUsd < 20,
+    };
+}
+
+const checks = {
+    ownershipSafe,
+    streamHealthy,
+    streamNotOlderThanThreeHours: ageMinutes < HARD_STREAM_LIFETIME_MINUTES,
+    cleanupDeadlineNotPassed: action === 'cleanup' || ageMinutes < CLEANUP_DEADLINE_MINUTES,
+    startWindowOpen: action === 'cleanup' || ageMinutes < START_DEADLINE_MINUTES,
+    accruedBelowNewRunStop: action === 'cleanup' || cost.belowNewRunStop,
+    projectedBelowHardLimit: action === 'cleanup' || cost.belowHardLimit,
+};
+const result = {
+    checkedAt: now.toISOString(),
+    action,
+    sessionId,
+    candidate,
+    stream: {
+        name: STREAM_NAME,
+        creationTimestamp: creation.toISOString(),
+        ageMinutes,
+        cleanupRequired: ageMinutes >= CLEANUP_DEADLINE_MINUTES,
+        hardExpired: ageMinutes >= HARD_STREAM_LIFETIME_MINUTES,
+    },
+    cost,
+    checks,
+    passed: Object.values(checks).every(Boolean),
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) writeFileSync(outputPath, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.passed) process.exitCode = 2;
+
+function readStream() {
+    const summary = awsJson([
+        'kinesis', 'describe-stream-summary', '--region', REGION, '--stream-name', STREAM_NAME,
+    ]).StreamDescriptionSummary;
+    const tags = awsJson([
+        'kinesis', 'list-tags-for-stream', '--region', REGION, '--stream-name', STREAM_NAME,
+    ]).Tags ?? [];
+    return { summary, tags };
+}
+
+function tagsMatch(tags, expected) {
+    const actual = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value]));
+    return Object.entries(expected).every(([key, value]) => actual[key] === value);
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 8 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}

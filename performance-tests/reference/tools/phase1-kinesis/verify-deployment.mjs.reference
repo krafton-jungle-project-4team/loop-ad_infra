@@ -1,0 +1,238 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { analyzeCapacityTopology } from './capacity-topology.mjs';
+
+const REGION = 'ap-northeast-2';
+const collectorCount = requiredInteger('--collector-count');
+const loadGeneratorCount = integerOption('--load-generator-count', 1);
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const imageDigest = requiredOption('--image-digest');
+const outputPath = requiredOption('--output');
+const experimentMode = optionValue('--experiment-mode') ?? 'comparison';
+let cachedTargetGroupArn;
+if (collectorCount < 1 || collectorCount > 17) throw new Error('invalid collector count');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid image digest');
+if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis'].includes(experimentMode)) throw new Error('invalid experiment mode');
+if (experimentMode !== 'comparison' && collectorCount !== 4) throw new Error('capacity and scout modes require exactly four collectors');
+if (['capacity-oha12k', 'generator-diagnosis'].includes(experimentMode) ? ![1, 2, 4].includes(loadGeneratorCount) : loadGeneratorCount !== 1) throw new Error('invalid load generator count');
+const validSession = experimentMode === 'generator-diagnosis'
+    ? /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+    : experimentMode === 'capacity-oha12k'
+    ? /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+    : experimentMode === 'scout'
+    ? /^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+    : experimentMode === 'capacity' ? /^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) : /^phase1-compare-[0-9]{8}-[0-9]{6}z$/.test(sessionId);
+if (!validSession) throw new Error('invalid session ID');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+
+for (const asgName of ['perf-phase1-loop-ad-collector', 'perf-phase1-loop-ad-load-generator']) {
+    execFileSync('aws', [
+        'autoscaling', 'suspend-processes', '--region', REGION,
+        '--auto-scaling-group-name', asgName,
+        '--scaling-processes', 'AZRebalance', 'InstanceRefresh',
+        '--no-cli-pager',
+    ]);
+}
+
+const deadline = Date.now() + 15 * 60_000;
+let state;
+while (Date.now() < deadline) {
+    state = readState();
+    process.stdout.write(`${JSON.stringify({ checkedAt: new Date().toISOString(), ready: state.ready, counts: state.counts })}\n`);
+    if (state.ready) break;
+    await sleep(15_000);
+}
+if (!state?.ready) {
+    writeFileSync(outputPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    throw new Error('Phase 1 deployment did not become ready within 15 minutes.');
+}
+writeFileSync(outputPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+
+function readState() {
+    const asgs = awsJson([
+        'autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+        '--auto-scaling-group-names', 'perf-phase1-loop-ad-collector', 'perf-phase1-loop-ad-load-generator',
+    ]).AutoScalingGroups;
+    const collectorAsg = asgs.find((asg) => asg.AutoScalingGroupName === 'perf-phase1-loop-ad-collector');
+    const loadGeneratorAsg = asgs.find((asg) => asg.AutoScalingGroupName === 'perf-phase1-loop-ad-load-generator');
+    const collectorInstances = collectorAsg?.Instances ?? [];
+    const loadGeneratorInstances = loadGeneratorAsg?.Instances ?? [];
+    const allInstanceIds = [...collectorInstances, ...loadGeneratorInstances].map((instance) => instance.InstanceId).sort();
+    const ssmInfo = allInstanceIds.length === 0 ? [] : awsJson([
+        'ssm', 'describe-instance-information', '--region', REGION,
+        '--filters', `Key=InstanceIds,Values=${allInstanceIds.join(',')}`,
+    ]).InstanceInformationList;
+    const service = awsJson([
+        'ecs', 'describe-services', '--region', REGION,
+        '--cluster', 'perf-phase1-loop-ad-collector-cluster',
+        '--services', 'perf-phase1-loop-ad-collector',
+    ]).services[0];
+    const cluster = awsJson([
+        'ecs', 'describe-clusters', '--region', REGION,
+        '--clusters', 'perf-phase1-loop-ad-collector-cluster',
+    ]).clusters[0];
+    const taskArns = awsJson([
+        'ecs', 'list-tasks', '--region', REGION,
+        '--cluster', 'perf-phase1-loop-ad-collector-cluster',
+        '--service-name', 'perf-phase1-loop-ad-collector',
+        '--desired-status', 'RUNNING',
+    ]).taskArns ?? [];
+    const tasks = taskArns.length === 0 ? [] : awsJson([
+        'ecs', 'describe-tasks', '--region', REGION,
+        '--cluster', 'perf-phase1-loop-ad-collector-cluster',
+        '--tasks', ...taskArns, '--include', 'TAGS',
+    ]).tasks ?? [];
+    const containerInstanceArns = [...new Set(tasks.map((task) => task.containerInstanceArn).filter(Boolean))];
+    const containerInstances = containerInstanceArns.length === 0 ? [] : awsJson([
+        'ecs', 'describe-container-instances', '--region', REGION,
+        '--cluster', 'perf-phase1-loop-ad-collector-cluster',
+        '--container-instances', ...containerInstanceArns,
+    ]).containerInstances ?? [];
+    const taskHostIds = containerInstances.map((instance) => instance.ec2InstanceId).filter(Boolean);
+    const ec2Instances = taskHostIds.length === 0 ? [] : awsJson([
+        'ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...taskHostIds,
+        '--query', 'Reservations[].Instances[]',
+    ]);
+    const targetHealth = awsJson([
+        'elbv2', 'describe-target-health', '--region', REGION,
+        '--target-group-arn', targetGroupArn(),
+    ]).TargetHealthDescriptions;
+    const stream = awsJson([
+        'kinesis', 'describe-stream-summary', '--region', REGION,
+        '--stream-name', 'perf-phase1-loop-ad-events',
+    ]).StreamDescriptionSummary;
+    const streamTags = awsJson([
+        'kinesis', 'list-tags-for-stream', '--region', REGION,
+        '--stream-name', 'perf-phase1-loop-ad-events',
+    ]).Tags ?? [];
+    const taskDefinition = service?.taskDefinition
+        ? awsJson(['ecs', 'describe-task-definition', '--region', REGION, '--task-definition', service.taskDefinition]).taskDefinition
+        : undefined;
+    const collectorImage = taskDefinition?.containerDefinitions?.find((container) => container.name === 'collector')?.image;
+
+    const expectedTags = {
+        Project: 'loop-ad', Environment: 'perf-phase1-kinesis', RunId: runId,
+        ComparisonSessionId: sessionId, Candidate: candidate,
+    };
+    if (experimentMode !== 'comparison') Object.assign(expectedTags, {
+        SessionId: sessionId, Phase: experimentMode === 'scout' ? 'phase1-capacity-scout'
+            : experimentMode === 'capacity-oha12k' ? 'phase1-capacity-oha12k'
+            : experimentMode === 'generator-diagnosis' ? 'phase1-generator-diagnosis' : 'phase1-capacity', ManagedBy: 'codex', Owner: 'loop-ad',
+    });
+    const asgSafe = (asg, expectedCapacity) => Boolean(asg &&
+        asg.MinSize === expectedCapacity && asg.MaxSize === expectedCapacity && asg.DesiredCapacity === expectedCapacity &&
+        asg.InstanceMaintenancePolicy?.MinHealthyPercentage === 0 && asg.InstanceMaintenancePolicy?.MaxHealthyPercentage === 100 &&
+        ['AZRebalance', 'InstanceRefresh'].every((name) => asg.SuspendedProcesses?.some((process) => process.ProcessName === name)) &&
+        tagsMatch(asg.Tags, expectedTags));
+    const serviceSafe = Boolean(service && service.desiredCount === collectorCount && service.runningCount === collectorCount && service.pendingCount === 0 &&
+        service.availabilityZoneRebalancing === 'DISABLED' &&
+        service.deploymentConfiguration?.minimumHealthyPercent === 0 && service.deploymentConfiguration?.maximumPercent === 100 &&
+        service.deployments?.length === 1 && service.deployments[0].rolloutState === 'COMPLETED');
+
+    const capacityTopology = experimentMode !== 'comparison'
+        ? analyzeCapacityTopology({ tasks, containerInstances, ec2Instances, expectedDigest: imageDigest })
+        : null;
+    const checks = {
+        collectorAsgExactAndNoSurge: asgSafe(collectorAsg, collectorCount),
+        loadGeneratorAsgExactAndNoSurge: asgSafe(loadGeneratorAsg, loadGeneratorCount),
+        collectorInstancesInService: collectorInstances.length === collectorCount && collectorInstances.every((instance) => instance.LifecycleState === 'InService' && instance.HealthStatus === 'Healthy'),
+        loadGeneratorInService: loadGeneratorInstances.length === loadGeneratorCount && loadGeneratorInstances.every((instance) => instance.LifecycleState === 'InService' && instance.HealthStatus === 'Healthy'),
+        allInstancesSsmOnline: ssmInfo.length === collectorCount + loadGeneratorCount && ssmInfo.every((instance) => instance.PingStatus === 'Online'),
+        ecsClusterRegisteredInstances: cluster?.registeredContainerInstancesCount === collectorCount,
+        ecsServiceStableAndNoSurge: serviceSafe,
+        exactRunningTaskSet: tasks.length === collectorCount && tasks.every((task) => task.lastStatus === 'RUNNING' && task.healthStatus === 'HEALTHY'),
+        allTargetsHealthy: targetHealth.length === collectorCount && targetHealth.every((target) => target.TargetHealth.State === 'healthy'),
+        kinesisActiveWithEightyShards: stream.StreamStatus === 'ACTIVE' && stream.OpenShardCount === 80 && stream.RetentionPeriodHours === 24,
+        sharedStreamOwnedBySession: tagsMatch(streamTags, {
+            Project: 'loop-ad', Environment: 'perf-phase1-kinesis',
+            ResourceScope: 'shared-test-session', ComparisonSessionId: sessionId,
+        }),
+        taskDefinitionUsesExactDigest: collectorImage?.endsWith(`@${imageDigest}`) ?? false,
+        ...(capacityTopology ? {
+            fourTaskPlacementAndDigest: capacityTopology.passed,
+        } : {}),
+    };
+    return {
+        verifiedAt: new Date().toISOString(),
+        runId,
+        sessionId,
+        candidate,
+        experimentMode,
+        region: REGION,
+        collectorCount,
+        loadGeneratorCount,
+        imageDigest,
+        collectorImage,
+        collectorInstanceIds: collectorInstances.map((instance) => instance.InstanceId).sort(),
+        loadGeneratorInstanceId: loadGeneratorInstances[0]?.InstanceId ?? null,
+        loadGeneratorInstanceIds: loadGeneratorInstances.map((instance) => instance.InstanceId).sort(),
+        taskIds: tasks.map((task) => task.taskArn.split('/').at(-1)).sort(),
+        taskPlacements: capacityTopology?.placements ?? [],
+        counts: {
+            collectorAsgInstances: collectorInstances.length,
+            loadGeneratorAsgInstances: loadGeneratorInstances.length,
+            ssmOnline: ssmInfo.filter((instance) => instance.PingStatus === 'Online').length,
+            ecsRegisteredInstances: cluster?.registeredContainerInstancesCount ?? 0,
+            ecsRunningTasks: service?.runningCount ?? 0,
+            healthyTargets: targetHealth.filter((target) => target.TargetHealth.State === 'healthy').length,
+        },
+        checks,
+        ready: Object.values(checks).every(Boolean),
+    };
+}
+
+function targetGroupArn() {
+    cachedTargetGroupArn ??= awsJson([
+        'elbv2', 'describe-target-groups', '--region', REGION,
+        '--names', 'perf-phase1-loop-ad-collector',
+    ]).TargetGroups[0].TargetGroupArn;
+    return cachedTargetGroupArn;
+}
+
+function tagsMatch(tags, expected) {
+    const tagMap = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value]));
+    return Object.entries(expected).every(([key, value]) => tagMap[key] === value);
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function integerOption(name, fallback) {
+    const raw = optionValue(name);
+    if (raw === undefined) return fallback;
+    const value = Number(raw);
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
+    return value;
+}
+
+function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

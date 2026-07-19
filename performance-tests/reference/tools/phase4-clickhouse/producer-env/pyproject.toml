@@ -1,0 +1,13 @@
+[project]
+name = "loopad-phase4-producer-environment"
+version = "0.1.0"
+description = "Locked runtime for the qualified Phase 3 Kinesis producer and Phase 4 verification."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "boto3[crt]==1.43.50",
+    "locust==2.31.6",
+    "pytest==8.3.3",
+]
+
+[tool.uv]
+package = false

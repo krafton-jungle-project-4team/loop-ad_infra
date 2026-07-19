@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-19T12:54:47Z",
+  "account": "742711170910",
+  "region": "ap-northeast-2",
+  "tagFilters": {
+    "Project": "loop-ad",
+    "Phase": "7",
+    "ResourceScope": "run"
+  },
+  "resourceTagMappingList": [],
+  "allZero": true
+}

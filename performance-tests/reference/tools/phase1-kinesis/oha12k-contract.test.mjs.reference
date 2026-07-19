@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { oha12kCandidatePlan, oha12kNodePlan } from './oha12k-contract.mjs';
+
+test('distributes exactly 12000 connections across 1, 2, and 4 nodes', () => {
+    for (const [nodeCount, expectedPerNode] of [[1, 12_000], [2, 6_000], [4, 3_000]]) {
+        const plan = oha12kNodePlan({ nodeCount, targetRps: 30_000 });
+        assert.equal(plan.connectionsPerNode, expectedPerNode);
+        assert.equal(plan.totalConnections, 12_000);
+        assert.equal(plan.nodes.reduce((sum, node) => sum + node.connections, 0), 12_000);
+    }
+});
+
+test('distributes aggregate offered RPS exactly for both fixed stages', () => {
+    for (const targetRps of [30_000, 50_000]) {
+        for (const nodeCount of [1, 2, 4]) {
+            const plan = oha12kNodePlan({ nodeCount, targetRps });
+            assert.equal(plan.totalOfferedRps, targetRps);
+            assert.equal(plan.nodes.reduce((sum, node) => sum + node.offeredRps, 0), targetRps);
+        }
+    }
+});
+
+test('candidate plan contains only 15-second 30k and 50k probes', () => {
+    const plan = oha12kCandidatePlan({ candidate: 'go-batch', nodeCount: 2 });
+    assert.deepEqual(plan.stages.map((stage) => stage.targetRps), [30_000, 50_000]);
+    assert.deepEqual(plan.stages.map((stage) => stage.durationSeconds), [15, 15]);
+    assert.deepEqual(plan.stages.map((stage) => stage.cooldownSeconds), [15, 15]);
+});
+
+test('rejects unsupported topology and stage values', () => {
+    assert.throws(() => oha12kNodePlan({ nodeCount: 3, targetRps: 30_000 }), /1, 2, or 4/);
+    assert.throws(() => oha12kNodePlan({ nodeCount: 2, targetRps: 10_000 }), /30000 or 50000/);
+});

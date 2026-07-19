@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { buildFanoutEvaluatorInput } from './build-fanout-evaluator-input.mjs';
+
+test('builds fail-closed crossover and repeated connection boundary input from artifacts', () => {
+    const runDir = mkdtempSync(join(tmpdir(), 'fanout-input-'));
+    const writeRepetition = (name, repetition, { wave, driver = 'reference', safetyPassed = true, analysis = true, connections = 12000 }) => {
+        const directory = join(runDir, 'stages', name, `repetition-0${repetition}`);
+        mkdirSync(join(directory, 'load', 'node-01'), { recursive: true });
+        writeFileSync(join(directory, 'stage-summary.json'), JSON.stringify({ safetyPassed, driver,
+            aggregate: { actualRps: 9999, offeredRps: 10000, transportErrorRate: 0 }, connections }));
+        if (analysis) writeFileSync(join(directory, 'prehandler-connection-wave.json'), JSON.stringify({ delayedConnectionFanoutWave: wave,
+            evidence: { evidenceGap: false }, collectors: [{ peakCpuPercent: 20 }], churnSupported: false }));
+        if (driver === 'reference') for (let index = 1; index <= 4; index += 1) {
+            const node = join(directory, 'load', `node-0${index}`); mkdirSync(node, { recursive: true });
+            writeFileSync(join(node, 'reference-summary.json'), JSON.stringify({ schedule_accuracy: 1, dispatch_accuracy: 1,
+                connection_establishment_accuracy: 1, valid: true }));
+        }
+    };
+    for (const name of ['a_oha_alb', 'c_reference_alb']) {
+        writeRepetition(name, 1, { wave: true, driver: name.startsWith('a_') ? 'oha' : 'reference' });
+        writeRepetition(name, 2, { wave: false, driver: name.startsWith('a_') ? 'oha' : 'reference' });
+        writeRepetition(name, 3, { wave: false, driver: name.startsWith('a_') ? 'oha' : 'reference' });
+    }
+    for (const name of ['b_oha_direct', 'd_reference_direct']) for (let repetition = 1; repetition <= 3; repetition += 1)
+        writeRepetition(name, repetition, { wave: false, driver: name.startsWith('b_') ? 'oha' : 'reference' });
+    for (let repetition = 1; repetition <= 3; repetition += 1)
+        writeRepetition('conn6k_ref_alb', repetition, { wave: false, connections: 6000 });
+    writeRepetition('c_reference_alb', 4, { wave: false, analysis: false });
+
+    const result = buildFanoutEvaluatorInput(runDir);
+    assert.equal(result.conditions.c_reference_alb.length, 4);
+    assert.equal(result.conditions.c_reference_alb[3].valid, false);
+    assert.deepEqual(result.conditions.c_reference_alb[3].invalidReasons, ['analysis-missing']);
+    assert.equal(result.connectionSweep.measured, true);
+    assert.equal(result.connectionSweep.waveRemoved, true);
+    assert.equal(result.connectionSweep.scheduleAccuracy, 1);
+    assert.equal(result.connectionSweep.achievedRatio, 0.9999);
+    assert.equal(result.churnSupported, false);
+});

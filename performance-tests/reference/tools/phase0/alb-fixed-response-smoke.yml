@@ -1,0 +1,29 @@
+config:
+  target: "http://127.0.0.1"
+  payload:
+    path: "./payloads/sdk-compatible-event-bodies.tsv"
+    fields:
+      - "body_json"
+      - "payload_size_profile"
+      - "payload_actual_bytes"
+    skipHeader: true
+    delimiter: "\t"
+    cast: false
+    options:
+      quote: false
+    order: sequence
+  phases:
+    - name: "phase 0 smoke"
+      duration: 30
+      arrivalRate: 10
+  defaults:
+    headers:
+      content-type: "application/json"
+  http:
+    timeout: 5
+scenarios:
+  - name: "POST ALB fixed response smoke"
+    flow:
+      - post:
+          url: "/__fixed"
+          body: "{{ body_json }}"

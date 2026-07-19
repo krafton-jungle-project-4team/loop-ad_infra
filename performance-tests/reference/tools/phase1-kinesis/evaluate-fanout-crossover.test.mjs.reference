@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateFanoutCrossover } from './evaluate-fanout-crossover.mjs';
+
+const repetition = (wave, name) => ({ valid: true, stageArtifact: `${name}/stage-summary.json`, analysisArtifact: `${name}/analysis.json`, analysis: { delayedConnectionFanoutWave: wave, evidence: { evidenceGap: false }, waveStartMonotonic: wave ? 21 : null, latencyStartMonotonic: wave ? 22 : null, connectionLeadMs: wave ? 1000 : null } });
+const three = (wave, name) => [1, 2, 3].map((index) => repetition(wave, `${name}-${index}`));
+
+test('classifies ALB-only backend pool path', () => {
+    const result = evaluateFanoutCrossover({ conditions: { a_oha_alb: three(true, 'a'), b_oha_direct: three(false, 'b'), c_reference_alb: three(true, 'c'), d_reference_direct: three(false, 'd') } });
+    assert.equal(result.hypotheses.H1.verdict, 'supported');
+    assert.equal(result.hypotheses.H3.verdict, 'not-supported');
+});
+
+test('classifies an independently repeated intermittent ALB-only wave without requiring every repetition to fail', () => {
+    const intermittent = (name) => [repetition(true, `${name}-1`), repetition(false, `${name}-2`), repetition(false, `${name}-3`)];
+    const result = evaluateFanoutCrossover({ conditions: { a_oha_alb: intermittent('a'), b_oha_direct: three(false, 'b'),
+        c_reference_alb: intermittent('c'), d_reference_direct: three(false, 'd') } });
+    assert.equal(result.crossoverMatrix.a_oha_alb.verdict, 'intermittent-wave');
+    assert.equal(result.crossoverMatrix.c_reference_alb.verdict, 'intermittent-wave');
+    assert.equal(result.hypotheses.H1.verdict, 'supported');
+    assert.equal(result.hypotheses.H3.verdict, 'not-supported');
+});
+
+test('classifies oha plus ALB interaction only', () => {
+    const result = evaluateFanoutCrossover({ conditions: { a_oha_alb: three(true, 'a'), b_oha_direct: three(false, 'b'), c_reference_alb: three(false, 'c'), d_reference_direct: three(false, 'd') } });
+    assert.equal(result.hypotheses.H3.verdict, 'supported');
+    assert.equal(result.hypotheses.H1.verdict, 'not-supported');
+});
+
+test('does not promote one stage worth of requests into independent repetitions', () => {
+    const result = evaluateFanoutCrossover({ conditions: { a_oha_alb: [repetition(true, 'a')], b_oha_direct: [repetition(false, 'b')], c_reference_alb: [repetition(false, 'c')], d_reference_direct: [repetition(false, 'd')] } });
+    assert.equal(result.hypotheses.H3.verdict, 'inconclusive');
+});
+
+test('supports only a valid repeated connection-count boundary', () => {
+    const result = evaluateFanoutCrossover({ conditions: {}, connectionSweep: { measured: true, boundaryRepeated: 3, scheduleAccuracy: 0.999, achievedRatio: 0.98, transportErrorRate: 0, waveRemoved: true, mitigationConnections: 6000 } });
+    assert.equal(result.hypotheses.H6.verdict, 'supported');
+    assert.match(result.smallestMitigationCondition, /6000/);
+});

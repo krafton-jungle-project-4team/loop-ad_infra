@@ -1,0 +1,73 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { writeFileSync } from 'node:fs';
+
+const HARD_CAP_USD = 30;
+const NEW_DEPLOY_STOP_USD = 24;
+const CLEANUP_RESERVE_USD = 5;
+
+export function applyT3EndToEndBudget(base) {
+    if (!base?.budget || !Number.isFinite(base.budget.runUpperBoundUsd) || !Number.isFinite(base.budget.accruedUpperBoundUsd)) {
+        throw new Error('base connection-path cost model is invalid');
+    }
+    const projectedTotalUpperBoundUsd = base.budget.accruedUpperBoundUsd + base.budget.runUpperBoundUsd;
+    const projectedPlusReserveUsd = projectedTotalUpperBoundUsd + CLEANUP_RESERVE_USD;
+    const checks = {
+        accruedBelowNewDeployStop: base.budget.accruedUpperBoundUsd < NEW_DEPLOY_STOP_USD,
+        projectedPlusReserveBelowHardCap: projectedPlusReserveUsd < HARD_CAP_USD,
+    };
+    return {
+        ...base,
+        model: 'T3 end-to-end only; full connection-path stack deployed idle outside NLB-to-HAProxy traffic; two rounded wall-clock hours plus one rollback hour',
+        taskScope: {
+            topology: 'T3',
+            route: '/events',
+            scoredWarmup: false,
+            warmupSeconds: 900,
+            measuredSecondsPerRepetition: 300,
+            independentRepetitions: 3,
+            trafficOnlyOnProxyNlb: true,
+        },
+        budget: {
+            ...base.budget,
+            hardCapUsd: HARD_CAP_USD,
+            newDeployAccruedStopUsd: NEW_DEPLOY_STOP_USD,
+            cleanupReserveUsd: CLEANUP_RESERVE_USD,
+            projectedTotalUpperBoundUsd,
+            projectedPlusReserveUsd,
+            checks,
+            mayStart: Object.values(checks).every(Boolean),
+        },
+    };
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const scriptDir = dirname(fileURLToPath(import.meta.url));
+    const baseScript = join(scriptDir, 'calculate-connection-path-cost.mjs');
+    const wallSeconds = required('--wall-seconds');
+    const base = JSON.parse(execFileSync(process.execPath, [baseScript,
+        '--prices', required('--prices'),
+        '--parallel-wall-seconds', wallSeconds,
+        '--sequential-wall-seconds', wallSeconds,
+        '--requests-upper-bound', required('--requests-upper-bound'),
+        '--accrued-upper-bound-usd', required('--accrued-upper-bound-usd'),
+        '--alb-lcu-hours-upper-bound', '1',
+        '--nlb-lcu-hours-upper-bound', '200',
+        '--log-ingest-gib-upper-bound', '2',
+        '--evidence-upper-bound-usd', '0.5',
+        '--data-transfer-upper-bound-usd', '1',
+        '--rollback-hours-upper-bound', '1',
+    ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
+    const result = applyT3EndToEndBudget(base);
+    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    const output = option('--output');
+    if (output) writeFileSync(output, serialized, 'utf8');
+    process.stdout.write(serialized);
+    if (!result.budget.mayStart) process.exitCode = 2;
+}
+
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function required(name) { const value = option(name); if (!value) throw new Error(`${name} is required`); return value; }

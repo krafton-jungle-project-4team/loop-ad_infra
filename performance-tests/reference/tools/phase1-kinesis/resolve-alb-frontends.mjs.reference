@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { promises as dns } from 'node:dns';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { mapAlbFrontends } from './alb-frontend-map.mjs';
+
+const REGION = 'ap-northeast-2';
+const loadBalancerName = requiredOption('--load-balancer-name');
+const output = requiredOption('--output');
+if (!/^[a-z0-9-]{1,32}$/.test(loadBalancerName)) throw new Error('invalid load balancer name');
+
+const loadBalancer = aws(['elbv2', 'describe-load-balancers', '--region', REGION,
+    '--names', loadBalancerName]).LoadBalancers?.[0];
+if (!loadBalancer) throw new Error('load balancer not found');
+const dnsAnswers = await dns.resolve4(loadBalancer.DNSName, { ttl: true });
+if (dnsAnswers.length < 2) throw new Error('ALB DNS did not return both frontends');
+const networkInterfaces = aws(['ec2', 'describe-network-interfaces', '--region', REGION,
+    '--filters', `Name=addresses.private-ip-address,Values=${dnsAnswers.map((answer) => answer.address).join(',')}`])
+    .NetworkInterfaces.map((eni) => ({
+        eniId: eni.NetworkInterfaceId,
+        subnetId: eni.SubnetId,
+        availabilityZone: eni.AvailabilityZone,
+        availabilityZoneId: eni.AvailabilityZoneId,
+        privateIp: eni.PrivateIpAddress,
+        privateIps: eni.PrivateIpAddresses.map((address) => address.PrivateIpAddress),
+        description: eni.Description,
+        status: eni.Status,
+    }));
+const subnetIds = [...new Set(networkInterfaces.map((eni) => eni.subnetId))];
+const subnets = aws(['ec2', 'describe-subnets', '--region', REGION, '--subnet-ids', ...subnetIds])
+    .Subnets.map((subnet) => ({
+        subnetId: subnet.SubnetId,
+        availabilityZone: subnet.AvailabilityZone,
+        availabilityZoneId: subnet.AvailabilityZoneId,
+        vpcId: subnet.VpcId,
+    }));
+const mapping = mapAlbFrontends({ dnsAnswers, networkInterfaces, subnets });
+const result = {
+    resolvedAt: new Date().toISOString(),
+    region: REGION,
+    loadBalancer: {
+        name: loadBalancerName,
+        arn: loadBalancer.LoadBalancerArn,
+        dnsName: loadBalancer.DNSName,
+        canonicalHostedZoneId: loadBalancer.CanonicalHostedZoneId,
+        availabilityZones: loadBalancer.AvailabilityZones,
+    },
+    ...mapping,
+};
+writeJson(output, result);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function aws(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    }));
+}
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

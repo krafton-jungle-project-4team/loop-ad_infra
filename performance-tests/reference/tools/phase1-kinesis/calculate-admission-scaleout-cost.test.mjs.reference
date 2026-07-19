@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./calculate-admission-scaleout-cost.mjs', import.meta.url).pathname;
+const dir = mkdtempSync(join(tmpdir(), 'admission-cost-'));
+const prices = join(dir, 'prices.json');
+writeFileSync(prices, JSON.stringify({ asOf: '2026-07-13T00:00:00Z', prices: {
+    collectorInstanceHour: .192, collectorLargeInstanceHour: .096, loadGeneratorInstanceHour: .1281,
+    kinesisProvisionedShardHour: .0185, kinesisPutPayloadUnit: 2.04e-8, albHour: .0225, albLcuHour: .008,
+    ebsGp3GbMonth: .0912, publicIpv4Hour: .005, cloudWatchMetricMonth: .3, cloudWatchLogIngestGb: .76,
+    cloudWatchLogStorageGbMonth: .0314, cloudWatchGetMetricDataMetric: .00001, ecrStorageGbMonth: .1,
+}, fixedApiUpperBounds: { costExplorerRequestUsd: .01 } }));
+const args = (previous = '0') => [script, '--prices', prices, '--phase-a-seconds', '3600', '--phase-b-seconds', '3600',
+    '--wall-seconds', '7200', '--requests-upper-bound', '50000000', '--previous-upper-bound-usd', previous];
+
+test('models both equal-resource profiles and protects the cleanup reserve', () => {
+    const result = JSON.parse(execFileSync(process.execPath, args(), { encoding: 'utf8' }));
+    assert.equal(result.components.profileACollectors, result.components.profileBCollectors);
+    assert.equal(result.budget.cleanupReserveUsd, 4);
+    assert.equal(result.budget.mayStart, true);
+    const stopped = spawnSync(process.execPath, args('24'), { encoding: 'utf8' });
+    assert.equal(stopped.status, 2);
+    assert.equal(JSON.parse(stopped.stdout).budget.checks.accruedBelowNewWorkStop, false);
+});

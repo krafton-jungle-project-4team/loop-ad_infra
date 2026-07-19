@@ -1,0 +1,590 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+    buildArchiveTaskIdentity,
+    cancelOwnedStageWork,
+    createArchiveTaskState,
+    monitorTerminalHardStops,
+    reconcileOwnedStageCommands,
+    runArchiveTaskOnceAt,
+    validateHardStopConfig,
+} from '../aws/phase7_aws_task_orchestration.mjs';
+import { evaluateDiagnosticStage } from '../aws/phase7_diagnostic_contract.mjs';
+
+const runId = 'run_20260718_010203_phase7_integration';
+const taskDefinition = 'arn:aws:ecs:ap-northeast-2:742711170910:task-definition/phase7-archive:1';
+const taskArnA = 'arn:aws:ecs:ap-northeast-2:742711170910:task/phase7-cluster/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const taskArnB = 'arn:aws:ecs:ap-northeast-2:742711170910:task/phase7-cluster/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const config = {
+    cluster: 'phase7-cluster',
+    taskDefinition,
+    capacityProvider: 'phase7-archive-cp',
+    subnetIds: ['subnet-1111aaaa', 'subnet-2222bbbb'],
+    securityGroupId: 'sg-1111aaaa',
+    partition: '2026-07-10',
+    today: '2026-07-18',
+};
+const hardStopConfig = {
+    runId,
+    consumerCluster: 'phase7-consumer-cluster',
+    consumerService: 'phase7-consumer-service',
+    clickHouseCluster: 'phase7-clickhouse-cluster',
+    clickHouseService: 'phase7-clickhouse-service',
+    failureBucket: 'phase7-failure-bucket',
+    consumerLogGroup: `/loopad/perf/phase7/${runId}/ConsumerLogs`,
+};
+
+test('archive task identity is deterministic and inside ECS token limits', () => {
+    const first = buildArchiveTaskIdentity(runId);
+    assert.deepEqual(first, buildArchiveTaskIdentity(runId));
+    assert.equal(first.clientToken.length, 64);
+    assert.match(first.clientToken, /^p7a-[0-9a-f]{60}$/);
+    assert.equal(first.startedBy, 'phase7-archive-20260718010203');
+});
+
+test('hard-stop monitor rejects configuration that is not bound to the exact run', () => {
+    assert.throws(() => validateHardStopConfig({ ...hardStopConfig, runId: `${runId}-other` }, runId), /configuration/);
+});
+
+test('hard-stop monitor detects a KCL terminal event during the load window', async () => {
+    const state = { polls: [] };
+    const signals = await monitorTerminalHardStops({
+        config: hardStopConfig,
+        runId,
+        stage: 'score',
+        startEpoch: 1_700_000_000,
+        state,
+        sleep: async () => { throw new Error('terminal signal must not sleep'); },
+        now: () => 1_700_000_001_000,
+        awsJson: async (args) => {
+            if (args[0] === 'logs') {
+                const pattern = args[args.indexOf('--filter-pattern') + 1];
+                return { events: pattern.includes('phase4_terminal_failure') ? [{ eventId: 'terminal' }] : [] };
+            }
+            if (args[0] === 's3api') return { KeyCount: 0, Contents: [] };
+            if (args[0] === 'ecs') {
+                const service = args[args.indexOf('--services') + 1];
+                return { services: [{
+                    status: 'ACTIVE',
+                    desiredCount: service.includes('consumer') ? 2 : 1,
+                    runningCount: service.includes('consumer') ? 2 : 1,
+                    pendingCount: 0,
+                }], failures: [] };
+            }
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.deepEqual(signals, ['consumer-log:phase4_terminal_failure']);
+    assert.equal(state.polls.length, 1);
+});
+
+test('hard-stop monitor tolerates a transient service gap but stops after sixty seconds', async () => {
+    const state = { polls: [] };
+    const clock = [1_700_000_000_000, 1_700_000_060_001];
+    const signals = await monitorTerminalHardStops({
+        config: hardStopConfig,
+        runId,
+        stage: 'warmup',
+        startEpoch: 1_700_000_000,
+        state,
+        sleep: async () => {},
+        now: () => clock.shift(),
+        awsJson: async (args) => {
+            if (args[0] === 'logs') return { events: [] };
+            if (args[0] === 's3api') return { KeyCount: 0, Contents: [] };
+            if (args[0] === 'ecs') {
+                const service = args[args.indexOf('--services') + 1];
+                const consumer = service.includes('consumer');
+                return { services: [{
+                    status: 'ACTIVE',
+                    desiredCount: consumer ? 2 : 1,
+                    runningCount: consumer ? 2 : 0,
+                    pendingCount: consumer ? 0 : 1,
+                }], failures: [] };
+            }
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.deepEqual(signals, ['clickhouse-unavailable-60s']);
+    assert.equal(state.polls.length, 2);
+});
+
+test('accepted RunTask response loss is recovered without a second RunTask call', async () => {
+    let runTaskCalls = 0;
+    const calls = [];
+    const identity = buildArchiveTaskIdentity(runId);
+    const result = await runArchiveTaskOnceAt({
+        epoch: 0,
+        config,
+        runId,
+        state: createArchiveTaskState(runId),
+        now: () => 0,
+        sleep: async () => {},
+        maxListPolls: 1,
+        maxDescribePolls: 1,
+        awsJson: async (args) => {
+            calls.push(args);
+            if (args[0] === 'ecs' && args[1] === 'run-task') {
+                runTaskCalls += 1;
+                throw new Error('connection closed after ECS accepted the request');
+            }
+            if (args[0] === 'ecs' && args[1] === 'list-tasks') return { taskArns: [taskArnA] };
+            if (args[0] === 'ecs' && args[1] === 'describe-tasks') {
+                return { tasks: [stoppedTask(taskArnA, identity.startedBy)], failures: [] };
+            }
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.equal(runTaskCalls, 1);
+    assert.equal(calls.filter((args) => args[1] === 'run-task').length, 1);
+    assert.equal(result.runTaskInvocationCount, 1);
+    assert.equal(result.runTaskResponseLost, true);
+    assert.equal(result.taskCardinality, 1);
+    assert.equal(result.timingSource, 'ecs-task.startedAt');
+    assert.equal(result.startedEpoch, Math.floor(Date.parse('2026-07-18T00:00:05.250Z') / 1_000));
+    assert.equal(result.startedEpochSource, 'ecs-task.startedAt');
+    const runArgs = calls.find((args) => args[1] === 'run-task');
+    assert.equal(runArgs[runArgs.indexOf('--client-token') + 1], identity.clientToken);
+    assert.equal(runArgs[runArgs.indexOf('--started-by') + 1], identity.startedBy);
+    assert.equal(runArgs[runArgs.indexOf('--count') + 1], '1');
+});
+
+test('duplicate exact-startedBy archive tasks fail closed after one RunTask call', async () => {
+    let runTaskCalls = 0;
+    await assert.rejects(() => runArchiveTaskOnceAt({
+        epoch: 0,
+        config,
+        runId,
+        state: createArchiveTaskState(runId),
+        now: () => 0,
+        sleep: async () => {},
+        maxListPolls: 1,
+        maxDescribePolls: 1,
+        awsJson: async (args) => {
+            if (args[1] === 'run-task') {
+                runTaskCalls += 1;
+                return { tasks: [{ taskArn: taskArnA }], failures: [] };
+            }
+            if (args[1] === 'list-tasks') return { taskArns: [taskArnA, taskArnB] };
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    }), /cardinality is 2/);
+    assert.equal(runTaskCalls, 1);
+});
+
+test('overlap uses actual ECS startedAt and fails when placement is after score end', () => {
+    const startEpoch = Date.parse('2026-07-18T00:00:00Z') / 1_000;
+    const result = evaluateDiagnosticStage({
+        stage: 'score',
+        invocationResults: [{ exitCode: 0 }],
+        aggregate: passingAggregate(),
+        payloadManifest: passingPayloadManifest(),
+        startEpoch,
+        durationSeconds: 300,
+        archive: {
+            runTaskInvocationCount: 1,
+            taskCardinality: 1,
+            timingSource: 'ecs-task.startedAt',
+            startedAt: '2026-07-18T00:05:02.001Z',
+            startedEpoch: startEpoch + 5,
+            exitCode: 0,
+        },
+    });
+    assert.equal(result.checks.archiveStartedOnceInsideScoreWindow, false);
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.diagnosticContinuationAllowed, true);
+});
+
+test('overlap fails when archive placement precedes every actual request even if planned time started', () => {
+    const startEpoch = Date.parse('2026-07-18T00:00:00Z') / 1_000;
+    const result = evaluateDiagnosticStage({
+        stage: 'score',
+        invocationResults: [{ exitCode: 0 }],
+        aggregate: passingAggregate(),
+        payloadManifest: passingPayloadManifest(),
+        startEpoch,
+        durationSeconds: 300,
+        archive: {
+            runTaskInvocationCount: 1,
+            taskCardinality: 1,
+            timingSource: 'ecs-task.startedAt',
+            startedAt: '2026-07-18T00:00:00.500Z',
+            exitCode: 0,
+        },
+    });
+    assert.equal(result.checks.archiveStartedOnceInsideScoreWindow, false);
+});
+
+test('response-lost load commands are reconciled for all eight instances without selecting transfer commands', async () => {
+    const workerRunId = 'run_20260718_010203_phase7_score';
+    const plans = Array.from({ length: 8 }, (_, index) => ({
+        nodeId: `node-${String(index + 1).padStart(2, '0')}`,
+        instanceId: `i-${String(index + 1).padStart(8, '0')}abcd`,
+        offeredRps: 6_250,
+    }));
+    const result = await reconcileOwnedStageCommands({
+        runId,
+        stage: 'score',
+        plans,
+        maxPolls: 1,
+        sleep: async () => {},
+        awsJson: async (args) => {
+            const instanceId = args[args.indexOf('--instance-id') + 1];
+            const planIndex = plans.findIndex((plan) => plan.instanceId === instanceId);
+            const loadCommandId = commandId(planIndex + 1);
+            const transferCommandId = commandId(planIndex + 101);
+            return { Commands: [
+                exactListedCommand({
+                    commandId: transferCommandId,
+                    instanceId,
+                    comment: `loop-ad ${workerRunId} 20KiB SSM transfer probe`,
+                }),
+                exactListedCommand({
+                    commandId: loadCommandId,
+                    instanceId,
+                    comment: `loop-ad ${workerRunId} oha 6250rps 300s`,
+                }),
+            ] };
+        },
+    });
+    assert.equal(result.commands.length, 8);
+    assert.equal(result.errors.length, 0);
+    for (const [index, item] of result.reconciliation.entries()) {
+        assert.equal(item.localCommandId, null);
+        assert.equal(item.selectedLoadCommandId, commandId(index + 1));
+        assert.deepEqual(item.ignoredTransferCommandIds, [commandId(index + 101)]);
+        assert.equal(item.noLoadCommandObserved, false);
+    }
+});
+
+test('a transfer-probe CommandId is never promoted to a load command', async () => {
+    const plan = { nodeId: 'node-01', instanceId: 'i-0123abcd', offeredRps: 6_250 };
+    const result = await reconcileOwnedStageCommands({
+        runId,
+        stage: 'warmup',
+        plans: [plan],
+        maxPolls: 1,
+        sleep: async () => {},
+        awsJson: async () => ({ Commands: [exactListedCommand({
+            commandId: commandId(99),
+            instanceId: plan.instanceId,
+            comment: 'loop-ad run_20260718_010203_phase7_warmup 20KiB SSM transfer probe',
+        })] }),
+    });
+    assert.deepEqual(result.commands, []);
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.reconciliation[0].selectedLoadCommandId, null);
+    assert.equal(result.reconciliation[0].noLoadCommandObserved, true);
+    assert.deepEqual(result.reconciliation[0].ignoredTransferCommandIds, [commandId(99)]);
+});
+
+test('duplicate exact load commands are all returned for cancellation while reconciliation fails closed', async () => {
+    const plan = { nodeId: 'node-01', instanceId: 'i-0123abcd', offeredRps: 6_250 };
+    const comment = 'loop-ad run_20260718_010203_phase7_score oha 6250rps 300s';
+    const result = await reconcileOwnedStageCommands({
+        runId,
+        stage: 'score',
+        plans: [plan],
+        maxPolls: 1,
+        sleep: async () => {},
+        awsJson: async () => ({ Commands: [
+            exactListedCommand({ commandId: commandId(1), instanceId: plan.instanceId, comment }),
+            exactListedCommand({ commandId: commandId(2), instanceId: plan.instanceId, comment }),
+        ] }),
+    });
+    assert.deepEqual(result.commands.map((item) => item.commandId), [commandId(1), commandId(2)]);
+    assert.deepEqual(result.reconciliation[0].cancellationLoadCommandIds, [commandId(1), commandId(2)]);
+    assert.equal(result.reconciliation[0].selectedLoadCommandId, null);
+    assert.match(result.errors[0].message, /more than one exact load/);
+});
+
+test('temporarily observing no load command for any node cannot prove cancellation complete', async () => {
+    const reconciliation = Array.from({ length: 8 }, (_, index) => ({
+        nodeId: `node-${String(index + 1).padStart(2, '0')}`,
+        selectedLoadCommandId: null,
+        noLoadCommandObserved: true,
+        errors: [],
+    }));
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('orchestrator terminated during SendCommand'),
+        commandReconciliation: reconciliation,
+        now: () => 0,
+        awsJson: async () => { throw new Error('no cancellation API call is expected without an exact CommandId'); },
+    });
+    assert.equal(evidence.ssmCommands.length, 0);
+    assert.equal(evidence.cancellationComplete, false);
+});
+
+test('peer failure cancels exact SSM command and stops only the exact owned archive task', async () => {
+    const identity = buildArchiveTaskIdentity(runId);
+    const state = createArchiveTaskState(runId);
+    state.taskArn = taskArnA;
+    const calls = [];
+    let ssmPolls = 0;
+    let archiveDescribeCalls = 0;
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('node-03 failed'),
+        ssmCommands: [{
+            nodeId: 'node-01',
+            instanceId: 'i-0123abcd',
+            commandId: '11111111-2222-3333-4444-555555555555',
+            comment: 'loop-ad run_20260718_010203_phase7_score oha 6250rps 300s',
+            workerStateBucket: 'phase7-generator-evidence',
+            workerStateKey: `generator-evidence/${runId}/score/node-01/worker-terminal-state.json`,
+        }],
+        localChildren: [{ nodeId: 'node-01', alreadyExited: false, terminationSignalSent: true }],
+        archiveConfig: config,
+        archiveState: state,
+        now: () => 0,
+        sleep: async () => {},
+        awsJson: async (args) => {
+            calls.push(args);
+            if (args[0] === 'ssm' && args[1] === 'get-command-invocation') {
+                ssmPolls += 1;
+                return exactInvocation({
+                    status: ssmPolls === 1 ? 'InProgress' : 'Cancelled',
+                    commandId: '11111111-2222-3333-4444-555555555555',
+                    instanceId: 'i-0123abcd',
+                    comment: 'loop-ad run_20260718_010203_phase7_score oha 6250rps 300s',
+                });
+            }
+            if (args[0] === 'ssm' && args[1] === 'cancel-command') return {};
+            if (args[0] === 's3api' && args[1] === 'head-object') {
+                return workerTerminalHead({
+                    workerRunId: 'run_20260718_010203_phase7_score',
+                    stage: 'score',
+                    nodeId: 'node-01',
+                    instanceId: 'i-0123abcd',
+                });
+            }
+            if (args[0] === 'ecs' && args[1] === 'list-tasks') return { taskArns: [taskArnA] };
+            if (args[0] === 'ecs' && args[1] === 'describe-tasks') {
+                archiveDescribeCalls += 1;
+                return { tasks: [{
+                    taskArn: taskArnA,
+                    taskDefinitionArn: taskDefinition,
+                    startedBy: identity.startedBy,
+                    lastStatus: archiveDescribeCalls === 1 ? 'RUNNING' : 'STOPPED',
+                }], failures: [] };
+            }
+            if (args[0] === 'ecs' && args[1] === 'stop-task') return { task: { taskArn: taskArnA } };
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.equal(evidence.nextState, 'cleanup-only');
+    assert.equal(evidence.newWorkAllowed, false);
+    assert.equal(evidence.cancellationComplete, true);
+    assert.equal(evidence.ssmCommands[0].cancelSucceeded, true);
+    assert.equal(evidence.ssmCommands[0].terminalVerified, true);
+    assert.equal(evidence.ssmCommands[0].workerState.verified, true);
+    assert.equal(evidence.ssmCommands[0].remoteWorkStopped, true);
+    assert.equal(evidence.archive.stopAttempts[0].stopSucceeded, true);
+    assert.equal(evidence.archive.stopAttempts[0].stoppedVerified, true);
+    assert.equal(calls.filter((args) => args[1] === 'cancel-command').length, 1);
+    assert.equal(calls.filter((args) => args[1] === 'stop-task').length, 1);
+});
+
+test('CancelCommand ACK cannot complete cancellation without terminal SSM status and worker zero-state', async () => {
+    const command = {
+        nodeId: 'node-01',
+        instanceId: 'i-0123abcd',
+        commandId: '11111111-2222-3333-4444-555555555555',
+        comment: 'loop-ad run_20260718_010203_phase7_score oha 6250rps 300s',
+        workerStateBucket: 'phase7-generator-evidence',
+        workerStateKey: `generator-evidence/${runId}/score/node-01/worker-terminal-state.json`,
+    };
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('peer failed'),
+        ssmCommands: [command],
+        maxSsmPolls: 1,
+        sleep: async () => {},
+        now: () => 0,
+        awsJson: async (args) => {
+            if (args[1] === 'cancel-command') return {};
+            if (args[1] === 'get-command-invocation') return exactInvocation({
+                status: 'InProgress',
+                commandId: command.commandId,
+                instanceId: command.instanceId,
+                comment: command.comment,
+            });
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.equal(evidence.ssmCommands[0].cancelApiAccepted, true);
+    assert.equal(evidence.ssmCommands[0].terminalVerified, false);
+    assert.equal(evidence.ssmCommands[0].workerState.verified, false);
+    assert.equal(evidence.ssmCommands[0].remoteWorkStopped, false);
+    assert.equal(evidence.cancellationComplete, false);
+});
+
+test('cancellation cannot claim completion when exact archive inventory fails', async () => {
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('peer failed'),
+        archiveConfig: config,
+        archiveState: createArchiveTaskState(runId),
+        now: () => 0,
+        awsJson: async () => { throw new Error('inventory unavailable'); },
+    });
+    assert.equal(evidence.nextState, 'cleanup-only');
+    assert.equal(evidence.cancellationComplete, false);
+    assert.equal(evidence.archive.listError.message, 'inventory unavailable');
+});
+
+test('cancellation still stops the exact RunTask response ARN when ListTasks fails', async () => {
+    const identity = buildArchiveTaskIdentity(runId);
+    const state = createArchiveTaskState(runId);
+    state.responseTaskArn = taskArnA;
+    const calls = [];
+    let describeCalls = 0;
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('peer failed'),
+        archiveConfig: config,
+        archiveState: state,
+        now: () => 0,
+        sleep: async () => {},
+        awsJson: async (args) => {
+            calls.push(args);
+            if (args[1] === 'list-tasks') throw new Error('inventory unavailable');
+            if (args[1] === 'describe-tasks') {
+                describeCalls += 1;
+                return { tasks: [{
+                    taskArn: taskArnA,
+                    taskDefinitionArn: taskDefinition,
+                    startedBy: identity.startedBy,
+                    lastStatus: describeCalls === 1 ? 'RUNNING' : 'STOPPED',
+                }], failures: [] };
+            }
+            if (args[1] === 'stop-task') return {};
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.equal(evidence.cancellationComplete, false);
+    assert.equal(evidence.archive.stopAttempts[0].taskArn, taskArnA);
+    assert.equal(evidence.archive.stopAttempts[0].stopSucceeded, true);
+    assert.equal(calls.filter((args) => args[1] === 'stop-task').length, 1);
+});
+
+test('StopTask ACK cannot complete cancellation while the exact archive task remains RUNNING', async () => {
+    const identity = buildArchiveTaskIdentity(runId);
+    const state = createArchiveTaskState(runId);
+    state.taskArn = taskArnA;
+    const evidence = await cancelOwnedStageWork({
+        runId,
+        stage: 'score',
+        cause: new Error('peer failed'),
+        archiveConfig: config,
+        archiveState: state,
+        maxArchivePolls: 1,
+        sleep: async () => {},
+        now: () => 0,
+        awsJson: async (args) => {
+            if (args[1] === 'list-tasks') return { taskArns: [taskArnA] };
+            if (args[1] === 'describe-tasks') return { tasks: [{
+                taskArn: taskArnA,
+                taskDefinitionArn: taskDefinition,
+                startedBy: identity.startedBy,
+                lastStatus: 'RUNNING',
+            }], failures: [] };
+            if (args[1] === 'stop-task') return { task: { taskArn: taskArnA } };
+            throw new Error(`unexpected fake AWS call: ${args.join(' ')}`);
+        },
+    });
+    assert.equal(evidence.archive.stopAttempts[0].stopApiAccepted, true);
+    assert.equal(evidence.archive.stopAttempts[0].stoppedVerified, false);
+    assert.equal(evidence.archive.stopAttempts[0].stopSucceeded, false);
+    assert.equal(evidence.cancellationComplete, false);
+});
+
+function stoppedTask(taskArn, startedBy) {
+    return {
+        taskArn,
+        taskDefinitionArn: taskDefinition,
+        startedBy,
+        lastStatus: 'STOPPED',
+        startedAt: '2026-07-18T00:00:05.250Z',
+        stoppedAt: '2026-07-18T00:10:00.500Z',
+        stopCode: 'EssentialContainerExited',
+        containers: [{ name: 'archive', exitCode: 0 }],
+    };
+}
+
+function passingAggregate() {
+    return {
+        passed: true,
+        actualRps: 50_000,
+        completedRequests: 15_000_000,
+        http202: 15_000_000,
+        attemptedRequests: 15_000_000,
+        transportErrors: 0,
+        http429: 0,
+        http5xx: 0,
+        nodes: [
+            { startedAt: '2026-07-18T00:00:01.000Z', endedAt: '2026-07-18T00:05:01.000Z' },
+            { startedAt: '2026-07-18T00:00:02.000Z', endedAt: '2026-07-18T00:05:02.000Z' },
+        ],
+    };
+}
+
+function passingPayloadManifest() {
+    return {
+        warmupScoreIdentitySeparated: true,
+        globalRequestEventIdUniquenessGuaranteed: false,
+        kinesisPartitioning: { rowsPerShard: { min: 4, max: 4 } },
+    };
+}
+
+function commandId(index) {
+    return `${index.toString(16).padStart(8, '0')}-1111-2222-3333-${index.toString(16).padStart(12, '0')}`;
+}
+
+function exactListedCommand({ commandId: id, instanceId, comment }) {
+    return {
+        CommandId: id,
+        DocumentName: 'AWS-RunShellScript',
+        InstanceIds: [instanceId],
+        Comment: comment,
+    };
+}
+
+function exactInvocation({ status, commandId: id, instanceId, comment }) {
+    return {
+        CommandId: id,
+        InstanceId: instanceId,
+        DocumentName: 'AWS-RunShellScript',
+        Comment: comment,
+        Status: status,
+        StatusDetails: status,
+        ResponseCode: status === 'Cancelled' ? 143 : -1,
+        ExecutionStartDateTime: '2026-07-18T00:00:01.000Z',
+        ExecutionEndDateTime: status === 'Cancelled' ? '2026-07-18T00:00:02.000Z' : '',
+    };
+}
+
+function workerTerminalHead({ workerRunId, stage, nodeId, instanceId }) {
+    return {
+        ContentLength: 256,
+        ETag: '"terminal-state"',
+        Metadata: {
+            'schema-version': '1',
+            'main-run-id': runId,
+            'worker-run-id': workerRunId,
+            stage,
+            'node-id': nodeId,
+            'instance-id': instanceId,
+            state: 'terminal',
+            'cleanup-complete': 'true',
+            'owned-container-running-count': '0',
+            'owned-runner-process-count': '0',
+        },
+    };
+}

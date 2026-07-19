@@ -1,0 +1,232 @@
+#!/usr/bin/env node
+
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
+
+const inputDir = requiredOption('--input-dir');
+const output = requiredOption('--output');
+const OPTIONAL_NAN_METRICS = new Set([
+    'haproxy_process_current_zlib_memory',
+    'haproxy_process_max_zlib_memory',
+    'haproxy_server_current_throttle',
+    'haproxy_server_idle_connections_limit',
+    'haproxy_server_limit_sessions',
+    'haproxy_server_queue_limit',
+]);
+const startTime = Date.parse(requiredOption('--start-time'));
+const endTime = Date.parse(requiredOption('--end-time'));
+if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime >= endTime) throw new Error('invalid scored HAProxy telemetry window');
+
+const proxies = readdirSync(inputDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^proxy-[0-9]{2}$/.test(entry.name)).map((entry) => entry.name).sort();
+if (proxies.length !== 2) throw new Error(`expected two proxy directories, found ${proxies.length}`);
+const expectedSeconds = Math.floor((endTime - startTime) / 1_000);
+const minimumSamples = Math.max(1, expectedSeconds - 2);
+const counterRegressions = [];
+const nonFiniteMetrics = [];
+const nodeSamples = [];
+const hostSamples = [];
+const nodes = proxies.map((proxy) => {
+    const directory = join(inputDir, proxy);
+    const samples = prometheusSamples(readCompressed(directory, 'haproxy-prometheus.log.gz'), proxy, nonFiniteMetrics).filter((sample) => inWindow(sample.timestamp));
+    const docker = dockerSamples(readCompressed(directory, 'docker-stats.csv.gz')).filter((sample) => inWindow(sample.timestamp));
+	const host = hostCpuSamples(readCompressed(directory, 'host-cpu.tsv.gz')).filter((sample) => inWindow(sample.timestamp));
+	const runtimeThreadCounts = existsSync(join(directory, 'haproxy-runtime.txt.gz')) ? parseRuntimeThreadCounts(readCompressed(directory, 'haproxy-runtime.txt.gz')) : [];
+    const metricNames = [...new Set(samples.flatMap((sample) => Object.keys(sample.metrics)))].sort();
+    const metrics = {};
+    for (const name of metricNames) {
+        const values = samples.flatMap((sample) => sample.metrics[name] === undefined ? [] : [{ timestamp: sample.timestamp, ...sample.metrics[name] }]);
+        metrics[name] = summarizeMetric(values);
+        if (name.endsWith('_total')) {
+            for (let index = 1; index < values.length; index += 1) {
+                if (values[index].sum < values[index - 1].sum) counterRegressions.push({ proxy, metric: name, previous: values[index - 1], current: values[index] });
+            }
+        }
+    }
+    nodeSamples.push(...samples.map((sample) => ({ proxy, ...sample })));
+	hostSamples.push(...host.map((sample) => ({ proxy, ...sample })));
+    return {
+        proxy,
+        prometheusSampleCount: samples.length,
+        dockerSampleCount: docker.length,
+		hostCpuSampleCount: host.length,
+        firstPrometheusSample: samples[0]?.timestamp ?? null,
+        lastPrometheusSample: samples.at(-1)?.timestamp ?? null,
+        metrics,
+        docker: summarizeDocker(docker),
+		host: summarizeHost(host),
+		runtimeThreadCounts,
+		runtimeThreadCountMax: Math.max(0, ...runtimeThreadCounts),
+    };
+});
+
+const fleetByTimestamp = new Map();
+for (const sample of nodeSamples) {
+    const fleet = fleetByTimestamp.get(sample.timestamp) ?? {};
+    for (const [name, value] of Object.entries(sample.metrics)) {
+        const aggregate = fleet[name] ?? { sum: 0, maxSeries: 0 };
+        aggregate.sum += value.sum;
+        aggregate.maxSeries = Math.max(aggregate.maxSeries, value.maxSeries);
+        fleet[name] = aggregate;
+    }
+    fleetByTimestamp.set(sample.timestamp, fleet);
+}
+const fleetMetrics = {};
+for (const name of [...new Set([...fleetByTimestamp.values()].flatMap((metrics) => Object.keys(metrics)))].sort()) {
+    const values = [...fleetByTimestamp.entries()].flatMap(([timestamp, metrics]) => metrics[name] === undefined ? [] : [{ timestamp, ...metrics[name] }]);
+    fleetMetrics[name] = summarizeMetric(values);
+}
+const runQueueByTimestamp = new Map();
+for (const sample of hostSamples) runQueueByTimestamp.set(sample.timestamp, (runQueueByTimestamp.get(sample.timestamp) ?? 0) + sample.procsRunning);
+const droppedLogMetricNames = Object.keys(fleetMetrics).filter((name) => /dropped.*logs.*_total|dropped_logs_total/.test(name));
+const backendQueueMetricNames = Object.keys(fleetMetrics).filter((name) => /^haproxy_(?:backend|server)_.*(?:current_queue|queue_current)/.test(name));
+const frontendSessionMetricNames = Object.keys(fleetMetrics).filter((name) => /^haproxy_frontend_.*current_sessions/.test(name));
+const threadMetricNames = Object.keys(fleetMetrics).filter((name) => /^haproxy_process_.*(?:nbthread|threads)/.test(name));
+const derived = {
+	hostIdleMedianPercent: quantile(hostSamples.map((sample) => sample.idlePercent), .5),
+	hostRunQueueP95: quantile([...runQueueByTimestamp.values()], .95),
+	hostBlockedProcessesMax: Math.max(0, ...hostSamples.map((sample) => sample.procsBlocked)),
+	haproxyContainerCpuMaxPercent: Math.max(0, ...nodes.map((node) => node.docker.maxCpuPercent)),
+	droppedLogMetricNames,
+	droppedLogDelta: droppedLogMetricNames.reduce((total, name) => total + Math.max(0, fleetMetrics[name].deltaSum), 0),
+	backendQueueMetricNames,
+	backendQueueMax: Math.max(0, ...backendQueueMetricNames.map((name) => fleetMetrics[name].maxSum)),
+	frontendSessionMetricNames,
+	frontendCurrentSessionsMax: Math.max(0, ...frontendSessionMetricNames.map((name) => fleetMetrics[name].maxSum)),
+	threadMetricNames,
+	runtimeThreadMetricMaximum: Math.max(0, ...threadMetricNames.map((name) => fleetMetrics[name].maxSum)),
+	runtimeThreadCountMaximum: Math.max(0, ...nodes.map((node) => node.runtimeThreadCountMax)),
+};
+
+const checks = {
+    proxyCountCorrect: nodes.length === 2,
+    prometheusWindowComplete: nodes.every((node) => node.prometheusSampleCount >= minimumSamples),
+    dockerWindowComplete: nodes.every((node) => node.dockerSampleCount >= minimumSamples),
+	hostCpuWindowComplete: nodes.every((node) => node.hostCpuSampleCount >= minimumSamples - 1),
+    metricsPresent: nodes.every((node) => Object.keys(node.metrics).length > 0),
+    nonFiniteMetricsOnlyKnownOptional: nonFiniteMetrics.every((item) => OPTIONAL_NAN_METRICS.has(item.metric) && item.raw === 'NaN'),
+    valuesFinite: nodes.every((node) => Object.values(node.metrics).every((metric) => Object.values(metric).every(Number.isFinite))) &&
+		nodes.every((node) => Object.values(node.docker).every(Number.isFinite)) && nodes.every((node) => Object.values(node.host).every(Number.isFinite)) &&
+		Object.values(derived).filter((value) => typeof value === 'number').every(Number.isFinite),
+    countersMonotonic: counterRegressions.length === 0,
+};
+const result = {
+    generatedAt: new Date().toISOString(),
+    window: { startTime: new Date(startTime).toISOString(), endTime: new Date(endTime).toISOString(), expectedSeconds, minimumSamples },
+    nodes,
+    fleet: { metrics: fleetMetrics },
+	derived,
+    nonFiniteMetrics,
+    counterRegressions,
+    checks,
+    passed: Object.values(checks).every(Boolean),
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, passed: result.passed, checks }, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function prometheusSamples(content, proxy, nonFiniteMetrics) {
+    const samples = [];
+    let current = null;
+    for (const line of content.split('\n')) {
+        const marker = /^# sample_timestamp_utc=(.+)$/.exec(line);
+        if (marker) {
+            current = { timestamp: new Date(Date.parse(marker[1])).toISOString(), metrics: {} };
+            samples.push(current);
+            continue;
+        }
+        if (!current || line === '' || line.startsWith('#')) continue;
+        const match = /^([A-Za-z_:][A-Za-z0-9_:]*)(?:\{[^}]*\})?\s+([^\s]+)(?:\s+[^\s]+)?$/.exec(line);
+        if (!match || !/^haproxy_(?:frontend|backend|server|listener|process)_/.test(match[1])) continue;
+        const value = Number(match[2]);
+        if (!Number.isFinite(value)) {
+            nonFiniteMetrics.push({ proxy, metric: match[1], raw: match[2], timestamp: current.timestamp });
+            continue;
+        }
+        const aggregate = current.metrics[match[1]] ?? { sum: 0, maxSeries: 0 };
+        aggregate.sum += value;
+        aggregate.maxSeries = Math.max(aggregate.maxSeries, value);
+        current.metrics[match[1]] = aggregate;
+    }
+    return samples;
+}
+
+function dockerSamples(content) {
+    const lines = content.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) return [];
+    const header = lines.shift().split(',');
+    const indexes = Object.fromEntries(header.map((name, index) => [name, index]));
+    return lines.map((line) => {
+        const fields = line.split(',');
+        return {
+            timestamp: new Date(Date.parse(fields[indexes.timestamp_utc])).toISOString(),
+            cpuPercent: percent(fields[indexes.container_cpu_percent]),
+            memoryPercent: percent(fields[indexes.container_memory_percent]),
+            pids: Number(fields[indexes.container_pids]),
+        };
+    });
+}
+
+function hostCpuSamples(content) {
+	const lines = content.trim().split('\n').filter(Boolean);
+	if (lines.length < 2) return [];
+	const header = lines.shift().split('\t');
+	const rows = lines.map((line) => Object.fromEntries(line.trim().split(/\s+/).map((value, index) => [header[index], index === 0 ? value : Number(value)])));
+	const samples = [];
+	for (let index = 1; index < rows.length; index += 1) {
+		const previous = rows[index - 1];
+		const current = rows[index];
+		const fields = ['user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq', 'steal'];
+		const totalDelta = fields.reduce((total, field) => total + Math.max(0, current[field] - previous[field]), 0);
+		const idleDelta = Math.max(0, current.idle - previous.idle);
+		samples.push({ timestamp: new Date(Date.parse(current.timestamp_utc)).toISOString(), idlePercent: totalDelta === 0 ? 0 : idleDelta / totalDelta * 100,
+			procsRunning: current.procs_running, procsBlocked: current.procs_blocked, load1: current.load1 });
+	}
+	return samples;
+}
+
+function parseRuntimeThreadCounts(content) { return [...content.matchAll(/^Threads:\s+([0-9]+)$/gm)].map((match) => Number(match[1])); }
+
+function summarizeMetric(values) {
+    const sums = values.map((value) => value.sum);
+    const seriesMaxima = values.map((value) => value.maxSeries);
+    return {
+        sampleCount: values.length,
+        firstSum: sums[0] ?? 0,
+        lastSum: sums.at(-1) ?? 0,
+        deltaSum: sums.length ? sums.at(-1) - sums[0] : 0,
+        averageSum: average(sums),
+        maxSum: Math.max(0, ...sums),
+        maxSeries: Math.max(0, ...seriesMaxima),
+    };
+}
+
+function summarizeDocker(samples) {
+    return {
+        sampleCount: samples.length,
+        averageCpuPercent: average(samples.map((sample) => sample.cpuPercent)),
+        maxCpuPercent: Math.max(0, ...samples.map((sample) => sample.cpuPercent)),
+        averageMemoryPercent: average(samples.map((sample) => sample.memoryPercent)),
+        maxMemoryPercent: Math.max(0, ...samples.map((sample) => sample.memoryPercent)),
+        maxPids: Math.max(0, ...samples.map((sample) => sample.pids)),
+    };
+}
+
+function summarizeHost(samples) {
+	return { sampleCount: samples.length, idleMedianPercent: quantile(samples.map((sample) => sample.idlePercent), .5),
+		idleP05Percent: quantile(samples.map((sample) => sample.idlePercent), .05), runQueueP95: quantile(samples.map((sample) => sample.procsRunning), .95),
+		blockedProcessesMax: Math.max(0, ...samples.map((sample) => sample.procsBlocked)), load1P95: quantile(samples.map((sample) => sample.load1), .95) };
+}
+
+function inWindow(timestamp) { const epoch = Date.parse(timestamp); return Number.isFinite(epoch) && epoch > startTime && epoch <= endTime; }
+function average(values) { return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0; }
+function quantile(values, fraction) { const finite = values.filter(Number.isFinite).toSorted((left, right) => left - right); return finite.length ? finite[Math.min(finite.length - 1, Math.ceil(finite.length * fraction) - 1)] : 0; }
+function percent(value) {
+    const normalized = String(value ?? '').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').replace(/%$/, '');
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) throw new Error(`invalid percentage: ${value}`);
+    return parsed;
+}
+function readCompressed(directory, name) { const path = join(directory, name); if (!existsSync(path)) throw new Error(`missing ${path}`); return gunzipSync(readFileSync(path)).toString('utf8'); }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }

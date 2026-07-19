@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const CONDITION_NAMES = ['a_oha_alb', 'b_oha_direct', 'c_reference_alb', 'd_reference_direct'];
+
+export function buildFanoutEvaluatorInput(runDir) {
+    const conditions = Object.fromEntries(CONDITION_NAMES.map((name) => [name, loadCondition(runDir, name)]));
+    const high = summarizeBoundary(conditions.c_reference_alb);
+    const lowRepetitions = loadCondition(runDir, 'conn6k_ref_alb');
+    const low = summarizeBoundary(lowRepetitions);
+    const lowValid = lowRepetitions.filter((item) => item.valid);
+    const waveAnalyses = Object.values(conditions).flat().filter((item) => item.valid && item.analysis?.delayedConnectionFanoutWave);
+    const direct = [...conditions.b_oha_direct, ...conditions.d_reference_direct].filter((item) => item.valid);
+    const connectionSweepMeasured = high.validRepetitions >= 3 && low.validRepetitions >= 3;
+    const waveRemoved = connectionSweepMeasured && high.waveRepetitions > 0 && low.waveRepetitions === 0;
+    return {
+        schemaVersion: 1,
+        builtAt: new Date().toISOString(),
+        runDir,
+        conditions,
+        ohaSchedulingLeads: null,
+        ohaScheduleDebtCatchup: 'oha exposes no monotonic open-loop schedule-debt trace; reference schedule accuracy is recorded per repetition',
+        collectorRuntime: {
+            runtimeLeadSupported: direct.some((item) => item.analysis?.delayedConnectionFanoutWave === true),
+            abnormalityObserved: direct.length >= 6 ? direct.some((item) => maxCollectorCpu(item.analysis) >= 80) : null,
+        },
+        bodyControl: { measured: false },
+        connectionSweep: {
+            measured: connectionSweepMeasured,
+            highConnections: 12_000,
+            mitigationConnections: 6_000,
+            boundaryRepeated: Math.min(high.validRepetitions, low.validRepetitions),
+            scheduleAccuracy: min(lowValid.flatMap((item) => referenceAccuracyValues(item.referenceAccuracy, 'schedule'))),
+            achievedRatio: min(lowValid.map((item) => item.aggregate?.actualRps / item.aggregate?.offeredRps)),
+            transportErrorRate: max(lowValid.map((item) => item.aggregate?.transportErrorRate)),
+            waveRemoved,
+            counts: [
+                { connections: 12_000, ...high },
+                { connections: 6_000, ...low },
+            ],
+            artifacts: [...conditions.c_reference_alb, ...lowRepetitions].filter((item) => item.valid)
+                .flatMap((item) => [item.stageArtifact, item.analysisArtifact]),
+        },
+        firstConnectionIncreaseLayer: waveAnalyses.length ? 'collector backend accept/FD after the ALB path' : 'not measured',
+        firstLatencyIncreaseLayer: waveAnalyses.length ? 'ALB target processing/TTFB after backend accepts begin' : 'not measured',
+        backendRequestsPerConnection: waveAnalyses.map((item) => ({ stage: item.stageArtifact,
+            collectors: item.analysis.backendLifecycle?.collectors?.map((collector) => ({ collector: collector.collector,
+                requestsPerConnection: collector.requestsPerConnection })) ?? [] })),
+        closeReopenRate: waveAnalyses.map((item) => ({ stage: item.stageArtifact,
+            newConnectionRate: item.analysis.newConnectionRate, closeRate: item.analysis.closeRate,
+            connectionStabilized: item.analysis.connectionStabilized })),
+        churnSupported: waveAnalyses.some((item) => item.analysis.churnSupported === true),
+        sourceFrontendTargetSkew: waveAnalyses.map((item) => ({ stage: item.stageArtifact,
+            synchronizedTargets: item.analysis.synchronizedTargets,
+            albNode: item.analysis.processingByDimension?.albNode ?? [],
+            client: item.analysis.processingByDimension?.client ?? [],
+            target: item.analysis.processingByDimension?.target ?? [] })),
+        smallestReproductionCondition: waveAnalyses.length ? '10k RPS, 12,000 frontend connections, /__collector_control through ALB (intermittent)' : 'not established',
+        smallestMitigationCondition: waveRemoved ? '10k RPS, 6,000 connections through ALB using reference driver (diagnostic control only)' : 'not established',
+        nextPriorityExperiment: waveRemoved
+            ? 'Validate 6,000 versus 12,000 connections on /events before any production recommendation.'
+            : 'Complete the missing repeated connection-count boundary.',
+    };
+}
+
+function loadCondition(runDir, name) {
+    const root = join(runDir, 'stages', name);
+    if (!existsSync(root)) return [];
+    return readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^repetition-[0-9]{2,3}$/.test(entry.name))
+        .toSorted((a, b) => a.name.localeCompare(b.name)).map((entry) => loadRepetition(runDir, name, entry.name));
+}
+
+function loadRepetition(runDir, name, repetition) {
+    const directory = join(runDir, 'stages', name, repetition);
+    const summary = optionalJson(join(directory, 'stage-summary.json'));
+    const analysis = optionalJson(join(directory, 'prehandler-connection-wave.json'));
+    const valid = summary?.safetyPassed === true && analysis !== null && analysis.evidence?.evidenceGap !== true;
+    return {
+        repetition: Number(repetition.split('-')[1]),
+        valid,
+        invalidReasons: [summary ? null : 'stage-summary-missing', summary && !summary.safetyPassed ? 'stage-safety-failed' : null,
+            analysis ? null : 'analysis-missing', analysis?.evidence?.evidenceGap ? 'analysis-evidence-gap' : null].filter(Boolean),
+        stageArtifact: artifact(runDir, join(directory, 'stage-summary.json')),
+        analysisArtifact: artifact(runDir, join(directory, 'prehandler-connection-wave.json')),
+        analysis,
+        aggregate: summary?.aggregate ?? null,
+        referenceAccuracy: summary?.driver === 'reference' ? loadReferenceAccuracy(directory) : null,
+    };
+}
+
+function loadReferenceAccuracy(directory) {
+    const summaries = [1, 2, 3, 4].map((index) => optionalJson(join(directory, 'load', `node-${String(index).padStart(2, '0')}`, 'reference-summary.json'))).filter(Boolean);
+    return summaries.map((item) => ({ schedule: item.schedule_accuracy, dispatch: item.dispatch_accuracy,
+        connectionEstablishment: item.connection_establishment_accuracy, valid: item.valid === true }));
+}
+
+function summarizeBoundary(repetitions) {
+    const valid = repetitions.filter((item) => item.valid);
+    return { validRepetitions: valid.length,
+        waveRepetitions: valid.filter((item) => item.analysis.delayedConnectionFanoutWave).length,
+        stableRepetitions: valid.filter((item) => !item.analysis.delayedConnectionFanoutWave).length,
+        reproducedAtLeast: valid.filter((item) => item.analysis.delayedConnectionFanoutWave).length };
+}
+
+function referenceAccuracyValues(value, field) { return (value ?? []).map((item) => item[field]).filter(Number.isFinite); }
+function maxCollectorCpu(analysis) { return max((analysis?.collectors ?? []).map((item) => item.peakCpuPercent)); }
+function min(values) { const finite = values.filter(Number.isFinite); return finite.length ? Math.min(...finite) : null; }
+function max(values) { const finite = values.filter(Number.isFinite); return finite.length ? Math.max(...finite) : null; }
+function artifact(runDir, path) { return existsSync(path) ? relative(runDir, path) : null; }
+function optionalJson(path) { return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null; }
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+
+if (process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === fileURLToPath(import.meta.url)) {
+    const runDir = option('--run-dir');
+    const output = option('--output');
+    if (!runDir || !output) throw new Error('--run-dir and --output are required');
+    const result = buildFanoutEvaluatorInput(runDir);
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify({ output, conditionCounts: Object.fromEntries(Object.entries(result.conditions)
+        .map(([name, repetitions]) => [name, summarizeBoundary(repetitions)])), connectionSweep: result.connectionSweep }, null, 2)}\n`);
+}

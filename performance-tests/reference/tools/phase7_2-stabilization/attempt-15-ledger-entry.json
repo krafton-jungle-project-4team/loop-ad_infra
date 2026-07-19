@@ -1,0 +1,192 @@
+{
+  "attemptType": "aws-integration",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1,
+      "postFinalReadonlyInventory": 1
+    },
+    "deadline": "2026-07-19T02:08:28.356862Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "d16a8a3d5a22d17bff107a197893c9f1d0b22eb156d35bcd6f9f770f34e35cb7"
+      },
+      {
+        "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "0b054caee21a19ba9161b8f5218f6e08d41d5ade68f756f268df2fb42408ef7f"
+      },
+      {
+        "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/post-final-readonly-inventory.json",
+        "sha256": "cb6725d2384d96b04cae9babac43a0a9d186bea3bb19e02244da8c8346523ee6"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-19T00:19:11.632615Z",
+    "startToAuthoritativeZeroSeconds": "857.816037"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "28.000000",
+    "admissionMaximumIncludingCleanupUsd": "50.870718",
+    "campaignChargedUpperBoundUsd": "28.000000",
+    "chargedUpperBoundUsd": "16.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-15-cost-explorer-20260719.json",
+    "costExplorerEvidenceSha256": "cb5682f9536b2be9506ffabcf49ecd1ff4e27afe36fde65c99860f7b47e0ff5b",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "99.000000",
+    "maximumIncludingCleanupUsd": "66.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "15.662548",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-15-cost-reconciliation.json",
+    "reconciliationSha256": "cd8530b5f3de5c42e3c959d05b73fb81becf988345180daa1608dad79d839de6"
+  },
+  "evidenceCommit": "ea27e50c7ad4625c668185bca399ca61dd657f40",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260718_225218_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260718_225218_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260718_224059_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "The archive task overlapped the score window exactly once. The Phase 7 ClickHouse container was capped at 5120 MiB and max_server_memory_usage at 5261334937 bytes while the archive query could use 4831838208 bytes. Concurrent ingestion/merge and Parquet re-read reached the 4.90 GiB server cap, so COMMITTED could not be produced or re-read and source DROP remained forbidden.",
+    "diagnosisEvidencePath": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/archive-failure-diagnosis.json",
+    "diagnosisEvidenceSha256": "d8ccb9eadea185ca7d87f3ba84bf8e1d858b652615151b2125cc53d33dd8bd70",
+    "firstFailingGate": "warmup-strict-acceptance",
+    "rawAwsError": "ClickHouse HTTP 500: Code 241 MEMORY_LIMIT_EXCEEDED; would use 4.68 GiB while attempting 5.04 MiB, current RSS 4.90 GiB, maximum 4.90 GiB.",
+    "rawEvidencePath": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/control/score_archive.attempt-1.stderr.log",
+    "rawEvidenceSha256": "d9efed354d8075f77b55a145d7488433449f106089b679728d4cef0851efa97b",
+    "runnerError": "Error: archive task failed with exit code 1; RuntimeError: score orchestration failed",
+    "terminalHardStopGate": "score_archive",
+    "warmupDeviation": {
+      "actualRps": 50035.67091265394,
+      "correctedP95Ms": 97.2803673,
+      "http429": 29104,
+      "transportErrors": 8587
+    },
+    "scoreDeviation": {
+      "actualRps": 50021.91623103401,
+      "correctedP95Ms": 134.5373408,
+      "http429": 61714,
+      "transportErrors": 8824
+    }
+  },
+  "fix": {
+    "applied": "Increase only Phase 7 ClickHouse container memory to 8192 MiB and server memory to 7516192768 bytes while retaining the 4831838208-byte archive query limit, r7g.2xlarge, EBS, CPU and Phase 6 settings.",
+    "fixCommit": "6ab37d964d8af9c0794e11df023ec095d5a04eae",
+    "freshLocalHandoff": {
+      "implementationTreeSha256": "29d564649da7a3a683c3ebf69bb6147a249783804497de44000825349b428530",
+      "path": "performance-tests/run_20260719_003944_phase7_1_local_integration/local-handoff.json",
+      "sha256": "7d3a4b38fc3c4e94f25e42534468a57adcd3f5f848557c794f7ecf3f3c4966a0",
+      "status": "passed"
+    },
+    "verification": {
+      "build": "passed",
+      "cfnLintAcceptedE1022": 8,
+      "cfnLintAcceptedW3005": 3,
+      "cfnLintUnexpectedFindings": 0,
+      "dockerComposeConfig": "passed",
+      "focusedJestTests": 15,
+      "focusedPythonTests": 15,
+      "nodeTests": 27,
+      "phase7JestTests": 15,
+      "pythonTests": 140,
+      "status": "passed"
+    },
+    "verificationCommit": "97426d64b8437857f0d65b0f66273fe9441d9fe8",
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-15-fix-verification.json",
+    "verificationSha256": "487e1c06c9fb3fd90c57753f953461bcd6a3f19cd9f81f9466946bbd2663091a"
+  },
+  "gitCommit": "112d4c03cfcd90192fd7b0a1fa55e77949d01ef9",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "f3ff36130ba7b62cc25ab7f6d79a86fa26445ce67d434c08a8c8187059a854a1",
+    "commandSeal": "dcc61d8d33fc6cd08ae1b1c9969bd4063a7fc5ddc845e059580aa0a1e7517cf5",
+    "commandSet": "e2bbbc1ea53c8952738725587f7f7b025d106948cdbde1dd4eb9c5de5df29c48",
+    "costModel": "f15ad615ed01a1252240173b0f930706c6f216c20125fad8168bffce0401fd3f",
+    "identityContract": "6b3ab99914289e350cffbd1c888001793a465a7ece81eb00194e50779155541e",
+    "imageManifest": "370d79956eefc1e6ec4f2cec9f4c1f33e5bf495afc246bc6ac670b0736ab6de4",
+    "localHandoff": "05bad29ccba062f7bac76a1170e5e3b0e73df56585d4defb00d664f7f00f4b5a",
+    "preparedPreflight": "3b750efc75d85770f00ab2cf35562d660e3ccddc62cce948e685c629c7b57fae",
+    "runtimeTemplate": "279bd55626eefc219954adcb014e585f0e918cc98db550a3f32eb342482abb7b"
+  },
+  "implementationTreeSha256": "6c5ca7f2f91dd51c6dd398346d493333705d166dc63c3ba0b8cad2f574a8def5",
+  "ordinal": 15,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T02:08:28.356862Z",
+    "elapsedSeconds": "3043.275753",
+    "endedAt": "2026-07-19T00:19:11.632615Z",
+    "hardDeadline": "2026-07-19T02:28:28.356862Z",
+    "startedAt": "2026-07-18T23:28:28.356862Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "35272344eacbb7ce9bb92c00871cca14f5c87a6c0de7aada6157465c72f60880",
+  "readinessCommit": "5939f196ced5c15c1e0fc32071d9283739cef48a",
+  "runId": "run_20260718_225218_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "cb1736121ac977213edc8ea69956ecbe2f1d8ab7",
+  "sealedCommandSetSha256": "e2bbbc1ea53c8952738725587f7f7b025d106948cdbde1dd4eb9c5de5df29c48",
+  "sessionId": "phase7-integration-20260718T225218Z",
+  "stageAttemptCounts": {
+    "archive": 1,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 1,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 1,
+    "seed": 1,
+    "verify": 1,
+    "warmup": 1
+  },
+  "terminalEvidenceHashes": {
+    "archiveAttempt": "e963db3dd5e76af13808fabcf500dd520e06688f9d19de0732828e0c80d6c8d6",
+    "archiveFailureDiagnosis": "d8ccb9eadea185ca7d87f3ba84bf8e1d858b652615151b2125cc53d33dd8bd70",
+    "archiveTask": "82347f6041be2a011b5814861516ef6194ee81af73c262b9aeef396fdbe3b603",
+    "archiveValidation": "c68ce610afeb7dec7678e468d69babbbb5978ca03086d3ca6d45226315796c2e",
+    "cleanupInventory": "d16a8a3d5a22d17bff107a197893c9f1d0b22eb156d35bcd6f9f770f34e35cb7",
+    "cleanupVerification": "0b054caee21a19ba9161b8f5218f6e08d41d5ade68f756f268df2fb42408ef7f",
+    "commands": "89fc18f9327c6adae28a473e0f3033bd7ed3eef9ee6ca1334eb3340e4de9023f",
+    "correctness": "bc5cdea4ed312fcb06c201c156bf64aed4c7a77129f83e98193abff35368251f",
+    "costReconciliation": "cd8530b5f3de5c42e3c959d05b73fb81becf988345180daa1608dad79d839de6",
+    "costStatus": "b09a51df34b91f58cd196ec6c5193623108b20e991e453d66107ca1e60d5ecbd",
+    "deploymentVerification": "de89ea9a38bfc64d9ecfec4802b6b481f4de391cd4899b3055ebb9f8fbe01cad",
+    "failures": "c79e908586188ced0ea97f1a8de25b2b7c90d2b9cf2bd4348212f291a31a039e",
+    "finalEvaluation": "02e42d23c4826cb5dceb04b5e49df63eeb6dae4c8e8a56136d556a4c55aa66ca",
+    "finalEvidenceStatus": "449e2231dd02ecf8382cc56395a08a256895e3392019f63e6a3cde19d5ec4d6d",
+    "fixVerification": "487e1c06c9fb3fd90c57753f953461bcd6a3f19cd9f81f9466946bbd2663091a",
+    "improvementBacklog": "78d39af67c35e9fc811eeb70535a1364efab23714c177dbaf4ec75e91a4e1094",
+    "infra": "36ded7ac9bc1eef1ad2d8bb9470de24ee28f68be11133f319d52640399fd29db",
+    "metricsSummary": "d305f97643a985066fe8f110a520af59ea272cdb7dc16af5ec05e827f3adf55b",
+    "postFinalReadonlyInventory": "cb6725d2384d96b04cae9babac43a0a9d186bea3bb19e02244da8c8346523ee6",
+    "report": "a3d03cef9b482f97be6e623f256b9113bcbd4e50e53244324d2020774671c84a",
+    "run": "17ed87913d327dc831b731044822ab338b428a22633e1e185e8f5c25df0cbb7c",
+    "scorePostmortemAggregate": "6cd58128ec2a8f76f7a889ff3f36d381e2e291f98bdd40b684dcc117b235fd01",
+    "seed": "bb34edcbc730e5856fa500bbe821122fe91fa6e5da08f5a4ab4d34f187ccdcb1",
+    "warmup": "fca064407365a1ecd3ecec8f659c7a2e7ff9a4fa9da8d5eeefe65b2b77829d60"
+  },
+  "verdict": "failed",
+  "entrySha256": "3e70802108d7b43920e07eac23f9363c771f41b99ecc07c4ecc935de6a145a32"
+}

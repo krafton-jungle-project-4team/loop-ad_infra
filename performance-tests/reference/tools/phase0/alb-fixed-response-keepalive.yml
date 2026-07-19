@@ -1,0 +1,33 @@
+config:
+  target: "http://127.0.0.1"
+  payload:
+    path: "./payloads/sdk-compatible-event-bodies.tsv"
+    fields:
+      - "body_json"
+      - "payload_size_profile"
+      - "payload_actual_bytes"
+    skipHeader: true
+    delimiter: "\t"
+    cast: false
+    options:
+      quote: false
+    order: sequence
+  phases:
+    - name: "2500 persistent VUs ramp"
+      duration: 30
+      arrivalCount: 2500
+  defaults:
+    headers:
+      content-type: "application/json"
+  http:
+    timeout: 10
+    maxSockets: 1
+scenarios:
+  - name: "POST ALB fixed response with keep-alive VU loop"
+    flow:
+      - loop:
+          - post:
+              url: "/__fixed"
+              body: "{{ body_json }}"
+          - think: 0.15
+        count: 750

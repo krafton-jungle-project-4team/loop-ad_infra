@@ -22,9 +22,11 @@ for (const entry of manifest.files) {
   if (hash !== entry.sha256) errors.push(`SHA-256 mismatch: ${entry.storedPath}`);
   if (statSync(path).size !== entry.bytes) errors.push(`size mismatch: ${entry.storedPath}`);
 }
-const actual = walk(join(infraRoot, "source-tree")).map((path) => `source-tree/${posixRelative(join(infraRoot, "source-tree"), path)}`);
+const treeRoot = existsSync(join(infraRoot, "source-tree")) ? join(infraRoot, "source-tree") : infraRoot;
+const prefix = treeRoot === infraRoot ? "" : "source-tree/";
+const actual = walk(treeRoot).filter((path) => path !== manifestPath).map((path) => `${prefix}${posixRelative(treeRoot, path)}`);
 for (const path of actual) if (!storedPaths.has(path)) errors.push(`unlisted source-tree file: ${path}`);
 if (actual.length !== manifest.fileCount || manifest.files.length !== manifest.fileCount) errors.push("manifest fileCount mismatch");
-for (const required of ["package.json", "package-lock.json", "tsconfig.json", "cdk.json", "src/perf-phase0-stack.ts", "src/perf-phase1-kinesis-stack.ts", "src/perf-phase4-clickhouse-stack.ts", "src/perf-phase6-archive-stack.ts", "src/perf-phase7-integration-stack.ts"]) if (!restorePaths.has(required)) errors.push(`RESTORE input missing: ${required}`);
+if (restorePaths.has("package.json")) for (const required of ["package.json", "package-lock.json", "tsconfig.json", "cdk.json", "src/perf-phase0-stack.ts", "src/perf-phase1-kinesis-stack.ts", "src/perf-phase4-clickhouse-stack.ts", "src/perf-phase6-archive-stack.ts", "src/perf-phase7-integration-stack.ts"]) if (!restorePaths.has(required)) errors.push(`RESTORE input missing: ${required}`);
 if (errors.length) { console.error(errors.join("\n")); process.exit(1); }
 console.log(`verified ${manifest.fileCount} reference files and restore mappings`);

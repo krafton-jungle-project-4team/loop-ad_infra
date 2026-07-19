@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { analyzeCapacityTopology } from './capacity-topology.mjs';
+
+const REGION = 'ap-northeast-2';
+const CLUSTER = 'perf-phase1-loop-ad-collector-cluster';
+const SERVICE = 'perf-phase1-loop-ad-collector';
+const imageDigest = requiredOption('--image-digest');
+const output = requiredOption('--output');
+const expectedCollectorCount = integerOption('--expected-collector-count', 4);
+const expectedInstanceType = optionValue('--expected-instance-type') ?? 'c6i.xlarge';
+const targetGroupArn = optionValue('--target-group-arn');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid --image-digest');
+if (targetGroupArn && !/^arn:aws:elasticloadbalancing:ap-northeast-2:[0-9]{12}:targetgroup\/[a-z0-9-]+\/[0-9a-f]+$/.test(targetGroupArn)) throw new Error('invalid --target-group-arn');
+
+const service = awsJson(['ecs', 'describe-services', '--region', REGION, '--cluster', CLUSTER, '--services', SERVICE]).services?.[0];
+const taskArns = awsJson(['ecs', 'list-tasks', '--region', REGION, '--cluster', CLUSTER,
+    '--service-name', SERVICE, '--desired-status', 'RUNNING']).taskArns ?? [];
+const tasks = taskArns.length === 0 ? [] : awsJson(['ecs', 'describe-tasks', '--region', REGION,
+    '--cluster', CLUSTER, '--tasks', ...taskArns, '--include', 'TAGS']).tasks ?? [];
+const containerInstanceArns = [...new Set(tasks.map((task) => task.containerInstanceArn).filter(Boolean))];
+const containerInstances = containerInstanceArns.length === 0 ? [] : awsJson(['ecs', 'describe-container-instances',
+    '--region', REGION, '--cluster', CLUSTER, '--container-instances', ...containerInstanceArns]).containerInstances ?? [];
+const instanceIds = containerInstances.map((instance) => instance.ec2InstanceId).filter(Boolean);
+const ec2Instances = instanceIds.length === 0 ? [] : awsJson(['ec2', 'describe-instances', '--region', REGION,
+    '--instance-ids', ...instanceIds, '--query', 'Reservations[].Instances[]']);
+const topology = analyzeCapacityTopology({ tasks, containerInstances, ec2Instances, expectedDigest: imageDigest,
+    expectedCollectorCount, expectedInstanceType });
+const targetGroup = awsJson(['elbv2', 'describe-target-groups', '--region', REGION,
+    ...(targetGroupArn ? ['--target-group-arns', targetGroupArn] : ['--names', 'perf-phase1-loop-ad-collector'])]).TargetGroups?.[0];
+const targets = targetGroup ? awsJson(['elbv2', 'describe-target-health', '--region', REGION,
+    '--target-group-arn', targetGroup.TargetGroupArn]).TargetHealthDescriptions ?? [] : [];
+const stoppedArns = awsJson(['ecs', 'list-tasks', '--region', REGION, '--cluster', CLUSTER,
+    '--service-name', SERVICE, '--desired-status', 'STOPPED', '--max-results', '100']).taskArns ?? [];
+const stoppedTasks = stoppedArns.length === 0 ? [] : awsJson(['ecs', 'describe-tasks', '--region', REGION,
+    '--cluster', CLUSTER, '--tasks', ...stoppedArns]).tasks ?? [];
+const badStoppedTasks = stoppedTasks.filter((task) => /(oom|out of memory|panic|fatal)/i.test(JSON.stringify(task)) ||
+    (task.containers ?? []).some((container) => container.exitCode === 137));
+const checks = {
+    topologyPassed: topology.passed,
+    serviceExactlyFourStable: service?.desiredCount === expectedCollectorCount && service?.runningCount === expectedCollectorCount && service?.pendingCount === 0 &&
+        service?.deployments?.length === 1 && service.deployments[0].rolloutState === 'COMPLETED',
+    exactlyFourHealthyTargets: targets.length === expectedCollectorCount && targets.every((target) => target.TargetHealth?.State === 'healthy'),
+    noOomPanicOrFatalStoppedTask: badStoppedTasks.length === 0,
+};
+const result = {
+    collectedAt: new Date().toISOString(), imageDigest, expectedCollectorCount, expectedInstanceType, topology,
+    service: service ? {
+        serviceArn: service.serviceArn, taskDefinition: service.taskDefinition,
+        desiredCount: service.desiredCount, runningCount: service.runningCount,
+        pendingCount: service.pendingCount, deployments: service.deployments, events: service.events?.slice(0, 20),
+    } : null,
+    targets,
+    stoppedTasks: stoppedTasks.map((task) => ({
+        taskArn: task.taskArn, stoppedAt: task.stoppedAt, stopCode: task.stopCode,
+        stoppedReason: task.stoppedReason, containers: task.containers?.map((container) => ({
+            name: container.name, exitCode: container.exitCode, reason: container.reason,
+        })),
+    })),
+    badStoppedTaskArns: badStoppedTasks.map((task) => task.taskArn),
+    checks, passed: Object.values(checks).every(Boolean),
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function integerOption(name, fallback) {
+    const raw = optionValue(name);
+    const value = raw === undefined ? fallback : Number(raw);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`);
+    return value;
+}

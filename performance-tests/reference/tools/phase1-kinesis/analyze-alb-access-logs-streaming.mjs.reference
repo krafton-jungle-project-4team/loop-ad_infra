@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+
+import { createReadStream, readdirSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { createGunzip } from 'node:zlib';
+import {
+    addAlbAccessLogRecord,
+    createAlbAccessLogSummary,
+    finalizeAlbAccessLogSummary,
+    parseAlbAccessLogLine,
+} from './alb-access-log.mjs';
+
+const rawDir = requiredOption('--raw-dir');
+const output = requiredOption('--output');
+const measurementStart = requiredDate('--measurement-start');
+const measurementEnd = requiredDate('--measurement-end');
+const expectedNodeCount = integerOption('--expected-node-count', 2);
+if (measurementEnd <= measurementStart) throw new Error('invalid measurement interval');
+
+const files = readdirSync(rawDir).filter((name) => name.endsWith('.log.gz')).sort();
+const full = createAlbAccessLogSummary();
+const measurement = createAlbAccessLogSummary();
+const sourceNodes = new Set();
+const errors = [];
+let errorCount = 0;
+let earliestResponseTime = null;
+let latestResponseTime = null;
+
+for (const file of files) {
+    const source = basename(file);
+    const nodeMatch = /_([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)_[^/]+\.log\.gz$/.exec(source);
+    if (nodeMatch) sourceNodes.add(nodeMatch[1]);
+    const lines = createInterface({ input: createReadStream(join(rawDir, file)).pipe(createGunzip()), crlfDelay: Infinity });
+    let lineNumber = 0;
+    for await (const line of lines) {
+        lineNumber += 1;
+        if (!line.trim()) continue;
+        try {
+            const record = parseAlbAccessLogLine(line, { source, line: lineNumber });
+            addAlbAccessLogRecord(full, record);
+            const responseMs = Date.parse(record.responseTime);
+            if (Number.isFinite(responseMs)) {
+                if (earliestResponseTime === null || responseMs < Date.parse(earliestResponseTime)) earliestResponseTime = record.responseTime;
+                if (latestResponseTime === null || responseMs > Date.parse(latestResponseTime)) latestResponseTime = record.responseTime;
+            }
+            const requestMs = Date.parse(record.requestCreationTime ?? record.responseTime);
+            if (Number.isFinite(requestMs) && requestMs >= measurementStart.getTime() && requestMs < measurementEnd.getTime()) {
+                addAlbAccessLogRecord(measurement, record);
+            }
+        } catch (error) {
+            errorCount += 1;
+            if (errors.length < 100) errors.push({ source, line: lineNumber, error: String(error.message ?? error) });
+        }
+    }
+}
+
+const checks = {
+    zeroParseErrors: errorCount === 0,
+    recordsPresent: full.count > 0,
+    expectedNodesPresent: sourceNodes.size >= expectedNodeCount,
+    startsBeforeMeasurement: earliestResponseTime !== null && Date.parse(earliestResponseTime) <= measurementStart.getTime(),
+    endsAfterMeasurement: latestResponseTime !== null && Date.parse(latestResponseTime) >= measurementEnd.getTime(),
+    measurementRecordsPresent: measurement.count > 0,
+};
+const passed = Object.values(checks).every(Boolean);
+const result = {
+    analyzedAt: new Date().toISOString(),
+    analyzer: 'line-streaming',
+    rawFiles: files,
+    measurement: {
+        start: measurementStart.toISOString(),
+        end: measurementEnd.toISOString(),
+        durationSeconds: (measurementEnd - measurementStart) / 1_000,
+    },
+    completeness: {
+        status: passed ? 'complete-enough-for-analysis' : 'access-log-inconclusive',
+        note: 'ALB access logs are best-effort; these checks establish file/time/node coverage, not complete request accounting.',
+        sourceNodes: [...sourceNodes].sort(),
+        expectedNodeCount,
+        earliestResponseTime,
+        latestResponseTime,
+        checks,
+    },
+    parse: { recordCount: full.count, errorCount, errors },
+    full: finalizeAlbAccessLogSummary(full),
+    measurementWindow: finalizeAlbAccessLogSummary(measurement),
+    passed,
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({
+    analyzedAt: result.analyzedAt,
+    measurement: result.measurement,
+    completeness: result.completeness,
+    parse: result.parse,
+    measurementWindow: result.measurementWindow,
+    passed,
+}, null, 2)}\n`);
+if (!passed) process.exitCode = 2;
+
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function requiredDate(name) { const value = new Date(requiredOption(name)); if (!Number.isFinite(value.getTime())) throw new Error(`${name} must be ISO time`); return value; }
+function integerOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }

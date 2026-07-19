@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-19T04:01:52Z",
+  "runId": "run_20260719_034506_phase7_1_local_integration",
+  "sessionId": "phase7-local-20260719_034506-86222",
+  "attemptType": "phase7-1-whole-local",
+  "verdict": "failed",
+  "firstFailingGate": "docker-compose-readiness",
+  "rawError": "ResourceInUseException: Stream phase7-local-events already exists; phase7-init.sh returned non-zero exit code 255; localstack service remained unhealthy",
+  "diagnosis": "The LocalStack ready hook used non-idempotent create operations. A repeated or overlapping ready-hook invocation observed the stream created by the first invocation, exited before writing /tmp/phase7-init-complete, and made the Compose health gate fail before local_runner.py started.",
+  "awsImpact": "none; no real AWS request was attempted and no paid resource was created",
+  "immutableEvidence": {
+    "composeLog": {
+      "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/compose.log",
+      "sha256": "4cbc76d4ad32c51f3d9ce19ffdb92ee6f7504495be2dea676df27541029dd7c1"
+    },
+    "localHandoff": {
+      "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/local-handoff.json",
+      "sha256": "986306b63239551df712d15cc36e35f402dfbdf2383cfcedcd403e68923ec283"
+    },
+    "cleanupVerification": {
+      "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/cleanup-verification.json",
+      "sha256": "0cbb1d5d9baa96bd9c9b5bda387d10ddc9098b424af5a973c934489635750543"
+    }
+  },
+  "cleanup": {
+    "status": "passed",
+    "evidenceInventory": {
+      "containers": [],
+      "networks": [],
+      "volumes": []
+    },
+    "independentDockerReadback": {
+      "ownedContainers": [],
+      "ownedNetworks": [],
+      "ownedVolumes": [],
+      "unrelatedRunningContainerPreserved": "kakao-menu-monitor"
+    }
+  },
+  "fix": {
+    "summary": "Make stream, secret, and bucket bootstrap check-before-create and race-safe by accepting a failed create only when an authoritative read confirms that the exact resource now exists.",
+    "files": [
+      "performance-tests/phase7-integration/localstack-init.sh",
+      "performance-tests/phase7-integration/tests/test_local_runner.py"
+    ],
+    "commit": "43863d9560bd3d075a228385c2f566d860ced710"
+  },
+  "focusedVerification": {
+    "shellSyntax": "passed",
+    "localRunnerTests": {
+      "status": "passed",
+      "passed": 12,
+      "failed": 0,
+      "includesDoubleBootstrap": true
+    },
+    "diffCheck": "passed"
+  },
+  "nextRequiredAction": "Commit the focused local-bootstrap fix, then create one fresh whole Phase 7-1 run and never reuse this failed directory."
+}

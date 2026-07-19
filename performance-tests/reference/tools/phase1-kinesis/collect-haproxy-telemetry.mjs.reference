@@ -1,0 +1,203 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
+
+const REGION = 'ap-northeast-2';
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const stageLabel = requiredOption('--stage-label');
+const repetition = requiredInteger('--repetition');
+const durationSeconds = requiredInteger('--duration-seconds');
+const startEpoch = requiredInteger('--start-epoch');
+const evidenceBucket = requiredOption('--evidence-bucket');
+const evidencePrefix = requiredOption('--evidence-prefix').replace(/\/$/, '');
+const outputDir = requiredOption('--output-dir');
+const resume = process.argv.includes('--resume');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (!/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel) || repetition < 1 || repetition > 999) throw new Error('invalid stage identity');
+if (durationSeconds < 1 || durationSeconds > 1_500 || (!resume && startEpoch < Math.floor(Date.now() / 1_000))) throw new Error('invalid telemetry window');
+if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(evidenceBucket) || !/^[A-Za-z0-9][A-Za-z0-9_./=-]{0,255}$/.test(evidencePrefix)) throw new Error('invalid evidence destination');
+if (evidencePrefix !== `${sessionId}/${runId}/proxy-evidence/${stageLabel}/repetition-${String(repetition).padStart(2, '0')}`) throw new Error('proxy-evidence prefix does not match stage ownership');
+
+mkdirSync(outputDir, { recursive: true });
+const proxies = instances();
+if (proxies.length !== 2 || new Set(proxies.map((item) => item.availabilityZone)).size !== 2 ||
+    proxies.some((item) => item.runId !== runId || item.sessionId !== sessionId)) throw new Error('expected two run-owned proxy instances in distinct AZs');
+writeJson(join(outputDir, 'topology.json'), { collectedAt: new Date().toISOString(), proxies });
+
+const collectionStartPath = join(outputDir, 'collection-start.json');
+const createInvocations = () => proxies.map((proxy, index) => {
+    const nodeId = `proxy-${String(index + 1).padStart(2, '0')}`;
+    const key = `${evidencePrefix}/${nodeId}/haproxy-telemetry.tgz`;
+    const remoteDir = `/tmp/loopad-haproxy-telemetry/${runId}-${stageLabel}-${repetition}`;
+    const command = `set -euo pipefail
+rm -rf '${remoteDir}'
+mkdir -p '${remoteDir}/ss-tin'
+now=$(date +%s); if [ '${startEpoch}' -gt "$now" ]; then sleep $((${startEpoch} - now)); fi
+container_id=$(docker ps --filter 'label=com.amazonaws.ecs.container-name=haproxy' --format '{{.ID}}' | head -n 1)
+test -n "$container_id"
+docker inspect "$container_id" > '${remoteDir}/container-inspect.json'
+docker exec "$container_id" sh -c 'haproxy -vv; for status in /proc/[0-9]*/status; do printf "\n%s\n" "$status"; grep -E "^(Name|Pid|PPid|Threads|Cpus_allowed_list):" "$status"; done' > '${remoteDir}/haproxy-runtime.txt' 2>&1
+docker exec "$container_id" sha256sum /tmp/haproxy.cfg > '${remoteDir}/haproxy-config.sha256'
+docker exec "$container_id" haproxy -c -V -f /tmp/haproxy.cfg > '${remoteDir}/haproxy-config-validation.txt' 2>&1
+printf 'timestamp_utc,container_cpu_percent,container_memory_usage_and_limit,container_memory_percent,container_net_io,container_block_io,container_pids\n' > '${remoteDir}/docker-stats.csv'
+: > '${remoteDir}/docker-stats.stderr'
+: > '${remoteDir}/haproxy-prometheus.log'
+: > '${remoteDir}/haproxy-stats.csv.log'
+: > '${remoteDir}/host-network.log'
+printf 'timestamp_utc\tuser\tnice\tsystem\tidle\tiowait\tirq\tsoftirq\tsteal\tprocs_running\tprocs_blocked\tload1\trunnable\tprocesses\n' > '${remoteDir}/host-cpu.tsv'
+(
+  set +e
+  timeout --signal=TERM --kill-after=5s '${durationSeconds}s' docker stats --format '{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDs}}' "$container_id" 2>> '${remoteDir}/docker-stats.stderr' |
+    while IFS= read -r line; do printf '%s,%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$line"; done >> '${remoteDir}/docker-stats.csv'
+  docker_stats_rc=\${PIPESTATUS[0]}
+  if [ "$docker_stats_rc" -ne 0 ] && [ "$docker_stats_rc" -ne 124 ]; then exit "$docker_stats_rc"; fi
+) &
+docker_stats_pid=$!
+for sample in $(seq 1 '${durationSeconds}'); do
+  if [ -e '${remoteDir}/abort-requested' ]; then break; fi
+  sample_epoch=$((${startEpoch} + sample - 1))
+  now=$(date +%s)
+  if [ "$sample_epoch" -gt "$now" ]; then sleep_seconds=$((sample_epoch - now)); sleep "$sleep_seconds"; fi
+  timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  printf '# sample_timestamp_utc=%s\n' "$timestamp" >> '${remoteDir}/haproxy-prometheus.log'
+  curl -fsS --connect-timeout 1 --max-time 1 http://127.0.0.1:8404/metrics >> '${remoteDir}/haproxy-prometheus.log'
+  printf '\n' >> '${remoteDir}/haproxy-prometheus.log'
+  printf '# sample_timestamp_utc=%s\n' "$timestamp" >> '${remoteDir}/haproxy-stats.csv.log'
+  curl -fsS --connect-timeout 1 --max-time 1 'http://127.0.0.1:8404/stats;csv' >> '${remoteDir}/haproxy-stats.csv.log'
+  printf '\n' >> '${remoteDir}/haproxy-stats.csv.log'
+  if [ $((sample % 30)) -eq 1 ]; then
+    ss_output='${remoteDir}/ss-tin/sample-'$(printf '%04d' "$sample")'.log'
+    ( set +e; timeout --signal=TERM --kill-after=1s 2s ss -tin > "$ss_output" 2>&1; rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ] ) &
+  fi
+  cpu_fields=$(awk '/^cpu / {print $2, $3, $4, $5, $6, $7, $8, $9}' /proc/stat)
+  procs_running=$(awk '/^procs_running / {print $2}' /proc/stat)
+  procs_blocked=$(awk '/^procs_blocked / {print $2}' /proc/stat)
+  load_fields=$(awk '{split($4, procs, "/"); print $1, procs[1], procs[2]}' /proc/loadavg)
+  printf '%s\t%s\t%s\t%s\t%s\n' "$timestamp" "$cpu_fields" "$procs_running" "$procs_blocked" "$load_fields" >> '${remoteDir}/host-cpu.tsv'
+  { printf 'sample_timestamp_utc=%s sample=%s\n' "$timestamp" "$sample"; ss -s; nstat -az; cat /proc/net/softnet_stat; cat /proc/net/snmp; cat /proc/net/netstat; cat /proc/interrupts; cat /proc/softirqs; cat /sys/fs/cgroup/cpu.stat 2>/dev/null || true; } >> '${remoteDir}/host-network.log'
+done
+aborted=false
+if [ -e '${remoteDir}/abort-requested' ]; then
+  aborted=true
+  kill "$docker_stats_pid" 2>/dev/null || true
+  wait "$docker_stats_pid" 2>/dev/null || true
+else
+  wait "$docker_stats_pid"
+fi
+wait
+printf '{"aborted":%s,"packaged_at":"%s"}\n' "$aborted" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > '${remoteDir}/telemetry-state.json'
+docker logs --since '${durationSeconds}s' "$container_id" > '${remoteDir}/haproxy.log' 2>&1
+gzip -9 '${remoteDir}/docker-stats.csv' '${remoteDir}/docker-stats.stderr' '${remoteDir}/haproxy-prometheus.log' '${remoteDir}/haproxy-stats.csv.log' '${remoteDir}/host-cpu.tsv' '${remoteDir}/host-network.log' '${remoteDir}/haproxy.log'
+gzip -9 '${remoteDir}/container-inspect.json' '${remoteDir}/haproxy-runtime.txt' '${remoteDir}/haproxy-config.sha256' '${remoteDir}/haproxy-config-validation.txt'
+find '${remoteDir}/ss-tin' -type f -name '*.log' -exec gzip -9 {} +
+tar -C '${remoteDir}' -czf '${remoteDir}/haproxy-telemetry.tgz' telemetry-state.json container-inspect.json.gz haproxy-runtime.txt.gz haproxy-config.sha256.gz haproxy-config-validation.txt.gz docker-stats.csv.gz docker-stats.stderr.gz haproxy-prometheus.log.gz haproxy-stats.csv.log.gz host-cpu.tsv.gz host-network.log.gz haproxy.log.gz ss-tin
+sha256sum '${remoteDir}/haproxy-telemetry.tgz' > '${remoteDir}/sha256.txt'
+aws s3 cp '${remoteDir}/haproxy-telemetry.tgz' 's3://${evidenceBucket}/${key}' --region '${REGION}' --only-show-errors
+printf 'ARTIFACT_S3_URI=s3://${evidenceBucket}/${key}\n'
+cat '${remoteDir}/sha256.txt'`;
+    const response = awsJson(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', proxy.instanceId, '--timeout-seconds', `${durationSeconds + 360}`,
+        '--parameters', JSON.stringify({ commands: [command], executionTimeout: [`${durationSeconds + 300}`] }),
+        '--comment', `${runId} ${stageLabel} HAProxy telemetry`]);
+    return { ...proxy, nodeId, commandId: response.Command.CommandId, key };
+});
+const invocations = resume ? resumedInvocations(collectionStartPath, proxies) : createInvocations();
+if (!resume) {
+    writeJson(collectionStartPath, {
+        createdAt: new Date().toISOString(), runId, sessionId, stageLabel, repetition, startEpoch, durationSeconds, invocations,
+    });
+}
+
+const results = [];
+for (const invocation of invocations) {
+    const result = await waitInvocation(invocation.commandId, invocation.instanceId, durationSeconds + 360);
+    const uri = `s3://${evidenceBucket}/${invocation.key}`;
+    if (result.Status !== 'Success' || result.ResponseCode !== 0 || !result.StandardOutputContent?.includes(`ARTIFACT_S3_URI=${uri}`)) {
+        throw new Error(`HAProxy telemetry failed for ${invocation.instanceId}: ${result.Status} ${result.StandardErrorContent ?? ''}`);
+    }
+    const nodeDir = join(outputDir, invocation.nodeId);
+    mkdirSync(nodeDir, { recursive: true });
+    const archive = join(nodeDir, 'haproxy-telemetry.tgz');
+    awsExec(['s3', 'cp', uri, archive, '--region', REGION, '--only-show-errors']);
+    execFileSync('tar', ['-xzf', archive, '-C', nodeDir]);
+    const sha256 = result.StandardOutputContent.trim().split('\n').at(-1)?.split(/\s+/)[0];
+    const sampleCounts = {
+        dockerStats: Math.max(0, nonemptyLineCount(join(nodeDir, 'docker-stats.csv.gz')) - 1),
+        prometheus: markerCount(join(nodeDir, 'haproxy-prometheus.log.gz'), '# sample_timestamp_utc='),
+        statsCsv: markerCount(join(nodeDir, 'haproxy-stats.csv.log.gz'), '# sample_timestamp_utc='),
+        hostNetwork: markerCount(join(nodeDir, 'host-network.log.gz'), 'sample_timestamp_utc='),
+		hostCpu: Math.max(0, nonemptyLineCount(join(nodeDir, 'host-cpu.tsv.gz')) - 1),
+    };
+	const runtimeConfigSha256 = readText(join(nodeDir, 'haproxy-config.sha256.gz')).trim().split(/\s+/)[0];
+	const configValidationPassed = readText(join(nodeDir, 'haproxy-config-validation.txt.gz')).includes('Configuration file is valid');
+	const runtimeEvidencePresent = nonemptyLineCount(join(nodeDir, 'haproxy-runtime.txt.gz')) > 0 && nonemptyLineCount(join(nodeDir, 'container-inspect.json.gz')) > 0 &&
+		/^[0-9a-f]{64}$/.test(runtimeConfigSha256) && configValidationPassed;
+    const minimumSamples = Math.max(1, durationSeconds - 2);
+    const samplesComplete = Object.values(sampleCounts).every((count) => count >= minimumSamples);
+	writeJson(join(nodeDir, 'ssm-invocation.json'), { ...invocation, status: result.Status, responseCode: result.ResponseCode, artifactS3Uri: uri, sha256, sampleCounts, minimumSamples, samplesComplete, runtimeConfigSha256, configValidationPassed, runtimeEvidencePresent });
+    unlinkSync(archive);
+	results.push({ nodeId: invocation.nodeId, instanceId: invocation.instanceId, availabilityZone: invocation.availabilityZone, artifactS3Uri: uri, sha256, archiveRetained: false, sampleCounts, minimumSamples, samplesComplete, runtimeConfigSha256, configValidationPassed, runtimeEvidencePresent });
+}
+const summary = { collectedAt: new Date().toISOString(), startEpoch, durationSeconds, results, passed: results.length === 2 && results.every((item) => /^[0-9a-f]{64}$/.test(item.sha256 ?? '') && item.samplesComplete && item.runtimeEvidencePresent) };
+writeJson(join(outputDir, 'summary.json'), summary);
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+if (!summary.passed) process.exitCode = 2;
+
+function instances() {
+    const values = awsJson(['ec2', 'describe-instances', '--region', REGION, '--filters',
+        'Name=tag:Name,Values=perf-p1-conn-proxy-2a,perf-p1-conn-proxy-2c', 'Name=instance-state-name,Values=running',
+        '--query', 'Reservations[].Instances[].{instanceId:InstanceId,availabilityZone:Placement.AvailabilityZone,runId:Tags[?Key==`RunId`]|[0].Value,sessionId:Tags[?Key==`ComparisonSessionId`]|[0].Value}']);
+    return values.toSorted((a, b) => a.availabilityZone.localeCompare(b.availabilityZone) || a.instanceId.localeCompare(b.instanceId));
+}
+function resumedInvocations(path, expectedProxies) {
+    const saved = JSON.parse(readFileSync(path, 'utf8'));
+    const expectedIds = expectedProxies.map((item) => item.instanceId).toSorted();
+    const actualIds = (saved.invocations ?? []).map((item) => item.instanceId).toSorted();
+    if (saved.runId !== runId || saved.sessionId !== sessionId || saved.stageLabel !== stageLabel || saved.repetition !== repetition ||
+        saved.startEpoch !== startEpoch || saved.durationSeconds !== durationSeconds || saved.invocations?.length !== 2 ||
+        JSON.stringify(actualIds) !== JSON.stringify(expectedIds) || saved.invocations.some((item) =>
+            item.key !== `${evidencePrefix}/${item.nodeId}/haproxy-telemetry.tgz` || !/^proxy-0[12]$/.test(item.nodeId) || !item.commandId)) {
+        throw new Error('saved HAProxy telemetry invocation identity does not match resume request');
+    }
+    return saved.invocations;
+}
+async function waitInvocation(commandId, instanceId, timeoutSeconds) {
+    const deadline = Date.now() + timeoutSeconds * 1_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        try {
+            const value = awsJson(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(value.Status)) return value;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`SSM telemetry timed out for ${instanceId}`);
+}
+function awsJson(args) {
+    return JSON.parse(awsExec([...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+}
+function awsExec(args, options = {}) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+        try {
+            return execFileSync('aws', args, options);
+        } catch (error) {
+            const details = `${error.stderr ?? ''}\n${error.message ?? ''}`;
+            if (attempt === 5 || !/CreateOAuth2Token.*Rate exceeded|Throttl|TooManyRequests|RequestLimitExceeded/i.test(details)) throw error;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500 * 2 ** attempt);
+        }
+    }
+    throw new Error('unreachable AWS retry state');
+}
+function readText(path) { return gunzipSync(readFileSync(path)).toString('utf8'); }
+function nonemptyLineCount(path) { return readText(path).split('\n').filter(Boolean).length; }
+function markerCount(path, marker) { return readText(path).split('\n').filter((line) => line.startsWith(marker)).length; }
+function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }

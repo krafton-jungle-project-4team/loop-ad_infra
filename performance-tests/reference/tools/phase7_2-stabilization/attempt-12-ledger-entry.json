@@ -1,0 +1,160 @@
+{
+  "attemptType": "aws-integration",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1
+    },
+    "deadline": "2026-07-18T21:12:19.283060Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260718_175720_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "5a005b0b439b68d93e13b6b3daab37f6547914c673aff080dc942b00b6e471ab"
+      },
+      {
+        "path": "performance-tests/run_20260718_175720_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "8db7f2575d630142956c254e5f0f1c8282573189034cf133eb9dafd3e785b791"
+      },
+      {
+        "path": "performance-tests/run_20260718_175720_phase7_2_aws_integration/post-final-readonly-inventory.json",
+        "sha256": "de0fb860ea40a9afc6270f8310b25e154ed7c098e28df0c62d8e3cbcf72b6c29"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-18T18:58:14.551910Z",
+    "startToAuthoritativeZeroSeconds": "1555.268850"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "18.000000",
+    "campaignChargedUpperBoundUsd": "18.000000",
+    "chargedUpperBoundUsd": "6.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-12-cost-explorer-20260718.json",
+    "costExplorerEvidenceSha256": "2c9e0d8ed3e3736a2dae7013ce16b4fcd55a53d4018849d0634c6d9c53eedcf2",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "71.000000",
+    "maximumIncludingCleanupUsd": "50.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "5.449623",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-12-cost-reconciliation.json",
+    "reconciliationSha256": "cb1b94d0d38d857298e4d93a85e4a9d5d3897c6d18c88d56beefd48bf633dddf"
+  },
+  "evidenceCommit": "11467acdfdaf73ac0a7eb1d4d02ae6a0ce483d33",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260718_175720_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260718_175720_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260718_175009_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "The exact HAProxy 3.2.4 Prometheus document was 50,342 bytes, while SSM StandardOutputContent returned only its first 24,000 bytes. The required aggregated backend status started at byte 31,042, so verification saw zero matching samples even though both SSM commands, both runtime config hashes, all eight TLS/HTTP2 health checks and the deployment itself succeeded.",
+    "diagnosisEvidencePath": "performance-tests/run_20260718_175720_phase7_2_aws_integration/evidence/verify-haproxy-ssm-truncation.json",
+    "diagnosisEvidenceSha256": "3ba2ffbb07ff1d77aed29f51ce08bb611bf27fa9ecc6ae2e29197e13b25745f2",
+    "firstFailingGate": "verify",
+    "rawAwsError": "RuntimeError: expected one Prometheus sample for haproxy_backend_agg_server_status/{'proxy': 'collectors', 'state': 'UP'}",
+    "rawEvidencePath": "performance-tests/run_20260718_175720_phase7_2_aws_integration/evidence/control/verify.attempt-1.stderr.log.gz",
+    "rawEvidenceSha256": "2262a45a0f0ca08bf6cff8943f83412da9ae77ae68ebc23b758c6d0c8117e8a2",
+    "rawUncompressedSha256": "9e831cacee0419b3b62550b3c999561a5a92fe9a5de7853bd5551b2b5bae232b",
+    "runnerError": "verify exited 1 and triggered the immutable hard-stop cleanup path"
+  },
+  "fix": {
+    "applied": "Filter the remote HAProxy Prometheus stream to the three metric families consumed by correctness and score observability before SSM captures stdout, with a regression document whose required metric begins after 24,000 bytes.",
+    "fixCommit": "a5af5edfbe0517dd17172d0ed870bfae3d95a796",
+    "verification": {
+      "build": "passed",
+      "cfnLintAcceptedE1022": 8,
+      "cfnLintAcceptedW3005": 3,
+      "cfnLintUnexpectedFindings": 0,
+      "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+      "nodeTests": 27,
+      "phase7JestTests": 14,
+      "pythonTests": 139,
+      "ssmTruncationRegression": "passed",
+      "status": "passed"
+    },
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-12-fix-verification.json",
+    "verificationSha256": "85a20dd291d46ae0a64cc872a1b8f2046a87b10d50949498a617a57c06abb07a"
+  },
+  "gitCommit": "dce0b84bf37a13a166e5c728f2d20bdeedd949bb",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "135a19a8aaf025fe323f04b709917483aded1c85b630b85525e1952f83a7bd72",
+    "commandSeal": "fed9e2ea9a96de9e700c5fa534caf31cafdafe15a7bedea0cedd233fd944157d",
+    "commandSet": "cd2d36ca34f938ca85f4c00ab811953ffeb50d8c4a15d1d26e438591d1ff8f21",
+    "costModel": "39a31e661a6de33e943390648d13f170f5e970ca500c67db13165dfc7aa8bb3a",
+    "identityContract": "a2a5f7c53a460546941b1852bc90874d0c45126b20938f099a384ac8d9690f8e",
+    "imageManifest": "e3e8c2b70df7f518637bcb8ece65db56c3b239534805adb21d0a5f4798a79cd2",
+    "localHandoff": "a68b9feaa73b790a5ed860da37a65f8679a55af1f01d571a5bcdf5af2c7f6efc",
+    "preparedPreflight": "0f016a2f76a5f437229f97ecc6918a3b3208958a441e1adf5ffb2dc7d15e44b6",
+    "runtimeTemplate": "0eb0c066182bab00ef574aa3b6fc3a82a7c0ebab69a0d12c1ccf6969ff32c818"
+  },
+  "implementationTreeSha256": "bf51172ecf6b6cf622a49b7e7677e2e9ef8641b9d735c6847a8960324fa0c3ef",
+  "ordinal": 12,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-18T21:12:19.283060Z",
+    "elapsedSeconds": "1555.268850",
+    "endedAt": "2026-07-18T18:58:14.551910Z",
+    "hardDeadline": "2026-07-18T21:32:19.283060Z",
+    "startedAt": "2026-07-18T18:32:19.283060Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "1a9df27af3035a8a0e1c5f176341e83bf15865e49763132d826c5a00f84734ad",
+  "readinessCommit": "60462c377806393eb90da88b819d16ae2121711b",
+  "runId": "run_20260718_175720_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "a9ab48c08024d1817e47ff6d760ec9376dfd2234",
+  "sealedCommandSetSha256": "cd2d36ca34f938ca85f4c00ab811953ffeb50d8c4a15d1d26e438591d1ff8f21",
+  "sessionId": "phase7-integration-20260718T175720Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 0,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 0,
+    "seed": 0,
+    "verify": 1,
+    "warmup": 0
+  },
+  "terminalEvidenceHashes": {
+    "cleanupInventory": "5a005b0b439b68d93e13b6b3daab37f6547914c673aff080dc942b00b6e471ab",
+    "cleanupVerification": "8db7f2575d630142956c254e5f0f1c8282573189034cf133eb9dafd3e785b791",
+    "commands": "0ad755aa4fdc9baa165cfd928ec99d60cabfb67250fafd20de7c68ce977608a3",
+    "costReconciliation": "cb1b94d0d38d857298e4d93a85e4a9d5d3897c6d18c88d56beefd48bf633dddf",
+    "diagnosis": "3ba2ffbb07ff1d77aed29f51ce08bb611bf27fa9ecc6ae2e29197e13b25745f2",
+    "failures": "6b42dc2a7ab26a98730af6caf567f32e6aa15ae4a5eca54eb5dc35d2035beab8",
+    "finalEvaluation": "38b8ca1e899761e0c67f4921baab751b75e2080975f9d8c5b541d22f355fa5e0",
+    "finalEvidenceStatus": "fa761081c3e79cd0443a334de200f82ecec03b551cf2f5278968f50aa6140064",
+    "fixVerification": "85a20dd291d46ae0a64cc872a1b8f2046a87b10d50949498a617a57c06abb07a",
+    "improvementBacklog": "b5142ca3da81bd9c4d80dba2ffbf2fc2c3e4cbb2134871904b315964a366aed7",
+    "infra": "5fe71e2e4188bec9c29c79f918b0d3ea0684095c4d4efdb9f89bb6469ba6c388",
+    "postFinalReadonlyInventory": "de0fb860ea40a9afc6270f8310b25e154ed7c098e28df0c62d8e3cbcf72b6c29",
+    "report": "038d4f9cd7fd71916978017f778c90d2439bf3fd861d83fce38822bb7bf75a9a",
+    "run": "01580c7d50d19de96dbca1a74e0757afb12638a41d106c16690ecf3f7ee309be"
+  },
+  "verdict": "failed",
+  "entrySha256": "fcfd7200026bb660403e42793d5876531b2f7a60fcd0a4d5900cd5f7a3c47c05"
+}

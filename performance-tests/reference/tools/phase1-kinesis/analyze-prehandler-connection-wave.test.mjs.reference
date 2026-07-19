@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { analyzePrehandlerConnectionWave, classifyBackendChurn, evidenceCompleteness } from './analyze-prehandler-connection-wave.mjs';
+
+const baseline = 'performance-tests/run_20260713_193800_latency_tcp_root';
+
+test('reproduces the delayed backend fan-out baseline and does not mislabel frontend IDs', async () => {
+    const result = await analyzePrehandlerConnectionWave({
+        stageDir: `${baseline}/stages/pilot_10k_on/repetition-01`,
+        rawAlbDir: `${baseline}/session-observability/access-logs/raw`,
+        offeredRps: 10_000,
+    });
+    assert.equal(result.evidence.parseErrors, 0);
+    assert.ok(result.evidence.recordCount >= 299_000 && result.evidence.recordCount <= 300_500);
+    assert.equal(result.delayedConnectionFanoutWave, true);
+    assert.equal(result.backendConnectionIdentityMeasured, false);
+    assert.equal(result.churnSupported, false);
+    assert.equal(result.frontendConnectionReuse.uniqueConnections, 12_000);
+    assert.ok(result.frontendConnectionReuse.medianRequestsPerConnection >= 24);
+    assert.ok(result.frontendConnectionReuse.maxRequestsPerConnection <= 28);
+    assert.ok(result.collectors.every((collector) => collector.maxFdIncrease >= 2_900));
+    assert.ok(result.waveStartMonotonic >= 20 && result.waveStartMonotonic <= 23);
+    assert.ok(result.latencyStartMonotonic >= result.waveStartMonotonic);
+    assert.ok(result.recoveryMonotonic >= 27 && result.recoveryMonotonic <= 30);
+    assert.ok(Math.abs(result.receivedBytesTargetProcessingPearson) < 0.01);
+    assert.ok(result.arrivalDeficit > 10_000);
+    assert.ok(result.catchupBurst > 5_000);
+});
+
+test('does not require ALB records for an explicitly direct stage', () => {
+    assert.deepEqual(evidenceCompleteness({ directTarget: true, recordCount: 0, parseErrors: 0 }), {
+        recordCount: 0,
+        parseErrors: 0,
+        albRecordsExpected: false,
+        evidenceGap: false,
+    });
+    assert.equal(evidenceCompleteness({ directTarget: false, recordCount: 0, parseErrors: 0 }).evidenceGap, true);
+    assert.equal(evidenceCompleteness({ directTarget: true, recordCount: 0, parseErrors: 1 }).evidenceGap, true);
+});
+
+test('does not classify initial establishment and stage-end teardown as churn', () => {
+    const directLifecycle = [1, 2, 3, 4].map(() => ({ acceptedAfterInitial: 160, closedAfterInitial: 160,
+        openAtMeasurementEnd: 3000, reconnectSeconds: 30 }));
+    assert.equal(classifyBackendChurn(directLifecycle).supported, false);
+    const repeatedReopen = [1, 2, 3, 4].map(() => ({ acceptedAfterInitial: 900, closedAfterInitial: 700,
+        openAtMeasurementEnd: 3000, reconnectSeconds: 3 }));
+    assert.equal(classifyBackendChurn(repeatedReopen).supported, true);
+});

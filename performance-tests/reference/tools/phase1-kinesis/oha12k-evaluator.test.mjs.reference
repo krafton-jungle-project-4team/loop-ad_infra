@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateOha12kProbe } from './oha12k-evaluator.mjs';
+
+test('separately passes generator capability and target capacity', () => {
+    const result = evaluateOha12kProbe(fixture());
+    assert.equal(result.generator.result, 'capable');
+    assert.equal(result.target.result, 'capacity-pass');
+    assert.equal(result.generator.mayIncreaseTopology, false);
+});
+
+test('permits topology fallback only for evidenced generator-only failure', () => {
+    const input = fixture();
+    input.aggregate.actualRps = 28_000;
+    input.aggregate.nodes[0].processObservation.maxOhaCpuPercent = 195;
+    input.alb.requestCount = 420_000;
+    const result = evaluateOha12kProbe(input);
+    assert.equal(result.generator.result, 'generator-limited');
+    assert.equal(result.generator.mayIncreaseTopology, true);
+    assert.equal(result.primaryBottleneck, 'load-generator');
+});
+
+test('does not use more generator nodes to rescue collector admission', () => {
+    const input = fixture();
+    input.aggregate.actualRps = 28_000;
+    input.aggregate.http202 = 419_000;
+    input.aggregate.http429 = 1_000;
+    input.target.admissionRejections = 1_000;
+    input.target.admissionAtMax = true;
+    const result = evaluateOha12kProbe(input);
+    assert.equal(result.generator.result, 'inconclusive');
+    assert.equal(result.generator.mayIncreaseTopology, false);
+    assert.equal(result.target.result, 'collector-admission-bound');
+});
+
+test('marks recovery or safety failure unsafe and blocks topology fallback', () => {
+    const input = fixture();
+    input.target.recovered = false;
+    input.target.queueGrowing = true;
+    const result = evaluateOha12kProbe(input);
+    assert.equal(result.target.result, 'unsafe');
+    assert.equal(result.generator.mayIncreaseTopology, false);
+});
+
+function fixture() {
+    return {
+        aggregate: {
+            passed: true, targetRps: 30_000, actualRps: 30_000, attemptedRequests: 450_000,
+            completedRequests: 450_000, transportErrors: 0, http202: 450_000, http429: 0,
+            firstByteMs: { worstNode: { p95: 80, p99: 200 } },
+            enaAllowanceDelta: { bw_out_allowance_exceeded: 0, pps_allowance_exceeded: 0 },
+            nodes: [{ nodeId: 'node-01', configuredConnections: 12_000, commandMatchesPlan: true,
+                processObservation: { maxOhaCpuPercent: 100 },
+                socketTelemetry: { oha_open_fds: 12_100, conntrack_count: 12_000 },
+                limits: { ulimitNofile: 1_048_576, conntrack: { max: 262_144 }, ephemeralPortRange: { low: 1_024, high: 65_535 } } }],
+        },
+        alb: { requestCount: 450_000, target5xx: 0, elb5xx: 0, targetConnectionErrors: 0 },
+        target: {
+            admissionRejections: 0, admissionAtMax: false, producerQueueAtMax: false,
+            producerOutstandingGrowing: false, producerAckLatencyGrowing: false,
+            kinesisThrottle: 0, producerTimeout: 0, producerFinalFailure: 0,
+            taskSafetyPassed: true, http202MatchesIncomingRecords: true, recovered: true, queueGrowing: false,
+        },
+    };
+}

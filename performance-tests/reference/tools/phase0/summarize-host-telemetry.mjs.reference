@@ -1,0 +1,200 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
+
+const runDir = process.argv[2] ? resolve(process.argv[2]) : undefined;
+const outputFile = process.argv[3] ? resolve(process.argv[3]) : undefined;
+
+if (!runDir) {
+    throw new Error('Usage: summarize-host-telemetry.mjs <run-dir> [output.json]');
+}
+
+const hostDirectories = readdirSync(runDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(runDir, entry.name))
+    .filter((directory) => fileExists(join(directory, 'host-telemetry.tsv')))
+    .sort();
+
+if (hostDirectories.length === 0) {
+    throw new Error(`No host-telemetry.tsv files found under ${runDir}`);
+}
+
+const hosts = hostDirectories.map(summarizeHost);
+const summary = {
+    generatedAtUtc: new Date().toISOString(),
+    runId: basename(runDir),
+    hostCount: hosts.length,
+    hosts,
+    aggregate: {
+        cpuUtilizationPercent: {
+            weightedAverage: weightedAverage(hosts.map((host) => host.cpuUtilizationPercent.weightedAverage), hosts.map((host) => host.cpuJiffiesObserved)),
+            maxInterval: max(hosts.map((host) => host.cpuUtilizationPercent.maxInterval)),
+        },
+        network: {
+            rxBytes: sum(hosts.map((host) => host.network.rxBytes)),
+            txBytes: sum(hosts.map((host) => host.network.txBytes)),
+            maxHostRxBitsPerSecond: max(hosts.map((host) => host.network.maxRxBitsPerSecond)),
+            maxHostTxBitsPerSecond: max(hosts.map((host) => host.network.maxTxBitsPerSecond)),
+        },
+        sockets: {
+            maxSocketsUsedPerHost: max(hosts.map((host) => host.sockets.maxSocketsUsed)),
+            maxTcpInUsePerHost: max(hosts.map((host) => host.sockets.maxTcpInUse)),
+            maxTcpTimeWaitPerHost: max(hosts.map((host) => host.sockets.maxTcpTimeWait)),
+            maxTcpAllocatedPerHost: max(hosts.map((host) => host.sockets.maxTcpAllocated)),
+        },
+        artilleryProcesses: {
+            maxObservedCountPerHost: max(hosts.map((host) => host.artilleryProcesses.maxObservedCount)),
+            maxSummedPcpuPerHost: max(hosts.map((host) => host.artilleryProcesses.maxSummedPcpu)),
+            maxSummedRssKibPerHost: max(hosts.map((host) => host.artilleryProcesses.maxSummedRssKib)),
+        },
+    },
+};
+
+const serialized = `${JSON.stringify(summary, null, 2)}\n`;
+if (outputFile) {
+    writeFileSync(outputFile, serialized, 'utf8');
+}
+process.stdout.write(serialized);
+
+function summarizeHost(directory) {
+    const telemetry = readTsv(join(directory, 'host-telemetry.tsv')).map(parseHostSample);
+    const processTelemetryFile = join(directory, 'artillery-process-telemetry.tsv');
+    const processTelemetry = fileExists(processTelemetryFile) ? readTsv(processTelemetryFile).map(parseProcessSample) : [];
+    const intervals = [];
+
+    for (let index = 1; index < telemetry.length; index += 1) {
+        const previous = telemetry[index - 1];
+        const current = telemetry[index];
+        const elapsedSeconds = (Date.parse(current.timestampUtc) - Date.parse(previous.timestampUtc)) / 1000;
+        const cpuDeltas = current.cpu.map((value, cpuIndex) => value - previous.cpu[cpuIndex]);
+        const totalCpuDelta = sum(cpuDeltas);
+        const idleCpuDelta = cpuDeltas[3] + cpuDeltas[4];
+
+        if (elapsedSeconds <= 0 || totalCpuDelta <= 0) {
+            continue;
+        }
+
+        intervals.push({
+            elapsedSeconds,
+            totalCpuDelta,
+            busyCpuDelta: totalCpuDelta - idleCpuDelta,
+            cpuUtilizationPercent: ((totalCpuDelta - idleCpuDelta) / totalCpuDelta) * 100,
+            rxBitsPerSecond: ((current.rxBytes - previous.rxBytes) * 8) / elapsedSeconds,
+            txBitsPerSecond: ((current.txBytes - previous.txBytes) * 8) / elapsedSeconds,
+        });
+    }
+
+    const groupedProcesses = new Map();
+    for (const sample of processTelemetry) {
+        const aggregate = groupedProcesses.get(sample.timestampUtc) ?? { count: 0, summedPcpu: 0, summedRssKib: 0 };
+        aggregate.count += 1;
+        aggregate.summedPcpu += sample.pcpu;
+        aggregate.summedRssKib += sample.rssKib;
+        groupedProcesses.set(sample.timestampUtc, aggregate);
+    }
+    const processPoints = [...groupedProcesses.values()];
+    const first = telemetry[0];
+    const last = telemetry.at(-1);
+    const totalBusyCpu = sum(intervals.map((interval) => interval.busyCpuDelta));
+    const totalCpu = sum(intervals.map((interval) => interval.totalCpuDelta));
+
+    return {
+        hostLabel: basename(directory),
+        sampleCount: telemetry.length,
+        observedFromUtc: first?.timestampUtc ?? null,
+        observedToUtc: last?.timestampUtc ?? null,
+        cpuJiffiesObserved: totalCpu,
+        cpuUtilizationPercent: {
+            weightedAverage: totalCpu > 0 ? (totalBusyCpu / totalCpu) * 100 : 0,
+            maxInterval: max(intervals.map((interval) => interval.cpuUtilizationPercent)),
+        },
+        load1: {
+            max: max(telemetry.map((sample) => sample.load1)),
+        },
+        memory: {
+            minAvailableKib: min(telemetry.map((sample) => sample.memAvailableKib)),
+        },
+        network: {
+            rxBytes: first && last ? last.rxBytes - first.rxBytes : 0,
+            txBytes: first && last ? last.txBytes - first.txBytes : 0,
+            maxRxBitsPerSecond: max(intervals.map((interval) => interval.rxBitsPerSecond)),
+            maxTxBitsPerSecond: max(intervals.map((interval) => interval.txBitsPerSecond)),
+        },
+        sockets: {
+            maxSocketsUsed: max(telemetry.map((sample) => sample.socketsUsed)),
+            maxTcpInUse: max(telemetry.map((sample) => sample.tcpInUse)),
+            maxTcpOrphan: max(telemetry.map((sample) => sample.tcpOrphan)),
+            maxTcpTimeWait: max(telemetry.map((sample) => sample.tcpTimeWait)),
+            maxTcpAllocated: max(telemetry.map((sample) => sample.tcpAllocated)),
+            maxTcpMemoryPages: max(telemetry.map((sample) => sample.tcpMemoryPages)),
+        },
+        artilleryProcesses: {
+            sampleCount: processTelemetry.length,
+            maxObservedCount: max(processPoints.map((point) => point.count)),
+            maxSummedPcpu: max(processPoints.map((point) => point.summedPcpu)),
+            maxSummedRssKib: max(processPoints.map((point) => point.summedRssKib)),
+        },
+    };
+}
+
+function readTsv(file) {
+    const [headerLine, ...lines] = readFileSync(file, 'utf8').trimEnd().split('\n');
+    const headers = headerLine.split('\t');
+
+    return lines.filter(Boolean).map((line) => {
+        const fields = line.split('\t');
+        return Object.fromEntries(headers.map((header, index) => [header, fields[index]]));
+    });
+}
+
+function parseHostSample(row) {
+    return {
+        timestampUtc: row.timestamp_utc,
+        cpu: ['cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait', 'cpu_irq', 'cpu_softirq', 'cpu_steal'].map((field) => Number(row[field])),
+        load1: Number(row.load1),
+        memAvailableKib: Number(row.mem_available_kib),
+        rxBytes: Number(row.rx_bytes),
+        txBytes: Number(row.tx_bytes),
+        socketsUsed: Number(row.sockets_used),
+        tcpInUse: Number(row.tcp_inuse),
+        tcpOrphan: Number(row.tcp_orphan),
+        tcpTimeWait: Number(row.tcp_tw),
+        tcpAllocated: Number(row.tcp_alloc),
+        tcpMemoryPages: Number(row.tcp_mem),
+    };
+}
+
+function parseProcessSample(row) {
+    return {
+        timestampUtc: row.timestamp_utc,
+        pcpu: Number(row.pcpu),
+        rssKib: Number(row.rss_kib),
+    };
+}
+
+function fileExists(file) {
+    try {
+        readFileSync(file, { encoding: null, flag: 'r' });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function sum(values) {
+    return values.reduce((total, value) => total + value, 0);
+}
+
+function max(values) {
+    return values.length > 0 ? Math.max(...values) : 0;
+}
+
+function min(values) {
+    return values.length > 0 ? Math.min(...values) : 0;
+}
+
+function weightedAverage(values, weights) {
+    const totalWeight = sum(weights);
+    return totalWeight > 0 ? sum(values.map((value, index) => value * weights[index])) / totalWeight : 0;
+}

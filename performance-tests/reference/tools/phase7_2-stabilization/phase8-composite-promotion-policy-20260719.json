@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "recordType": "phase7-2-composite-phase8-promotion-policy",
+  "recordedAt": "2026-07-19T11:56:48Z",
+  "decision": "promote-after-minimal-smoke-and-archive-without-new-50k",
+  "phase": "7-2",
+  "phase5": "skipped",
+  "userAuthorization": {
+    "summary": "Do not repeat the 50k RPS load test. The remaining defect is confined to the post-performance archive path. Run the standard Attempt 17 stack with only minimal smoke and the 15M retain-source archive path; after a pass and cleanup zero, freeze a composite Phase 8 handoff and verify Phase 8 without another paid AWS experiment.",
+    "preserveHistoricalVerdicts": true,
+    "attempt17VerdictRemains": "failed",
+    "scopedAttemptPromotionEligibleRemains": false
+  },
+  "execution": {
+    "stackDefinitions": [
+      "LoopAdPerfPhase7IntegrationImageStack",
+      "LoopAdPerfPhase7IntegrationStack"
+    ],
+    "dedicatedDiagnosticStack": false,
+    "minimalSmoke": {
+      "stage": "verify",
+      "requiresProtocolTlsHealth": true,
+      "requiresAllRunOwnedServicesReady": true,
+      "requiresClickHouseSelectOneAndSchema": true,
+      "eventLoad": false
+    },
+    "seedRows": 15000000,
+    "retainSourceAfterCommit": true,
+    "new50kRpsAttempt": false,
+    "newWarmupAttempt": false,
+    "newScoreAttempt": false,
+    "newCorrectness1002Attempt": false,
+    "newReplacement900Attempt": false,
+    "sourceDrop": false
+  },
+  "inheritedPerformanceEvidence": {
+    "attemptOrdinal": 17,
+    "runId": "run_20260719_043415_phase7_integration",
+    "sessionId": "phase7-integration-20260719T043415Z",
+    "attemptVerdict": "failed",
+    "scope": "deployment, correctness, replacement and completed 300-second 50k score only; archive acceptance is supplied by the fresh scoped attempt",
+    "score": {
+      "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/score-partial-summary.json",
+      "sha256": "5fee2c047f4a9cfa056626a07af41a15c95b3bd6e95f42866390a2b72c7f71e4",
+      "requestedRequests": 15000000,
+      "completedRequests": 15000000,
+      "actualRps": 49987.713711084536,
+      "transportErrors": 0,
+      "http429": 0,
+      "http5xx": 0,
+      "correctedP95Ms": 112.5391715
+    },
+    "correctness": {
+      "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/correctness-summary.json",
+      "sha256": "8c657863e3225ce9a059c36ce159ce331e8c5b0295d3f9545124f4de7fdc87f5",
+      "correctnessInputRecords": 1002,
+      "replacementOffered": 900,
+      "passed": true
+    },
+    "deployment": {
+      "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/deployment-verification.json",
+      "sha256": "c1059b31adf67b8a9e3c32094d90099267daac1bbbfb7cb58fff5d9f44476a27",
+      "passed": true
+    },
+    "knownStrictDeviation": {
+      "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+      "sha256": "d1bbbf2b18d1eeb60bc9a433a673fbada151ac3a57965dde4de59af9c7830d0a",
+      "description": "The warmup completed 8,999,999 of 9,000,000 requests with one timeout. It remains a failed strict gate and is not rewritten as passed by this policy."
+    }
+  },
+  "compositePromotion": {
+    "requiredFreshAttemptType": "aws-full-stack-scoped-diagnostic",
+    "requiredFreshAttemptVerdict": "passed",
+    "requiredFreshAttemptPromotionEligible": false,
+    "requiredFreshEvidence": [
+      "deployment-verification.json passed=true as minimal smoke",
+      "15M deterministic seed",
+      "exactly three 5M-row Parquet objects",
+      "immutable COMMITTED and exact re-read",
+      "pre-DROP and committed bidirectional differences are zero",
+      "Code 241 count is zero",
+      "source DROP query count is zero",
+      "source partition remains exactly 15M rows",
+      "ClickHouse service task does not restart",
+      "authoritative service and Tagging API inventory are zero"
+    ],
+    "handoffRecordType": "phase7-2-composite-phase8-handoff",
+    "mayRewriteAttemptEntries": false,
+    "campaignStatusChangesOnlyAfterPhase8Finalization": true
+  },
+  "phase8": {
+    "startImmediatelyAfterCompositeHandoff": true,
+    "paidAwsExperiment": false,
+    "defaultAwsMutation": false,
+    "newWarmupScoreOrArchive": false,
+    "verificationScope": "Recompute hashes and run focused, unpaid Phase 8 entry/finalization checks only."
+  },
+  "budget": {
+    "activeEpochHardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000",
+    "priorEpochsExcludedFromAdmission": true,
+    "futureStrictAttemptReservedUsd": "0.000000"
+  }
+}

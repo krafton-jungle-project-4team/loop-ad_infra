@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 4,
+  "runId": "run_20260718_042130_phase7_integration",
+  "verifiedAt": "2026-07-18T05:50:03Z",
+  "fixCommit": "57c1a1083de37a49cb2a9b5215ecff23848dc65f",
+  "status": "passed",
+  "change": {
+    "summary": "Require all expected EC2 ECS hosts to signal local agent readiness and exact API-visible capacity-provider registration before creating each ECS service.",
+    "files": [
+      "src/perf-phase7-integration-stack.ts",
+      "test/perf-phase7-integration.test.ts"
+    ]
+  },
+  "verification": {
+    "relevantJestTests": {
+      "command": "npx jest --runInBand test/perf-phase7-integration.test.ts",
+      "passed": 13,
+      "failed": 0
+    },
+    "phase7Tests": {
+      "command": "npm run test:phase7",
+      "jestPassed": 13,
+      "nodePassed": 27,
+      "pythonPassed": 123,
+      "failed": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "passed": true
+    },
+    "exactContextSynth": {
+      "passed": true,
+      "runtimeTemplateSha256": "c51a46bde4ef749d862f62da1d8fd654aef2358f2da3af3606f7356ed06dd341",
+      "resourceCount": 150,
+      "capacityProviderAssociations": 4,
+      "waitConditionHandles": 4,
+      "waitConditions": [
+        {
+          "role": "collector",
+          "count": 6,
+          "timeoutSeconds": 600
+        },
+        {
+          "role": "haproxy",
+          "count": 2,
+          "timeoutSeconds": 600
+        },
+        {
+          "role": "clickhouse",
+          "count": 1,
+          "timeoutSeconds": 600
+        },
+        {
+          "role": "consumer",
+          "count": 2,
+          "timeoutSeconds": 600
+        }
+      ],
+      "ecsServicesDependingOnExactRegistrationCondition": 4,
+      "stackScopedSignalResourceStatements": 4
+    },
+    "userDataDecodedByteUpperBounds": [
+      {
+        "role": "collector",
+        "bytes": 7705,
+        "ec2LimitMargin": 8679
+      },
+      {
+        "role": "haproxy",
+        "bytes": 9029,
+        "ec2LimitMargin": 7355
+      },
+      {
+        "role": "load-generator",
+        "bytes": 15216,
+        "ec2LimitMargin": 1168,
+        "phase7Margin": 144
+      },
+      {
+        "role": "clickhouse",
+        "bytes": 8426,
+        "ec2LimitMargin": 7958
+      },
+      {
+        "role": "consumer",
+        "bytes": 7679,
+        "ec2LimitMargin": 8705
+      }
+    ],
+    "repositoryTemplateValidator": {
+      "passed": true,
+      "taskDefinitionsChecked": 5,
+      "schemaGuardRetries": 10
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "exitCode": 6,
+      "expectedAssemblyOnlyE1022": 8,
+      "expectedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "passedUnderRepositoryPolicy": true
+    }
+  },
+  "assessment": "The change directly closes the observed service-before-host-registration race. No local or synthesized contract failure remains. Only a fresh AWS deployment can prove the live ECS control-plane timing behavior."
+}

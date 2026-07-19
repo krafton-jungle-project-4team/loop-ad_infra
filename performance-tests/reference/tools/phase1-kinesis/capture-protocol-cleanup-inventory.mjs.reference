@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const experimentMode = option('--experiment-mode') ?? 'protocol-crossover';
+const sessionId = required('--session-id');
+const bucket = required('--bucket');
+const output = required('--output');
+const mode = {
+    'protocol-crossover': {
+        sessionPattern: /^phase1-kinesis-protocol-crossover-[0-9]{8}T[0-9]{6}Z$/,
+        stackNames: ['LoopAdPerfPhase1KinesisProtocolCrossoverStack', 'LoopAdPerfPhase1KinesisProtocolCrossoverStreamStack'],
+    },
+    'connection-path-crossover': {
+        sessionPattern: /^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/,
+        stackNames: ['LoopAdPerfPhase1KinesisConnectionPathStack', 'LoopAdPerfPhase1KinesisConnectionPathStreamStack'],
+    },
+}[experimentMode];
+if (!mode) throw new Error('invalid experiment mode');
+if (!mode.sessionPattern.test(sessionId)) throw new Error('invalid session');
+if (!/^[a-z0-9.-]+$/.test(bucket)) throw new Error('invalid bucket');
+const stackNames = mode.stackNames;
+const stacks = Object.fromEntries(stackNames.map((name) => [name, aws(['cloudformation', 'list-stack-resources',
+    '--region', REGION, '--stack-name', name])]));
+const objects = aws(['s3api', 'list-objects-v2', '--region', REGION, '--bucket', bucket]).Contents ?? [];
+const result = { capturedAt: new Date().toISOString(), experimentMode, region: REGION, sessionId, bucket,
+    stacks, s3: { objectCount: objects.length, totalBytes: objects.reduce((sum, item) => sum + item.Size, 0), objects },
+    passed: stackNames.every((name) => (stacks[name].StackResourceSummaries ?? []).length > 0) && objects.length > 0 };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, passed: result.passed, objectCount: result.s3.objectCount,
+    totalBytes: result.s3.totalBytes, stackResourceCounts: Object.fromEntries(stackNames.map((name) =>
+        [name, stacks[name].StackResourceSummaries.length])) }, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function required(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }

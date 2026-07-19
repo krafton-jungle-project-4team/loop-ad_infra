@@ -1,0 +1,1017 @@
+{
+  "generatedAt": "2026-07-12T07:39:11.959Z",
+  "comparison": {
+    "region": "ap-northeast-2",
+    "targetRps": 1000,
+    "collectorTopology": "1 x c6i.xlarge ECS on EC2 task",
+    "loadGeneratorTopology": "1 x c6in.large oha",
+    "repetitionsPerCandidate": 10,
+    "durationSecondsPerRepetition": 60,
+    "sharedKinesisShards": 80
+  },
+  "candidates": [
+    {
+      "candidate": "go-sync",
+      "runId": "run_20260712_050212_phase1_kinesis_compare_go-sync",
+      "image": {
+        "sizeBytes": 9727590,
+        "architecture": "amd64",
+        "digest": "sha256:75dbb6fc9940c63676bae83b3b67a23a2de54568bc1353ba4bc965058c0845b4",
+        "runtimeBaseComparable": true
+      },
+      "eligibility": {
+        "actualKinesisCorrectnessPassed": true,
+        "lossZero": true,
+        "duplicateZero": true,
+        "originalBytesPreserved": true,
+        "partitionKeysPreserved": true,
+        "preAckSuccessZero": true,
+        "aggregationDisabled": true,
+        "shutdownFlushPassed": true,
+        "commonLoadTenRepetitionsPassed": true,
+        "passed": true
+      },
+      "smoke": {
+        "actualRps": 999.6196702899105,
+        "http202": 29999,
+        "errors": 0,
+        "latencyMs": {
+          "p50": 9.963756,
+          "p95": 13.523771,
+          "p99": 22.360367999999998
+        }
+      },
+      "performance": {
+        "actualRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.7225334666522,
+          "median": 999.8196790504622,
+          "max": 999.8506525579901,
+          "q1": 999.8028079384545,
+          "q3": 999.8393294284103,
+          "iqr": 0.03652148995581683
+        },
+        "acceptedRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.9833333333333,
+          "median": 999.9916666666667,
+          "max": 1000,
+          "q1": 999.9833333333333,
+          "q3": 1000,
+          "iqr": 0.01666666666665151
+        },
+        "httpLatencyP50Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 10.113481,
+          "median": 10.271271500000001,
+          "max": 10.46285,
+          "q1": 10.2494275,
+          "q3": 10.297699,
+          "iqr": 0.048271500000000245
+        },
+        "httpLatencyP95Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 13.517108,
+          "median": 13.779463,
+          "max": 14.984923,
+          "q1": 13.6455835,
+          "q3": 14.08547075,
+          "iqr": 0.43988724999999995
+        },
+        "httpLatencyP99Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 16.465654999999998,
+          "median": 19.378006499999998,
+          "max": 243.909172,
+          "q1": 17.261167,
+          "q3": 44.48388425,
+          "iqr": 27.222717250000002
+        },
+        "ackP50BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 10,
+          "median": 10,
+          "max": 10,
+          "q1": 10,
+          "q3": 10,
+          "iqr": 0
+        },
+        "ackP95BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 25,
+          "median": 25,
+          "max": 25,
+          "q1": 25,
+          "q3": 25,
+          "iqr": 0
+        },
+        "ackP99BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 25,
+          "median": 25,
+          "max": 25,
+          "q1": 25,
+          "q3": 25,
+          "iqr": 0
+        },
+        "producerApiCalls": {
+          "measured": true,
+          "count": 10,
+          "min": 59999,
+          "median": 59999.5,
+          "max": 60000,
+          "q1": 59999,
+          "q3": 60000,
+          "iqr": 1
+        },
+        "recordsPerApiCall": {
+          "measured": true,
+          "count": 10,
+          "min": 1,
+          "median": 1,
+          "max": 1,
+          "q1": 1,
+          "q3": 1,
+          "iqr": 0
+        },
+        "apiCallsPerAcceptedEvent": {
+          "measured": true,
+          "count": 10,
+          "min": 1,
+          "median": 1,
+          "max": 1,
+          "q1": 1,
+          "q3": 1,
+          "iqr": 0
+        },
+        "queueHighWater": {
+          "measured": true,
+          "count": 10,
+          "min": 68,
+          "median": 71,
+          "max": 71,
+          "q1": 71,
+          "q3": 71,
+          "iqr": 0
+        },
+        "retries": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        },
+        "partialFailures": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        }
+      },
+      "infrastructure": {
+        "ecsCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 3.673446282119645,
+          "median": 6.618369523938254,
+          "max": 10.400774411162518,
+          "q1": 4.670607292106919,
+          "q3": 9.278522559147268,
+          "iqr": 4.607915267040349
+        },
+        "ecsCpuMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 8.278432160709054,
+          "median": 12.77220615462253,
+          "max": 13.463140964508058,
+          "q1": 11.336471876502037,
+          "q3": 13.014353048801421,
+          "iqr": 1.6778811722993847
+        },
+        "ecsMemoryAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.8255208333333335,
+          "median": 3.004557291666667,
+          "max": 3.5807291666666665,
+          "q1": 2.922877261513158,
+          "q3": 3.1371641995614032,
+          "iqr": 0.21428693804824528
+        },
+        "ecsMemoryMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.890625,
+          "median": 3.115234375,
+          "max": 3.671875,
+          "q1": 3.04931640625,
+          "q3": 3.25439453125,
+          "iqr": 0.205078125
+        },
+        "collectorHostCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.0783333333333336,
+          "median": 8.841134297842078,
+          "max": 12.094999999999999,
+          "q1": 5.909166666666667,
+          "q3": 9.645833333333334,
+          "iqr": 3.7366666666666672
+        },
+        "networkInBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 15112870,
+          "median": 60262633.5,
+          "max": 99760270,
+          "q1": 50039149,
+          "q3": 81317912,
+          "iqr": 31278763
+        },
+        "networkOutBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 26023418,
+          "median": 103733584.5,
+          "max": 170762300,
+          "q1": 86069899,
+          "q3": 139156055.25,
+          "iqr": 53086156.25
+        }
+      },
+      "runtime": {
+        "goHeapAfterBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 3098656,
+          "median": 4254132,
+          "max": 4708872,
+          "q1": 3426512,
+          "q3": 4598274,
+          "iqr": 1171762
+        },
+        "goAllocatedBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 3119904712,
+          "median": 3121745452,
+          "max": 3128138448,
+          "q1": 3120641396,
+          "q3": 3122211520,
+          "iqr": 1570124
+        },
+        "goAllocatedBytesPerAcceptedEvent": {
+          "measured": true,
+          "count": 10,
+          "min": 51999.27852130869,
+          "median": 52029.090866666666,
+          "max": 52136.50974182903,
+          "q1": 52011.340065962206,
+          "q3": 52037.47906666667,
+          "iqr": 26.13900070446107
+        },
+        "goGcCount": {
+          "measured": true,
+          "count": 10,
+          "min": 992,
+          "median": 1239,
+          "max": 1315,
+          "q1": 1203.25,
+          "q3": 1273.75,
+          "iqr": 70.5
+        },
+        "goGcPauseMs": {
+          "measured": true,
+          "count": 10,
+          "min": 76.253775,
+          "median": 92.693626,
+          "max": 99.835517,
+          "q1": 89.8357105,
+          "q3": 95.1343385,
+          "iqr": 5.298627999999994
+        },
+        "goroutinesAfter": {
+          "measured": true,
+          "count": 10,
+          "min": 41,
+          "median": 68.5,
+          "max": 134,
+          "q1": 62.5,
+          "q3": 125.75,
+          "iqr": 63.25
+        }
+      },
+      "correctness": {
+        "expectedEvents": 80,
+        "acceptedEvents": 80,
+        "observedMatchingRecords": 80,
+        "shutdownAttempted": 64,
+        "shutdownAccepted": 64
+      },
+      "lifecycle": {
+        "runCleanupPassed": true,
+        "sharedStreamRemoved": false,
+        "candidateImagesRemoved": false
+      },
+      "cost": {
+        "runUpperBoundUsd": 3.17180005479452,
+        "projectedCumulativeUpperBoundUsd": 3.17180005479452,
+        "costExplorerAvailability": "billing-delayed-or-zero"
+      },
+      "measurementNotes": {
+        "ackLatency": "histogram-derived bucket upper bounds, not interpolated quantiles",
+        "javaRuntimeBase": "same Go Dockerfile and runtime base"
+      }
+    },
+    {
+      "candidate": "go-batch",
+      "runId": "run_20260712_061339_phase1_kinesis_compare_go-batch",
+      "image": {
+        "sizeBytes": 9727590,
+        "architecture": "amd64",
+        "digest": "sha256:75dbb6fc9940c63676bae83b3b67a23a2de54568bc1353ba4bc965058c0845b4",
+        "runtimeBaseComparable": true
+      },
+      "eligibility": {
+        "actualKinesisCorrectnessPassed": true,
+        "lossZero": true,
+        "duplicateZero": true,
+        "originalBytesPreserved": true,
+        "partitionKeysPreserved": true,
+        "preAckSuccessZero": true,
+        "aggregationDisabled": true,
+        "shutdownFlushPassed": true,
+        "commonLoadTenRepetitionsPassed": true,
+        "passed": true
+      },
+      "smoke": {
+        "actualRps": 999.4877422757987,
+        "http202": 30000,
+        "errors": 0,
+        "latencyMs": {
+          "p50": 17.313605,
+          "p95": 22.063412,
+          "p99": 38.108357000000005
+        }
+      },
+      "performance": {
+        "actualRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.4842744269118,
+          "median": 999.7132132320631,
+          "max": 999.7571799779004,
+          "q1": 999.7015484261487,
+          "q3": 999.7188420623127,
+          "iqr": 0.017293636163913106
+        },
+        "acceptedRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.9833333333333,
+          "median": 1000,
+          "max": 1000,
+          "q1": 999.9875,
+          "q3": 1000,
+          "iqr": 0.012500000000045475
+        },
+        "httpLatencyP50Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 16.952023,
+          "median": 17.369324,
+          "max": 17.682653,
+          "q1": 17.31391,
+          "q3": 17.50198425,
+          "iqr": 0.18807424999999967
+        },
+        "httpLatencyP95Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 22.034421,
+          "median": 22.3499445,
+          "max": 22.700762,
+          "q1": 22.15059325,
+          "q3": 22.54010275,
+          "iqr": 0.38950949999999906
+        },
+        "httpLatencyP99Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 31.811766,
+          "median": 37.4231305,
+          "max": 46.236239,
+          "q1": 35.68121300000001,
+          "q3": 39.9280215,
+          "iqr": 4.246808499999993
+        },
+        "ackP50BucketUpperBoundMs": {
+          "measured": false
+        },
+        "ackP95BucketUpperBoundMs": {
+          "measured": false
+        },
+        "ackP99BucketUpperBoundMs": {
+          "measured": false
+        },
+        "producerApiCalls": {
+          "measured": true,
+          "count": 10,
+          "min": 10214,
+          "median": 10236.5,
+          "max": 10260,
+          "q1": 10233,
+          "q3": 10254.75,
+          "iqr": 21.75
+        },
+        "recordsPerApiCall": {
+          "measured": true,
+          "count": 10,
+          "min": 5.847855750487329,
+          "median": 5.861378414804767,
+          "max": 5.874192285098884,
+          "q1": 5.850947382934826,
+          "q3": 5.863310040587102,
+          "iqr": 0.012362657652276177
+        },
+        "apiCallsPerAcceptedEvent": {
+          "measured": true,
+          "count": 10,
+          "min": 0.17023617060284338,
+          "median": 0.17060833333333333,
+          "max": 0.1710028500475008,
+          "q1": 0.17055213170219505,
+          "q3": 0.1709125,
+          "iqr": 0.00036036829780494717
+        },
+        "queueHighWater": {
+          "measured": true,
+          "count": 10,
+          "min": 4,
+          "median": 7,
+          "max": 9,
+          "q1": 7,
+          "q3": 7,
+          "iqr": 0
+        },
+        "retries": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        },
+        "partialFailures": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        }
+      },
+      "infrastructure": {
+        "ecsCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.9921536421733137,
+          "median": 3.868719592333461,
+          "max": 7.408365700254218,
+          "q1": 3.220891732806437,
+          "q3": 5.857968814212322,
+          "iqr": 2.6370770814058853
+        },
+        "ecsCpuMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 5.254813541774638,
+          "median": 9.064393210411072,
+          "max": 9.32548360824585,
+          "q1": 7.257653318735539,
+          "q3": 9.16928768157959,
+          "iqr": 1.911634362844051
+        },
+        "ecsMemoryAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.6399739583333335,
+          "median": 2.841796875,
+          "max": 3.0729166666666665,
+          "q1": 2.757161458333333,
+          "q3": 2.95654296875,
+          "iqr": 0.19938151041666696
+        },
+        "ecsMemoryMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.724609375,
+          "median": 2.9443359375,
+          "max": 3.125,
+          "q1": 2.82958984375,
+          "q3": 2.97607421875,
+          "iqr": 0.146484375
+        },
+        "collectorHostCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 4.55,
+          "median": 7.255833333333333,
+          "max": 12.025,
+          "q1": 6.2645833333333325,
+          "q3": 10.775,
+          "iqr": 4.510416666666668
+        },
+        "networkInBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 41123538,
+          "median": 52802797,
+          "max": 100925320,
+          "q1": 45047646.25,
+          "q3": 82786948.75,
+          "iqr": 37739302.5
+        },
+        "networkOutBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 50903721,
+          "median": 65509167,
+          "max": 124924089,
+          "q1": 55810696.25,
+          "q3": 102649718.75,
+          "iqr": 46839022.5
+        }
+      },
+      "runtime": {
+        "goHeapAfterBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 3286936,
+          "median": 4443568,
+          "max": 5694864,
+          "q1": 3710524,
+          "q3": 4626878,
+          "iqr": 916354
+        },
+        "goAllocatedBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 1676302816,
+          "median": 1696761000,
+          "max": 1703863336,
+          "q1": 1686893014,
+          "q3": 1698896884,
+          "iqr": 12003870
+        },
+        "goAllocatedBytesPerAcceptedEvent": {
+          "measured": true,
+          "count": 10,
+          "min": 27938.84591409857,
+          "median": 28279.35,
+          "max": 28397.722266666668,
+          "q1": 28115.001075872933,
+          "q3": 28315.302098605534,
+          "iqr": 200.30102273260127
+        },
+        "goGcCount": {
+          "measured": true,
+          "count": 10,
+          "min": 676,
+          "median": 856.5,
+          "max": 917,
+          "q1": 748,
+          "q3": 888.5,
+          "iqr": 140.5
+        },
+        "goGcPauseMs": {
+          "measured": true,
+          "count": 10,
+          "min": 54.061477,
+          "median": 66.315754,
+          "max": 70.841502,
+          "q1": 60.615522,
+          "q3": 68.92477825,
+          "iqr": 8.309256250000004
+        },
+        "goroutinesAfter": {
+          "measured": true,
+          "count": 10,
+          "min": 88,
+          "median": 119,
+          "max": 145,
+          "q1": 109.25,
+          "q3": 139.25,
+          "iqr": 30
+        }
+      },
+      "correctness": {
+        "expectedEvents": 80,
+        "acceptedEvents": 80,
+        "observedMatchingRecords": 80,
+        "shutdownAttempted": 64,
+        "shutdownAccepted": 64
+      },
+      "lifecycle": {
+        "runCleanupPassed": true,
+        "sharedStreamRemoved": false,
+        "candidateImagesRemoved": false
+      },
+      "cost": {
+        "runUpperBoundUsd": 3.17180005479452,
+        "projectedCumulativeUpperBoundUsd": 6.34360010958904,
+        "costExplorerAvailability": "billing-delayed-or-zero"
+      },
+      "measurementNotes": {
+        "ackLatency": "not measured: the Go batch debug snapshot exposed no populated per-event ACK histogram; HTTP latency remains measured",
+        "javaRuntimeBase": "same Go Dockerfile and runtime base"
+      }
+    },
+    {
+      "candidate": "java-kpl",
+      "runId": "run_20260712_065416_phase1_kinesis_compare_java-kpl",
+      "image": {
+        "sizeBytes": 238601800,
+        "architecture": "amd64",
+        "digest": "sha256:ac651587183c872f86f95e7fa6ddba91e3da7a9cb39fa9e1bb0e8622a80a2e08",
+        "runtimeBaseComparable": false
+      },
+      "eligibility": {
+        "actualKinesisCorrectnessPassed": true,
+        "lossZero": true,
+        "duplicateZero": true,
+        "originalBytesPreserved": true,
+        "partitionKeysPreserved": true,
+        "preAckSuccessZero": true,
+        "aggregationDisabled": true,
+        "shutdownFlushPassed": true,
+        "commonLoadTenRepetitionsPassed": true,
+        "passed": true
+      },
+      "smoke": {
+        "actualRps": 999.3684598616576,
+        "http202": 30000,
+        "errors": 0,
+        "latencyMs": {
+          "p50": 21.663596000000002,
+          "p95": 27.793238000000002,
+          "p99": 50.682171999999994
+        }
+      },
+      "performance": {
+        "actualRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.5397335181441,
+          "median": 999.6356007887634,
+          "max": 999.7379606974605,
+          "q1": 999.5863242033588,
+          "q3": 999.6618134230656,
+          "iqr": 0.07548921970681022
+        },
+        "acceptedRps": {
+          "measured": true,
+          "count": 10,
+          "min": 999.9833333333333,
+          "median": 999.9916666666667,
+          "max": 1000,
+          "q1": 999.9833333333333,
+          "q3": 1000,
+          "iqr": 0.01666666666665151
+        },
+        "httpLatencyP50Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 20.463051,
+          "median": 21.2114455,
+          "max": 21.965906,
+          "q1": 21.14637475,
+          "q3": 21.34951775,
+          "iqr": 0.20314300000000074
+        },
+        "httpLatencyP95Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 26.361596000000002,
+          "median": 27.111979499999997,
+          "max": 28.038193,
+          "q1": 27.0876655,
+          "q3": 27.17783725,
+          "iqr": 0.09017174999999966
+        },
+        "httpLatencyP99Ms": {
+          "measured": true,
+          "count": 10,
+          "min": 38.671594,
+          "median": 44.9450375,
+          "max": 51.853253,
+          "q1": 42.879249,
+          "q3": 46.7040855,
+          "iqr": 3.8248364999999964
+        },
+        "ackP50BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 25,
+          "median": 25,
+          "max": 25,
+          "q1": 25,
+          "q3": 25,
+          "iqr": 0
+        },
+        "ackP95BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 25,
+          "median": 25,
+          "max": 50,
+          "q1": 25,
+          "q3": 25,
+          "iqr": 0
+        },
+        "ackP99BucketUpperBoundMs": {
+          "measured": true,
+          "count": 10,
+          "min": 50,
+          "median": 50,
+          "max": 50,
+          "q1": 50,
+          "q3": 50,
+          "iqr": 0
+        },
+        "producerApiCalls": {
+          "measured": true,
+          "count": 10,
+          "min": 9963,
+          "median": 10023.5,
+          "max": 10053,
+          "q1": 10005.5,
+          "q3": 10036.5,
+          "iqr": 31
+        },
+        "recordsPerApiCall": {
+          "measured": true,
+          "count": 10,
+          "min": 5.968367651447329,
+          "median": 5.985885004160723,
+          "max": 6.022182073672589,
+          "q1": 5.97815477600839,
+          "q3": 5.9966268964049005,
+          "iqr": 0.018472120396510583
+        },
+        "apiCallsPerAcceptedEvent": {
+          "measured": true,
+          "count": 10,
+          "min": 0.16605276754612577,
+          "median": 0.1670597262732157,
+          "max": 0.16755,
+          "q1": 0.1667604177430735,
+          "q3": 0.16727569688661478,
+          "iqr": 0.0005152791435412696
+        },
+        "queueHighWater": {
+          "measured": true,
+          "count": 10,
+          "min": 128,
+          "median": 128,
+          "max": 128,
+          "q1": 128,
+          "q3": 128,
+          "iqr": 0
+        },
+        "retries": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        },
+        "partialFailures": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        }
+      },
+      "infrastructure": {
+        "ecsCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 2.5665998409191766,
+          "median": 5.011070252396166,
+          "max": 6.745027859633168,
+          "q1": 3.6188084740159017,
+          "q3": 6.228636127555122,
+          "iqr": 2.60982765353922
+        },
+        "ecsCpuMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 4.173466566577554,
+          "median": 8.070696341991425,
+          "max": 8.183606219291686,
+          "q1": 7.997751859948039,
+          "q3": 8.111565661430358,
+          "iqr": 0.11381380148231912
+        },
+        "ecsMemoryAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 45.276692708333336,
+          "median": 48.29752604166667,
+          "max": 48.753255208333336,
+          "q1": 47.87760416666667,
+          "q3": 48.44970703125,
+          "iqr": 0.5721028645833286
+        },
+        "ecsMemoryMaximumPercent": {
+          "measured": true,
+          "count": 10,
+          "min": 45.703125,
+          "median": 48.3642578125,
+          "max": 48.837890625,
+          "q1": 47.89794921875,
+          "q3": 48.4716796875,
+          "iqr": 0.57373046875
+        },
+        "collectorHostCpuAveragePercent": {
+          "measured": true,
+          "count": 10,
+          "min": 1.9533333333333331,
+          "median": 5.940833333333333,
+          "max": 10.861666666666666,
+          "q1": 4.470833333333334,
+          "q3": 7.825416666666666,
+          "iqr": 3.3545833333333315
+        },
+        "networkInBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 40051711,
+          "median": 56828743.5,
+          "max": 82680399,
+          "q1": 44464778.25,
+          "q3": 75604432.5,
+          "iqr": 31139654.25
+        },
+        "networkOutBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 53700663,
+          "median": 76060914.5,
+          "max": 110637299,
+          "q1": 59635691.75,
+          "q3": 101266217,
+          "iqr": 41630525.25
+        }
+      },
+      "runtime": {
+        "startupMs": {
+          "measured": true,
+          "count": 10,
+          "min": 2,
+          "median": 2,
+          "max": 2,
+          "q1": 2,
+          "q3": 2,
+          "iqr": 0
+        },
+        "jvmHeapAfterBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 43020576,
+          "median": 73647800,
+          "max": 111115312,
+          "q1": 62339420,
+          "q3": 89070426,
+          "iqr": 26731006
+        },
+        "jvmGcCount": {
+          "measured": true,
+          "count": 10,
+          "min": 184,
+          "median": 187,
+          "max": 195,
+          "q1": 186.25,
+          "q3": 190.25,
+          "iqr": 4
+        },
+        "jvmGcTimeMs": {
+          "measured": true,
+          "count": 10,
+          "min": 222,
+          "median": 231.5,
+          "max": 279,
+          "q1": 226.25,
+          "q3": 233.75,
+          "iqr": 7.5
+        },
+        "jvmPeakThreads": {
+          "measured": true,
+          "count": 10,
+          "min": 44,
+          "median": 44,
+          "max": 44,
+          "q1": 44,
+          "q3": 44,
+          "iqr": 0
+        },
+        "kplChildRssBytes": {
+          "measured": true,
+          "count": 10,
+          "min": 32759808,
+          "median": 34897920,
+          "max": 36728832,
+          "q1": 34070528,
+          "q3": 35645440,
+          "iqr": 1574912
+        },
+        "kplChildCpuNanoseconds": {
+          "measured": true,
+          "count": 10,
+          "min": 8950000000,
+          "median": 8990000000,
+          "max": 9060000000,
+          "q1": 8972500000,
+          "q3": 8997500000,
+          "iqr": 25000000
+        },
+        "kplChildRestarts": {
+          "measured": true,
+          "count": 10,
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "q1": 0,
+          "q3": 0,
+          "iqr": 0
+        }
+      },
+      "correctness": {
+        "expectedEvents": 80,
+        "acceptedEvents": 80,
+        "observedMatchingRecords": 80,
+        "shutdownAttempted": 64,
+        "shutdownAccepted": 64
+      },
+      "lifecycle": {
+        "runCleanupPassed": true,
+        "sharedStreamRemoved": true,
+        "candidateImagesRemoved": true
+      },
+      "cost": {
+        "runUpperBoundUsd": 3.17180005479452,
+        "projectedCumulativeUpperBoundUsd": 9.51540016438356,
+        "costExplorerAvailability": "billing-delayed-or-zero"
+      },
+      "measurementNotes": {
+        "ackLatency": "histogram-derived bucket upper bounds, not interpolated quantiles",
+        "javaRuntimeBase": "JVM-compatible digest-pinned base differs from the two Go images and its overhead is retained"
+      }
+    }
+  ],
+  "allCorrectnessEligible": true,
+  "cleanupPassed": true,
+  "conservativeCumulativeUpperBoundUsd": 9.51540016438356,
+  "derivedComparisons": {
+    "goBatchVersusGoSync": {
+      "apiCallsPerEventReductionPercent": 82.93916666666667,
+      "goAllocatedBytesPerEventReductionPercent": 45.64704182037197,
+      "ecsCpuMedianReductionPercent": 41.54572998167404,
+      "httpP95MedianIncreasePercent": 62.19750000417288
+    },
+    "javaKplVersusGoBatch": {
+      "apiCallsPerEventReductionPercent": 2.079972877517301,
+      "httpP95MedianIncreasePercent": 21.306697204550094,
+      "ecsMemoryMedianMultiplier": 16.995418098510882,
+      "imageSizeMultiplier": 24.528356972281934
+    }
+  }
+}

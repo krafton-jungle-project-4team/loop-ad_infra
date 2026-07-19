@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 17,
+  "sourceRunId": "run_20260719_043415_phase7_integration",
+  "verifiedAt": "2026-07-19T06:15:05Z",
+  "sourceFailure": {
+    "firstFailingGate": "score_archive",
+    "rawAwsError": "ClickHouse HTTP 500 Code 241 MEMORY_LIMIT_EXCEEDED while re-reading part-00000.parquet: 4.50 GiB per-query maximum was exceeded by a 6.04 MiB allocation.",
+    "diagnosisPath": "performance-tests/phase7_2-stabilization/attempt-17-archive-memory-diagnosis.json",
+    "diagnosisSha256": "6127c8b7907944c2f58e96ee4f4621923b8b1a084e3e136a77040e248a54e0a9"
+  },
+  "fix": {
+    "summary": "Raise only the Phase 7 archive per-query ClickHouse memory ceiling from 4.5 GiB to 5 GiB; retain the 7 GiB server cap and 8 GiB container cap.",
+    "commit": "ed2cd79697db117a037cea3ff319d9327117a4b9",
+    "changedFiles": [
+      {
+        "path": "performance-tests/phase7-integration/archive/entrypoint.py",
+        "sha256": "64270dcda52f26e91471f807254e67a37358a5268c9fa0fb89d93fd15602e032"
+      },
+      {
+        "path": "performance-tests/phase7-integration/tests/test_phase7_archive_runtime.py",
+        "sha256": "71815fca7c2b99633586079939912da322dd029e71ef79df29d8fba9fc0f1a54"
+      },
+      {
+        "path": "test/perf-phase7-integration.test.ts",
+        "sha256": "36ef8a8d76d6538a476f843742dc866cc816b4a209809234132f4df3a669e81a"
+      }
+    ],
+    "memoryInvariant": {
+      "archiveQueryBytes": 5368709120,
+      "clickHouseServerBytes": 7516192768,
+      "clickHouseContainerBytes": 8589934592,
+      "serverMinusQueryBytes": 2147483648,
+      "containerMinusServerBytes": 1073741824
+    }
+  },
+  "focusedVerification": {
+    "awsRequestCount": 0,
+    "wholeLocalRunPerformed": false,
+    "commands": [
+      {
+        "command": "npm exec -- jest --runInBand test/perf-phase7-integration.test.ts",
+        "exitCode": 0,
+        "passed": 16,
+        "failed": 0
+      },
+      {
+        "command": "UV_CACHE_DIR=/tmp/loopad-phase7-uv-cache uv run --project performance-tests/phase4-clickhouse/producer-env --locked python -m unittest performance-tests.phase7-integration.tests.test_phase7_archive_runtime",
+        "exitCode": 0,
+        "passed": 11,
+        "failed": 0
+      }
+    ],
+    "status": "passed"
+  },
+  "deferredLocal": {
+    "required": true,
+    "status": "pending-next-batched-whole-local",
+    "coverage": [
+      "complete npm run test:phase7",
+      "npm run build",
+      "fresh Phase 7-1 whole handoff for the exact fixed implementation"
+    ]
+  },
+  "nextAwsProbe": {
+    "attemptType": "aws-targeted-diagnostic",
+    "promotionEligible": false,
+    "scope": "real r7g.2xlarge ClickHouse with the exact 15,000,000-row closed partition and one archive task; require immutable COMMITTED re-read and zero Code 241/restart; never execute source DROP",
+    "status": "pending-fresh-identity-and-cost-gate"
+  },
+  "status": "focused-fix-passed-awaiting-targeted-aws"
+}

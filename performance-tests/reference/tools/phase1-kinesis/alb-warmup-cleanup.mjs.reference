@@ -1,0 +1,23 @@
+export function evaluateAlbWarmupCleanup(inventory) {
+    const checks = {
+        runStackAbsent: inventory.runStack === null,
+        streamStackAbsent: inventory.streamStack === null,
+        instancesAbsent: inventory.instances.length === 0,
+        autoScalingGroupsAbsent: inventory.autoScalingGroups.length === 0,
+        launchTemplatesAbsent: inventory.launchTemplates.length === 0,
+        loadBalancersAbsent: inventory.loadBalancers.length === 0,
+        targetGroupsAbsent: inventory.targetGroups.length === 0,
+        vpcsAbsent: inventory.vpcs.length === 0,
+        kinesisStreamAbsent: inventory.kinesisStream === null,
+        ecsClusterInactiveOrAbsent: inventory.ecsClusters.every((cluster) => cluster.status === 'INACTIVE'),
+        logGroupsAbsent: inventory.logGroups.length === 0,
+        monitoringResourcesAbsent: inventory.alarms.length === 0,
+        iamRolesAbsent: inventory.iamRoles.length === 0,
+        ecrSessionTagsAbsent: inventory.ecrImages.length === 0,
+        s3BucketAbsent: inventory.s3.bucketExists === false,
+        s3ObjectsAbsent: inventory.s3.objects.length === 0,
+        s3MultipartUploadsAbsent: inventory.s3.multipartUploads.length === 0,
+        s3BucketPolicyAbsent: inventory.s3.policyExists === false,
+    };
+    return { verifiedAt: new Date().toISOString(), inventory, checks, passed: Object.values(checks).every(Boolean) };
+}

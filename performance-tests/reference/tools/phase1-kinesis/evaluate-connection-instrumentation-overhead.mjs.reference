@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+
+export function evaluateConnectionInstrumentationOverhead(text) {
+    const values = { off: [], on: [] };
+    for (const line of text.split(/\r?\n/)) {
+        const match = /^BenchmarkCollectorControlConnectionInstrumentation\/(off|on)-\d+\s+\d+\s+([0-9.]+) ns\/op/.exec(line.trim());
+        if (match) values[match[1]].push(Number(match[2]));
+    }
+    if (values.off.length < 5 || values.on.length < 5) throw new Error('at least five benchmark repetitions per mode are required');
+    const off = median(values.off);
+    const on = median(values.on);
+    const pairedRatios = values.off.map((value, index) => values.on[index] / value - 1);
+    const overheadRatio = median(pairedRatios);
+    return { schemaVersion: 1, method: 'seven interleaved independent off/on benchmark processes; median paired ratio', sampleCount: { off: values.off.length, on: values.on.length }, nsPerOperation: { offMedian: off, onMedian: on, off: values.off, on: values.on }, pairedOverheadRatios: pairedRatios, overheadRatio, overheadPercent: overheadRatio * 100, thresholdPercent: 2, passed: overheadRatio <= 0.02 };
+}
+
+function median(values) { const sorted = values.toSorted((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
+    const input = option('--input');
+    const collectorRepo = option('--collector-repo');
+    const output = option('--output');
+    if ((!input && !collectorRepo) || (input && collectorRepo) || !output) throw new Error('provide exactly one of --input/--collector-repo and provide --output');
+    let benchmark = input ? readFileSync(input, 'utf8') : '';
+    if (collectorRepo) {
+        const chunks = [];
+        for (let repetition = 1; repetition <= 7; repetition += 1) {
+            for (const mode of ['off', 'on']) {
+                const output = execFileSync('go', ['test', './internal/server', '-run', '^$', '-bench', `^BenchmarkCollectorControlConnectionInstrumentation/${mode}$`, '-benchmem', '-count', '1', '-benchtime', '1s'], {
+                    cwd: collectorRepo, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GOCACHE: '/tmp/loopad-go-cache' },
+                });
+                chunks.push(`# repetition=${repetition} mode=${mode}\n${output}`);
+            }
+        }
+        benchmark = chunks.join('\n');
+    }
+    const result = evaluateConnectionInstrumentationOverhead(benchmark);
+    result.rawBenchmark = benchmark;
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (!result.passed) process.exitCode = 2;
+}

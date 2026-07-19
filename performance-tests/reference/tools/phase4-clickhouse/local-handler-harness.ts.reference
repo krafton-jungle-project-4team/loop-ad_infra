@@ -1,0 +1,162 @@
+import type {
+    KinesisStreamBatchResponse,
+    KinesisStreamEvent,
+    KinesisStreamRecord,
+} from 'aws-lambda';
+import { readFileSync, writeFileSync } from 'node:fs';
+import {
+    createClickHouseInserter,
+    createHandler,
+} from '../../src/phase4-clickhouse-handler';
+
+interface HarnessBatch {
+    readonly mode?: 'normal' | 'fail-first-then-retry';
+    readonly records: KinesisStreamRecord[];
+}
+
+interface HarnessInput {
+    readonly batches: HarnessBatch[];
+    readonly clickHouseUrl: string;
+    readonly concurrency: number;
+    readonly receivedAt: string;
+}
+
+interface BatchResult {
+    readonly initial: KinesisStreamBatchResponse;
+    readonly retry?: KinesisStreamBatchResponse;
+}
+
+function requiredArgument(name: string): string {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`MissingArgument${name.replaceAll('-', '')}`);
+    return value;
+}
+
+function parseInput(path: string): HarnessInput {
+    const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (!value || typeof value !== 'object') throw new Error('InvalidHarnessInput');
+    const input = value as Partial<HarnessInput>;
+    if (
+        !Array.isArray(input.batches) ||
+        typeof input.clickHouseUrl !== 'string' ||
+        typeof input.receivedAt !== 'string' ||
+        !Number.isInteger(input.concurrency) ||
+        (input.concurrency ?? 0) < 1 ||
+        (input.concurrency ?? 0) > 32
+    ) {
+        throw new Error('InvalidHarnessInput');
+    }
+    const receivedAt = new Date(input.receivedAt);
+    if (!Number.isFinite(receivedAt.getTime())) throw new Error('InvalidHarnessReceivedAt');
+    return input as HarnessInput;
+}
+
+async function mapWithConcurrency<T, R>(
+    values: readonly T[],
+    concurrency: number,
+    operation: (value: T) => Promise<R>,
+): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let next = 0;
+    async function worker(): Promise<void> {
+        while (next < values.length) {
+            const index = next;
+            next += 1;
+            results[index] = await operation(values[index]!);
+        }
+    }
+    await Promise.all(Array.from(
+        { length: Math.min(concurrency, values.length) },
+        () => worker(),
+    ));
+    return results;
+}
+
+async function main(): Promise<void> {
+    const inputPath = requiredArgument('--input');
+    const outputPath = requiredArgument('--output');
+    const input = parseInput(inputPath);
+    const receivedAt = new Date(input.receivedAt);
+    const summaries: Record<string, unknown>[] = [];
+    let lateEventDropped = 0;
+    const insertRows = createClickHouseInserter({
+        getBaseUrl: () => input.clickHouseUrl,
+        getDatabase: () => 'loopad',
+        // The local server is loopback-bound and deliberately has no credential.
+        loadCredentials: async () => ({ username: 'default', password: '' }),
+    });
+    const dependencies = {
+        insertRows,
+        now: () => receivedAt,
+        emitLateEventMetric: (count: number) => {
+            lateEventDropped += count;
+        },
+        logSummary: (summary: Record<string, unknown>) => {
+            summaries.push(summary);
+        },
+    };
+    const normalHandler = createHandler(dependencies);
+
+    const results = await mapWithConcurrency(
+        input.batches,
+        input.concurrency,
+        async (batch): Promise<BatchResult> => {
+            const event: KinesisStreamEvent = { Records: batch.records };
+            if (batch.mode !== 'fail-first-then-retry') {
+                return { initial: await normalHandler(event) };
+            }
+
+            let failFirst = true;
+            const retryHandler = createHandler({
+                ...dependencies,
+                insertRows: async (table, columns, rows) => {
+                    if (failFirst) {
+                        failFirst = false;
+                        throw new Error('InjectedClickHouseUnavailable');
+                    }
+                    await insertRows(table, columns, rows);
+                },
+            });
+            const initial = await retryHandler(event);
+            if (initial.batchItemFailures.length !== 1) {
+                throw new Error('FailFirstBatchDidNotRequestRetry');
+            }
+            return {
+                initial,
+                retry: await retryHandler(event),
+            };
+        },
+    );
+
+    const retryBatches = results.filter((result) => result.retry !== undefined);
+    const unexpectedFailures = results.flatMap((result) => (
+        result.retry ?? result.initial
+    ).batchItemFailures);
+    if (unexpectedFailures.length > 0) throw new Error('HarnessBatchFailedAfterRetry');
+
+    const output = {
+        schemaVersion: 1,
+        status: 'passed',
+        inputLogicalRecords: input.batches.reduce((sum, batch) => sum + batch.records.length, 0),
+        batchCount: input.batches.length,
+        concurrency: input.concurrency,
+        retryBatchCount: retryBatches.length,
+        retryInitialFailures: retryBatches.reduce(
+            (sum, result) => sum + result.initial.batchItemFailures.length,
+            0,
+        ),
+        lateEventDropped,
+        successSummaries: summaries.filter((summary) => summary.event === 'phase4_batch_success').length,
+        retrySummaries: summaries.filter((summary) => summary.event === 'phase4_batch_retry').length,
+        awsSdkCalls: 0,
+    };
+    writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+}
+
+void main().catch((error: unknown) => {
+    const category = error instanceof Error ? error.name : 'UnknownError';
+    const message = error instanceof Error ? error.message : 'UnknownFailure';
+    process.stderr.write(`${category}:${message}\n`);
+    process.exitCode = 1;
+});

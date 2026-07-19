@@ -1,0 +1,15 @@
+import { App } from 'aws-cdk-lib';
+import { LoopAdPerfPhase6ArchiveStack, PHASE6_REGION } from '../../src/perf-phase6-archive-stack';
+
+const account = '123456789012';
+const app = new App({
+    context: {
+        [`availability-zones:account=${account}:region=${PHASE6_REGION}`]: ['ap-northeast-2a'],
+    },
+});
+new LoopAdPerfPhase6ArchiveStack(app, 'LoopAdPerfPhase6ArchiveStack', {
+    env: { account, region: PHASE6_REGION },
+    runId: 'run_20990101_000000_phase6_archive',
+    sessionId: 'phase6-archive-20990101T000000Z',
+    clickHouseAmiId: 'ami-0123456789abcdef0',
+});

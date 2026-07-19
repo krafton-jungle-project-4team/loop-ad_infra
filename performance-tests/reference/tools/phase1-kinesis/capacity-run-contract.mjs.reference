@@ -1,0 +1,28 @@
+export const CAPACITY_STAGES = Object.freeze([10_000, 30_000, 50_000]);
+export const CAPACITY_TIMING = Object.freeze({
+    probeSeconds: 15,
+    warmupSeconds: 30,
+    measurementSeconds: 60,
+    repetitions: 3,
+    cooldownSeconds: 15,
+    cloudWatchDelaySeconds: 90,
+});
+
+export function capacityRunPlan(candidate) {
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+    return {
+        candidate,
+        collectorHosts: 4,
+        tasksPerHost: 1,
+        stages: CAPACITY_STAGES.map((targetRps) => ({
+            targetRps,
+            probe: { durationSeconds: CAPACITY_TIMING.probeSeconds },
+            warmup: { durationSeconds: CAPACITY_TIMING.warmupSeconds },
+            measurements: Array.from({ length: CAPACITY_TIMING.repetitions }, (_, index) => ({
+                repetition: index + 1, durationSeconds: CAPACITY_TIMING.measurementSeconds,
+            })),
+            cooldownSeconds: CAPACITY_TIMING.cooldownSeconds,
+        })),
+        optional50k300Seconds: { status: 'not-run-optional' },
+    };
+}

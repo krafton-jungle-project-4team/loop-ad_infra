@@ -1,0 +1,43 @@
+export function evaluatePersistentMeasurement(input) {
+    const { targetRps, aggregate, gate, accessLog, cloudwatch, producer, taskSafety, recovery } = input;
+    if (![30_000, 50_000].includes(targetRps)) throw new Error('targetRps must be 30000 or 50000');
+    const measurement = aggregate.persistent?.measurement;
+    const accessMeasurement = accessLog.measurement;
+    const attempted = aggregate.attemptedRequests ?? 0;
+    const transportRate = attempted > 0 ? (aggregate.transportErrors ?? 0) / attempted : 1;
+    const statuses = accessLog.measurementWindow?.elbStatusDistribution ?? {};
+    const windowCount = accessLog.measurementWindow?.count ?? 0;
+    const window202 = statuses['202'] ?? 0;
+    const requiredWindowCount = targetRps * 15 * 0.99;
+    const statusCount = Object.values(statuses).reduce((sum, value) => sum + value, 0);
+    const timestampAlignment = Boolean(measurement?.start && measurement?.end && accessMeasurement?.start && accessMeasurement?.end &&
+        Date.parse(measurement.start) === Date.parse(accessMeasurement.start) && Date.parse(measurement.end) === Date.parse(accessMeasurement.end) &&
+        (Date.parse(measurement.end) - Date.parse(measurement.start)) / 1_000 === 15);
+    const checks = {
+        stableGatePassed: gate.passed === true,
+        timestampAlignment,
+        accessLogComplete: accessLog.passed === true && accessLog.completeness?.status === 'complete-enough-for-analysis',
+        accessLogDistributionReconciles: statusCount === windowCount,
+        fullAggregateGeneratorRps: (aggregate.actualRps ?? 0) >= targetRps * 0.99,
+        fullAggregateTransportErrors: transportRate <= 0.001,
+        measurementRequestCount: windowCount >= requiredWindowCount,
+        measurement202Rate: windowCount > 0 && window202 / windowCount >= 0.999,
+        measurement429Zero: (statuses['429'] ?? 0) === 0,
+        measurement5xxZero: (statuses['5xx'] ?? 0) === 0,
+        producerFailureZero: (producer.failures ?? 0) === 0,
+        producerTimeoutZero: (producer.timeouts ?? 0) === 0,
+        kinesisThrottleZero: (cloudwatch.kinesisWriteThrottle ?? 0) === 0,
+        taskSafetyPassed: taskSafety.passed === true,
+        recoveryPassed: recovery.passed === true,
+    };
+    const unsafe = !checks.measurement429Zero || !checks.measurement5xxZero || !checks.producerFailureZero ||
+        !checks.producerTimeoutZero || !checks.kinesisThrottleZero || !checks.taskSafetyPassed || !checks.recoveryPassed;
+    return {
+        evaluatedAt: new Date().toISOString(), targetRps,
+        generator: { actualRps: aggregate.actualRps, minimumRps: targetRps * 0.99, attemptedRequests: attempted, transportErrors: aggregate.transportErrors, transportErrorRate: transportRate },
+        measurement: { ...measurement, accessLogCount: windowCount, requiredCount: requiredWindowCount, http202: window202, statusDistribution: statuses },
+        producer, kinesisWriteThrottle: cloudwatch.kinesisWriteThrottle, checks,
+        classification: unsafe ? 'unsafe' : Object.values(checks).every(Boolean) ? 'qualified' : 'not-qualified',
+        passed: Object.values(checks).every(Boolean),
+    };
+}

@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+
+const REGION = 'ap-northeast-2';
+const runDir = requiredOption('--run-dir');
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const stageLabel = requiredOption('--stage-label');
+const repetition = requiredInteger('--repetition');
+const bucket = requiredOption('--evidence-bucket');
+const generatorCommandIds = requiredOption('--generator-command-ids').split(',');
+const collectorCommandId = requiredOption('--collector-command-id');
+const proxyCommandIds = requiredOption('--proxy-command-ids').split(',');
+const allowFailedGenerator = process.argv.includes('--allow-failed-generator');
+const allowFailedProxy = process.argv.includes('--allow-failed-proxy');
+if (basename(runDir) !== runId || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId) ||
+    !/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) ||
+    !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel) || repetition < 1 || repetition > 999) throw new Error('invalid stage identity');
+if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) || ![4, 8].includes(generatorCommandIds.length) || proxyCommandIds.length !== 2 ||
+    [...generatorCommandIds, collectorCommandId, ...proxyCommandIds].some((id) => !/^[0-9a-f-]{36}$/.test(id))) throw new Error('invalid recovery inputs');
+
+const repetitionPath = `repetition-${String(repetition).padStart(2, '0')}`;
+const stageDir = join(runDir, 'stages', stageLabel, repetitionPath);
+const manifest = json(join(stageDir, 'stage-manifest.json'));
+if (manifest.runId !== runId || manifest.sessionId !== sessionId || manifest.stageLabel !== stageLabel ||
+    manifest.repetition !== repetition || manifest.generators?.length !== generatorCommandIds.length) throw new Error('stage manifest identity mismatch');
+const proxyTopology = json(join(stageDir, 'proxy-telemetry', 'topology.json')).proxies;
+if (proxyTopology?.length !== 2) throw new Error('proxy topology is incomplete');
+
+const generatorArtifacts = generatorCommandIds.map((commandId, index) => recover({
+    kind: 'generator', commandId, instanceId: manifest.generators[index].instanceId,
+    uri: `s3://${bucket}/${sessionId}/${runId}/diagnostics/${stageLabel}/${repetitionPath}/node-${String(index + 1).padStart(2, '0')}/artifacts.tgz`,
+    directory: join(stageDir, 'load', `node-${String(index + 1).padStart(2, '0')}`), archiveName: 'artifacts.tgz',
+    allowFailureWithArtifact: allowFailedGenerator,
+}));
+const collectionStart = json(join(stageDir, 'collector-telemetry', 'collection-start.json'));
+const collectorCount = collectionStart.instanceIds?.length;
+if (collectionStart.commandId !== collectorCommandId || ![4, 6].includes(collectorCount) ||
+    (manifest.collectorCount !== undefined && manifest.collectorCount !== collectorCount)) throw new Error('collector command identity mismatch');
+const collectors = collectionStart.instanceIds.map((instanceId, index) => recover({
+    kind: 'collector', commandId: collectorCommandId, instanceId,
+    uri: `s3://${bucket}/${sessionId}/${runId}/collector-evidence/${stageLabel}/${repetitionPath}/${instanceId}/artifacts.tgz`,
+    directory: join(stageDir, 'collector-telemetry', `collector-${String(index + 1).padStart(2, '0')}`), archiveName: 'artifacts.tgz',
+}));
+writeJson(join(stageDir, 'collector-telemetry', 'collection-complete.json'), {
+    ...collectionStart,
+    completedAt: new Date().toISOString(),
+    collectors: collectors.map((item, index) => ({
+        collector: `collector-${String(index + 1).padStart(2, '0')}`,
+        instanceId: item.instanceId,
+        uri: item.uri,
+        archiveSha256: item.archiveSha256,
+        archiveRetained: false,
+        invocationStatus: item.status,
+    })),
+    passed: collectors.length === collectorCount && collectors.every((item) => item.status === 'Success' && item.responseCode === 0),
+});
+const proxies = proxyCommandIds.map((commandId, index) => recover({
+    kind: 'proxy', commandId, instanceId: proxyTopology[index].instanceId,
+    uri: `s3://${bucket}/${sessionId}/${runId}/proxy-evidence/${stageLabel}/${repetitionPath}/proxy-${String(index + 1).padStart(2, '0')}/haproxy-telemetry.tgz`,
+    directory: join(stageDir, 'proxy-telemetry', `proxy-${String(index + 1).padStart(2, '0')}`), archiveName: 'haproxy-telemetry.tgz',
+    allowFailure: allowFailedProxy,
+}));
+
+const result = { recoveredAt: new Date().toISOString(), region: REGION, runId, sessionId, stageLabel, repetition,
+    generatorArtifacts, collectors, proxies, passed: [...generatorArtifacts, ...collectors, ...proxies].every((item) => item.status === 'Success') };
+writeJson(join(stageDir, 'remote-recovery-summary.json'), result);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function recover({ kind, commandId, instanceId, uri, directory, archiveName, allowFailure = false, allowFailureWithArtifact = false }) {
+    const invocation = aws(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+    if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0) {
+        if (allowFailure) return { kind, commandId, instanceId, status: invocation.Status, responseCode: invocation.ResponseCode, uri: null, archiveSha256: null };
+        if (!allowFailureWithArtifact) throw new Error(`${kind} command ${commandId} is ${invocation.Status}`);
+    }
+    mkdirSync(directory, { recursive: true });
+    const archive = join(directory, archiveName);
+    execFileSync('aws', ['s3', 'cp', uri, archive, '--region', REGION, '--only-show-errors']);
+    execFileSync('tar', ['-xzf', archive, '-C', directory]);
+    const archiveSha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
+    unlinkSync(archive);
+    return { kind, commandId, instanceId, status: invocation.Status, responseCode: invocation.ResponseCode, uri,
+        archiveSha256, archiveRetained: false };
+}
+function aws(args) {
+    const text = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    return JSON.parse(text);
+}
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }

@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const LOCATION = 'Asia Pacific (Seoul)';
+const outputPath = optionValue('--output');
+
+const collector = instancePrice('c6i.xlarge');
+const collectorLarge = instancePrice('c6i.large');
+const loadGenerator = instancePrice('c6in.large');
+const proxy = instancePrice('c6in.xlarge');
+const proxyCapacity = instancePrice('c6in.2xlarge');
+
+const selections = {
+    collectorInstanceHour: collector,
+    collectorLargeInstanceHour: collectorLarge,
+    loadGeneratorInstanceHour: loadGenerator,
+    proxyInstanceHour: proxy,
+    proxyCapacityInstanceHour: proxyCapacity,
+    kinesisProvisionedShardHour: selectQuery('AmazonKinesis', { operation: 'shardHourStorage', group: 'Provisioned shard hour' }),
+    kinesisPutPayloadUnit: selectQuery('AmazonKinesis', { operation: 'PutRequest', group: 'Payload Units' }),
+    albHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Application', usagetype: 'APN2-LoadBalancerUsage' }),
+    albLcuHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Application', usagetype: 'APN2-LCUUsage' }),
+    nlbHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Network', usagetype: 'APN2-LoadBalancerUsage' }),
+    nlbLcuHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Network', usagetype: 'APN2-LCUUsage' }),
+    ebsGp3GbMonth: selectQuery('AmazonEC2', { usagetype: 'APN2-EBS:VolumeUsage.gp3' }),
+    publicIpv4Hour: selectQuery('AmazonVPC', { usagetype: 'APN2-PublicIPv4:InUseAddress' }),
+    cloudWatchMetricMonth: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-CW:MetricMonitorUsage' }, '0'),
+    cloudWatchLogIngestGb: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-DataProcessing-Bytes', operation: 'PutLogEvents' }),
+    cloudWatchLogStorageGbMonth: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-TimedStorage-ByteHrs' }),
+    cloudWatchGetMetricDataMetric: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-CW:GMD-Metrics', operation: 'GetMetricData' }),
+    ecrStorageGbMonth: selectQuery('AmazonECR', { usagetype: 'APN2-TimedStorage-ByteHrs' }),
+};
+
+const result = {
+    asOf: new Date().toISOString(),
+    region: REGION,
+    location: LOCATION,
+    source: 'AWS Price List GetProducts, public On-Demand USD',
+    prices: Object.fromEntries(Object.entries(selections).map(([name, selection]) => [name, selection.price])),
+    provenance: Object.fromEntries(Object.entries(selections).map(([name, selection]) => [name, {
+        serviceCode: selection.serviceCode,
+        usageType: selection.attributes.usagetype,
+        operation: selection.attributes.operation,
+        unit: selection.dimension.unit,
+        beginRange: selection.dimension.beginRange,
+        description: selection.dimension.description,
+    }])),
+    fixedApiUpperBounds: {
+        costExplorerRequestUsd: 0.01,
+        rationale: 'One post-run GetCostAndUsage call; Cost Explorer API price is not exposed by Price List GetProducts.',
+    },
+};
+
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) {
+    writeFileSync(outputPath, serialized, 'utf8');
+}
+process.stdout.write(serialized);
+
+function instancePrice(instanceType) {
+    const matches = products('AmazonEC2', [
+        filter('instanceType', instanceType),
+        filter('location', LOCATION),
+        filter('operatingSystem', 'Linux'),
+        filter('tenancy', 'Shared'),
+        filter('preInstalledSw', 'NA'),
+        filter('capacitystatus', 'Used'),
+    ]).filter((product) => product.product.productFamily === 'Compute Instance');
+    return uniqueSelection(matches, { instanceType });
+}
+
+function products(serviceCode, filters) {
+    const args = [
+        'pricing', 'get-products',
+        '--service-code', serviceCode,
+        '--region', 'us-east-1',
+        '--max-results', '100',
+        '--output', 'json',
+        '--no-cli-pager',
+    ];
+    if (filters.length > 0) {
+        args.push('--filters', ...filters);
+    }
+    const response = JSON.parse(execFileSync('aws', args, {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+    }));
+    return response.PriceList.map((item) => ({
+        serviceCode,
+        ...JSON.parse(item),
+    }));
+}
+
+function selectQuery(serviceCode, expectedAttributes, beginRange = '0') {
+    const queryFilters = [
+        filter('location', LOCATION),
+        ...Object.entries(expectedAttributes).map(([field, value]) => filter(field, value)),
+    ];
+    const matches = products(serviceCode, queryFilters).filter((product) => (
+        Object.entries(expectedAttributes).every(([key, value]) => product.product.attributes[key] === value)
+    ));
+    return uniqueSelection(matches, expectedAttributes, beginRange);
+}
+
+function uniqueSelection(matches, expectedAttributes, beginRange = '0') {
+    const dimensions = matches.flatMap((product) => Object.values(product.terms.OnDemand ?? {}).flatMap((term) => (
+        Object.values(term.priceDimensions ?? {}).map((dimension) => ({
+            serviceCode: product.serviceCode,
+            attributes: product.product.attributes,
+            dimension,
+            price: Number(dimension.pricePerUnit?.USD),
+        }))
+    ))).filter((selection) => selection.dimension.beginRange === beginRange && Number.isFinite(selection.price));
+    if (dimensions.length !== 1) {
+        throw new Error(`Expected one price for ${JSON.stringify(expectedAttributes)}, found ${dimensions.length}.`);
+    }
+    return dimensions[0];
+}
+
+function filter(field, value) {
+    return `Type=TERM_MATCH,Field=${field},Value=${value}`;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    if (index < 0) {
+        return undefined;
+    }
+    const value = process.argv[index + 1];
+    if (!value) {
+        throw new Error(`${name} requires a value.`);
+    }
+    return value;
+}

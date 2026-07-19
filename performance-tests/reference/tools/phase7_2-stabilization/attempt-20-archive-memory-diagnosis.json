@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 20,
+  "runId": "run_20260719_125547_phase7_integration",
+  "sessionId": "phase7-integration-20260719T125547Z",
+  "attemptType": "aws-full-stack-scoped-diagnostic",
+  "recordedAt": "2026-07-19T13:55:44Z",
+  "firstFailingGate": "archive",
+  "archiveTaskArn": "arn:aws:ecs:ap-northeast-2:742711170910:task/LoopAdPerfPhase7IntegrationStack-ClickHouseCluster6C6D09C2-1Y6WIgwcEm50/2d41846bd80c4b2b958115c6cc2d585b",
+  "archiveTaskExitCode": 1,
+  "rawAwsError": "ArchiveError: ClickHouse HTTP 500: Code: 241. Query memory limit exceeded: would use 5.01 GiB (attempt to allocate chunk of 6.04 MiB), maximum: 5.00 GiB: read stage: ColumnData: column properties_json ... part-00000.parquet ... ParquetV3BlockInputFormat ... ReadFromObjectStorage",
+  "rawErrorSource": {
+    "capturedBeforeCleanup": true,
+    "source": "archive task CloudWatch log stream read by the sealed scoped controller",
+    "standaloneCloudWatchArtifactPersisted": false,
+    "limitation": "The subsequent failure-evidence writer rejected a boto3 datetime value before it could persist the full task/log bundle; cleanup then removed the run-owned log groups. This record preserves the exact binding values, allocation size and failing read-path terms captured during the live task failure; the omitted intervening ClickHouse context is marked with ellipses."
+  },
+  "diagnosis": "The standard Phase 7 stack, service smoke and deterministic 15,000,000-row seed passed. The archive exported Parquet, then the exact re-read verification exceeded the archive entrypoint's 5 GiB per-query ceiling by one 6.04 MiB allocation. The 7 GiB ClickHouse server ceiling and 8 GiB container ceiling were not the binding limits.",
+  "fixDirection": {
+    "archiveQueryCeiling": "Raise the standard Phase 7 archive query ceiling to 6 GiB. Treat it as operational headroom rather than an exact acceptance measurement.",
+    "retainedLimits": "Retain the 7 GiB ClickHouse server ceiling and 8 GiB container ceiling, leaving approximately 1 GiB between query and server ceilings and 1 GiB between server and container ceilings.",
+    "failureEvidence": "Normalize boto3 datetime values recursively before JSON evidence persistence.",
+    "cleanup": "Remove exact-owned stopped archive task tags while the ECS cluster still exists so a deleted-task Tagging API tombstone cannot block authoritative cleanup zero."
+  },
+  "acceptancePolicy": {
+    "strict": [
+      "deterministic row and fingerprint correctness",
+      "bidirectional archive equivalence",
+      "immutable COMMITTED re-read",
+      "source DROP safety",
+      "run ownership",
+      "authoritative cleanup zero",
+      "campaign budget",
+      "previously frozen performance baseline"
+    ],
+    "operationalHeadroomNotExactAcceptance": [
+      "archive per-query memory ceiling",
+      "similar non-performance runtime tuning caps"
+    ]
+  },
+  "sourceDropExecuted": false,
+  "sourceDropNonExecutionBasis": {
+    "retainSourceOverride": "The sealed controller supplies ARCHIVE_RETAIN_SOURCE_AFTER_COMMIT=true for its only RunTask call.",
+    "failureOrdering": "The Code 241 failure occurred during Parquet re-read before immutable COMMITTED could be produced; DROP is unreachable before that safety gate and retain-source mode disables DROP after it.",
+    "cloudTrailRunTaskEventId": "b8c53548-a1dc-4730-92a6-1f089a613b74",
+    "cloudTrailRunTaskAt": "2026-07-19T13:20:08Z",
+    "cloudTrailRunTaskCount": 1,
+    "cloudTrailOverridesVisible": false,
+    "cloudTrailNote": "CloudTrail redacts container environment values. The event independently confirms the exact one-shot task identity, task definition, image digest, startedBy, client token and ownership tags; the immutable controller source establishes the retain-source value."
+  },
+  "completedArchiveObjectsRemainingAfterTaskCleanup": 0,
+  "evidence": {
+    "deploymentVerification": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/deployment-verification.json",
+      "sha256": "762b464670a2bf6544f30e3aeb2ce5bcd44fca083a0e46e81beef78179709be5"
+    },
+    "seedSummary": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/seed-summary.json",
+      "sha256": "430902cecbbbbcfa7c787ffe31aa35663ce1a576ea9eaa6d345e65006569d559"
+    },
+    "runnerFailure": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/failure.json",
+      "sha256": "127c051530615257b1e8e9902c8eeb8ee9bb1c2aa9e7cee5c3a697b2d01c6786"
+    },
+    "failureEvidenceCollectionError": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/failure-evidence-collection-error.json",
+      "sha256": "14b21a60f6ac6976d9d793e56fe6e4738def5c176770ba121e5d5fd2d3e60b00"
+    },
+    "archiveEntrypointBeforeFix": {
+      "path": "performance-tests/phase7-integration/archive/entrypoint.py",
+      "sha256": "f80955dec40f4c7c7a41e55f95b002fee9ad67fbce6a13a29c67b6ce0e7b31de"
+    },
+    "scopedControllerBeforeFix": {
+      "path": "performance-tests/phase7-integration/aws/full_stack_scoped_archive.py",
+      "sha256": "001bd681c2469c89624658af36e034f36ad2d0929a9c7ed42c62e8c769476909"
+    }
+  }
+}

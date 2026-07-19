@@ -1,0 +1,82 @@
+import {
+    GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    ALB_WARMUP_EXPERIMENT_MODE,
+    TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE,
+    ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE,
+    OHA12K_EXPERIMENT_MODE,
+    OHA12K_TOTAL_CONNECTIONS,
+} from './oha-load-contract.mjs';
+
+export const OHA12K_NODE_COUNTS = Object.freeze([1, 2, 4]);
+export const OHA_PROCESS_COUNTS_PER_NODE = Object.freeze([1, 2, 4]);
+export const OHA12K_STAGE_RPS = Object.freeze([30_000, 50_000]);
+export const EXPLICIT_CONNECTION_STAGE_RPS = Object.freeze([10_000, 20_000, 30_000, 40_000, 50_000]);
+export const OHA12K_PROBE_SECONDS = 15;
+export const OHA12K_COOLDOWN_SECONDS = 15;
+
+export function oha12kNodePlan({
+    nodeCount,
+    targetRps,
+    processesPerNode = 1,
+    experimentMode = OHA12K_EXPERIMENT_MODE,
+}) {
+    if (!OHA12K_NODE_COUNTS.includes(nodeCount)) throw new Error('nodeCount must be 1, 2, or 4');
+    if (!OHA_PROCESS_COUNTS_PER_NODE.includes(processesPerNode)) {
+        throw new Error('processesPerNode must be 1, 2, or 4');
+    }
+    if (![OHA12K_EXPERIMENT_MODE, GENERATOR_DIAGNOSIS_EXPERIMENT_MODE, ALB_WARMUP_EXPERIMENT_MODE,
+        TCP_ALB_PATH_DIAGNOSIS_EXPERIMENT_MODE, ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE].includes(experimentMode)) {
+        throw new Error('invalid explicit-connection experiment mode');
+    }
+    const allowedRps = experimentMode === ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE
+        ? EXPLICIT_CONNECTION_STAGE_RPS : OHA12K_STAGE_RPS;
+    if (!allowedRps.includes(targetRps)) throw new Error(experimentMode === ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE
+        ? 'targetRps must be 10000, 20000, 30000, 40000, or 50000'
+        : 'targetRps must be 30000 or 50000');
+    const processCount = nodeCount * processesPerNode;
+    if (OHA12K_TOTAL_CONNECTIONS % processCount !== 0 || targetRps % processCount !== 0) {
+        throw new Error('offered RPS and connections must divide evenly across processes');
+    }
+    const connectionsPerNode = OHA12K_TOTAL_CONNECTIONS / nodeCount;
+    const offeredRpsPerNode = targetRps / nodeCount;
+    const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+        nodeIndex: index + 1,
+        nodeId: `node-${(index + 1).toString().padStart(2, '0')}`,
+        offeredRps: offeredRpsPerNode,
+        connections: connectionsPerNode,
+        processesPerNode,
+        processes: Array.from({ length: processesPerNode }, (_, processIndex) => ({
+            processIndex: processIndex + 1,
+            processId: `process-${(processIndex + 1).toString().padStart(2, '0')}`,
+            offeredRps: offeredRpsPerNode / processesPerNode,
+            connections: connectionsPerNode / processesPerNode,
+        })),
+    }));
+    return {
+        experimentMode,
+        nodeCount,
+        processesPerNode,
+        processCount,
+        targetRps,
+        offeredRpsPerNode,
+        totalOfferedRps: nodes.reduce((sum, node) => sum + node.offeredRps, 0),
+        connectionsPerNode,
+        connectionsPerProcess: OHA12K_TOTAL_CONNECTIONS / processCount,
+        totalConnections: nodes.reduce((sum, node) => sum + node.connections, 0),
+        nodes,
+    };
+}
+
+export function oha12kCandidatePlan({ candidate, nodeCount }) {
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+    return {
+        experimentMode: OHA12K_EXPERIMENT_MODE,
+        candidate,
+        topology: { nodeCount, totalConnections: OHA12K_TOTAL_CONNECTIONS },
+        stages: OHA12K_STAGE_RPS.map((targetRps) => ({
+            ...oha12kNodePlan({ nodeCount, targetRps }),
+            durationSeconds: OHA12K_PROBE_SECONDS,
+            cooldownSeconds: OHA12K_COOLDOWN_SECONDS,
+        })),
+    };
+}

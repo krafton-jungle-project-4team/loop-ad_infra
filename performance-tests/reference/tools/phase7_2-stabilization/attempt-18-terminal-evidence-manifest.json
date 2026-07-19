@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 18,
+  "attemptType": "aws-targeted-diagnostic",
+  "promotionEligible": false,
+  "phase5": "skipped",
+  "runId": "run_20260719_071857_phase7_archive_diagnostic",
+  "sessionId": "phase7-archive-diagnostic-20260719T071857Z",
+  "implementation": {
+    "commit": "d68c0794e9f0d15f1f140b02827d56f406814409",
+    "gitTree": "4c38f70a3336a92de04580d2d6030831422e87bc",
+    "archiveSourceClosureSha256": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378"
+  },
+  "image": {
+    "digest": "sha256:50abdfb9053a7f06d1e3e39008451313b9d48d1e327fb70d4c1e9af9e9b73466",
+    "platform": "linux/arm64",
+    "repository": "loop-ad/perf-phase7-targeted/run_20260719_071857_phase7_archive_diagnostic/archive",
+    "manifestSha256": "275fa9936939d2a347380f14eecd9bc1c73c5731935a326b2c0018c07208c5e4"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "9ff098b7f9b864b1d9d85dd6a60c292a3a185c7d71fcac01f95b9e33ba36ca7b",
+    "preparedPreflight": "9e3302fafb4be5dad29a4f97c129f1981a043caef98a55a496164eb92dfbdef4",
+    "costModel": "a9adb422e7a02e9cb4ae26177c140f74c019f21e6f30e37d1f23377b4d1c4785",
+    "runtimeTemplate": "e6e2711cbb80e863a32946c763456f0ecb5c456bdd7ec48aeebb1e6f7f7e7c3f",
+    "templateValidation": "99e304864b92518ff343f22367cf42030936313c82984489b25c32daf2b3d07b",
+    "cfnLint": "f459abd2d8ce122fa624dc21f470aa90302e57a3348beecc1b02672fc49ee5e3",
+    "cdkDiffSummary": "76d646c103e3212599143df4dd1ed7e3837c085cb69306d8d71e83af9f40b9c7",
+    "commandSetFile": "f3db768decca8ec91489da56d9785dda5ab68418595437df6d6904ef541524e1",
+    "sealedCommandSet": "9221a6319174708fd2bb807322f7125a3ffb9b5fcad91cd5e943c92d821065d0"
+  },
+  "stageAttemptCounts": {
+    "imagePreparation": 1,
+    "imageStackDeploy": 1,
+    "runtimeDeploy": 1,
+    "seed15M": 0,
+    "archive": 0,
+    "postArchiveVerify": 0,
+    "cleanup": 3,
+    "independentInventory": 3
+  },
+  "terminalEvidenceHashes": {
+    "run": "9a206a85a21fc2857f8d15e6afd3a422a937b30f0c9430c6c6a0d328e4daea76",
+    "failure": "6a89c1202d57a896e9fc91d0360a9c48ec1814c3772fedcc2dc10da32178abf9",
+    "report": "9363c0497a5b433783555f3e64b4df62eb249e389923d3265a52102ef9f43836",
+    "initialCleanup": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c",
+    "initialPostCleanupInventory": "9bc36deabb77489f7993a21bbf382d7995cc042ada3af075c2b2dd65a5d9e72e",
+    "finalCleanup": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9",
+    "diagnosis": "ef92729ef32673bd1aace46632b7e988bcd6a5a4ce2ad63283ddfd14fa530a99",
+    "costExplorer": "c2bf72602e9c1595df65f639dd8be09906106cc13b1edafaa1cad00b32029819",
+    "costReconciliation": "4dec36af5a5a6882ef57978d3015d4621a150fe0bd31ff1275fc463f6387bbd1"
+  },
+  "cleanup": {
+    "authoritativeZeroAt": "2026-07-19T07:57:07.484Z",
+    "serviceClassCount": 15,
+    "serviceInventoryZero": true,
+    "taggingApiRunIdResidualArns": [],
+    "taggingApiSessionIdResidualArns": [],
+    "terminalCleanupFixSha256": "57da40f9d54191789e12aedea211631fe043b11152a751050aad4aa945e288da"
+  },
+  "cost": {
+    "plannedThreeHourOperationalUpperBoundUsd": "4.154001",
+    "modeledFailurePathUpperBoundUsd": "0.940319441780",
+    "chargedUpperBoundUsd": "0.950000",
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "16.950000"
+  },
+  "verdict": "failed"
+}

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-19T08:08:45Z",
+  "authorizationBasis": "현재까지 소모 비용을 0으로 초기화 하고 제한 비용은 60달러로 설정",
+  "effectivePaidBoundary": "after-attempt-18-authoritative-cleanup-zero",
+  "effectivePaidBoundaryAt": "2026-07-19T07:57:07.484Z",
+  "startsAfterAttemptOrdinal": 18,
+  "activeEpoch": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-18",
+    "initialAccruedUpperBoundUsd": "0.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "preservedHistory": {
+    "attemptOrdinals": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "lifetimeChargedUpperBoundUsd": "131.950000",
+    "excludedFromNewAdmission": true,
+    "attemptEntriesRewritten": false,
+    "ledgerHeadBeforeAttempt18Sha256": "fc394d015347e66f458c49244c4168b8c0ef25239cdc0994fa9adced4a1a2e0c"
+  },
+  "boundaryEvidence": {
+    "attempt18CleanupVerification": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-terminal-attempt-3.json",
+    "attempt18CleanupVerificationSha256": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9",
+    "authoritativeServiceInventoryZero": true,
+    "runIdTaggingApiResidualsZero": true,
+    "sessionIdTaggingApiResidualsZero": true
+  },
+  "provisionalPlannedSequenceGate": {
+    "requiresFreshPriceRefresh": true,
+    "priorActiveEpochUpperBoundUsd": "0.000000",
+    "lastKnownTargetedOperationalUpperBoundUsd": "4.154001",
+    "strictAttemptReservedUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingTargetedStrictAndCleanupUsd": "43.024719",
+    "remainingHardCapMarginAfterReservationUsd": "16.975281",
+    "passedProvisionally": true,
+    "formula": "0.000000 + 4.154001 + 33.870718 + 5.000000 = 43.024719 <= 60.000000; paid work stops before 55.000000"
+  },
+  "nextCostModelPriorUpperBoundUsd": "0.000000"
+}

@@ -1,0 +1,191 @@
+{
+  "attemptType": "aws-integration-strict",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1,
+      "independentPostFinalTaggingInventory": 1
+    },
+    "deadline": "2026-07-19T07:45:10.521818Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "b3feda735490963ac53b6593c1904cc2665b638e72df426921944a87a20f7700"
+      },
+      {
+        "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "10a4dc3b1727a6e22c8f694455df1f0ab5fd5a534871a079269125b06a8cbb0d"
+      },
+      {
+        "path": "performance-tests/phase7_2-stabilization/attempt-17-post-cleanup-tagging-api-20260719T055755Z.json",
+        "sha256": "88bc996e26ab8695d5a622262933ca87f0e8b5edb07f36502c3df559af68d21d"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": true,
+      "taggingApiRunIdResidualArns": [],
+      "taggingApiSessionIdResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-19T05:56:58.549Z",
+    "postFinalConfirmedAt": "2026-07-19T05:57:55Z",
+    "startToAuthoritativeZeroSeconds": "787.992563"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "16.000000",
+    "admissionMaximumIncludingCleanupUsd": "38.870718",
+    "campaignChargedUpperBoundUsd": "16.000000",
+    "chargedUpperBoundUsd": "16.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-17-cost-explorer-20260719.json",
+    "costExplorerEvidenceSha256": "8458ea18d093a7a2342b80368be38e575fa874ebd3a86c850044946a553b280e",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "131.000000",
+    "maximumIncludingCleanupUsd": "38.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "15.662545",
+    "nextFullAttemptMaximumIncludingCleanupUsd": "54.870718",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-17-cost-reconciliation.json",
+    "reconciliationSha256": "537288211fe617dcb6fe4f8774f4e71e26449c5252149bd97767b658f116a0e2"
+  },
+  "evidenceCommit": "dd383dbbdc2d56b99a3a9f1f6638987cb2a751f3",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260719_043415_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260719_043415_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260719_041439_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "acceptanceDeviation": {
+      "diagnosis": "Warmup completed 8,999,999 of 9,000,000 requests with one timeout. HTTP 429 and 5xx were zero and accounting was exact at 8,999,999, so diagnostic continuation was allowed but strict acceptance permanently failed.",
+      "firstFailingGate": "warmup-strict-acceptance",
+      "rawEvidencePath": "performance-tests/run_20260719_043415_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+      "rawEvidenceSha256": "d1bbbf2b18d1eeb60bc9a433a673fbada151ac3a57965dde4de59af9c7830d0a"
+    },
+    "diagnosis": "The earlier 8 GiB container and 7 GiB ClickHouse server fix was active, but the Phase 7 archive entrypoint retained a stale 4.5 GiB per-query cap. Parquet re-read attempted one additional 6.04 MiB allocation and hit that binding limit.",
+    "diagnosisEvidencePath": "performance-tests/phase7_2-stabilization/attempt-17-archive-memory-diagnosis.json",
+    "diagnosisEvidenceSha256": "6127c8b7907944c2f58e96ee4f4621923b8b1a084e3e136a77040e248a54e0a9",
+    "firstFailingGate": "warmup-strict-acceptance",
+    "rawAwsError": "ClickHouse HTTP 500: Code 241 MEMORY_LIMIT_EXCEEDED; re-reading part-00000.parquet would use 4.50 GiB plus a 6.04 MiB allocation above the 4.50 GiB query maximum.",
+    "rawAwsErrorSource": {
+      "capturedBeforeCleanup": true,
+      "eventTimestamp": "2026-07-19T05:42:03.319Z",
+      "logGroup": "/loopad/perf/phase7/run_20260719_043415_phase7_integration/ArchiveLogs"
+    },
+    "rawAwsEventArtifact": null,
+    "evidenceLimitation": "The exact Code 241 event was transcribed into the immutable diagnosis before cleanup, but a standalone raw CloudWatch event artifact was not preserved.",
+    "runnerEvidencePath": "performance-tests/run_20260719_043415_phase7_2_aws_integration/evidence/control/score_archive.attempt-1.stderr.log",
+    "runnerEvidenceSha256": "d2eb1488ffab143c6dc1ad58911be67c53f716ceb43b2146b5b4cbe76501c547",
+    "runnerError": "Error: archive task failed with exit code 1; RuntimeError: score orchestration failed",
+    "sourceDropExecuted": false,
+    "terminalHardStopGate": "score_archive"
+  },
+  "fix": {
+    "applied": "Raise only the Phase 7 archive per-query ClickHouse ceiling from 4.5 GiB to 5 GiB while retaining the 7 GiB server and 8 GiB container caps; add runtime and CDK memory-invariant regressions.",
+    "fixCommit": "ed2cd79697db117a037cea3ff319d9327117a4b9",
+    "verification": {
+      "awsRequests": 0,
+      "cdkFocusedJestTests": 16,
+      "pythonArchiveRuntimeTests": 11,
+      "status": "passed",
+      "wholeLocalDeferred": true
+    },
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-17-fix-verification.json",
+    "verificationSha256": "f92950ce5df91b6a990c162a1c72ee722614450966a9ccd359ddb8ce453924e5"
+  },
+  "gitCommit": "43863d9560bd3d075a228385c2f566d860ced710",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "6109732aa62b326ccaa3e58a5d2802faaca684ed10ffcbbe6718363bba773d9f",
+    "commandSeal": "f646cbd556868dd47edd63b2f3b817fcb29d0697c452994bce8987440ef2e0a2",
+    "commandSet": "450f27ab698fc4b9db479f4d098bcc16b65b3decbbc0bbcde2d71891f03f7a9f",
+    "costModel": "1e512589c7c68cc10d8f669cf54ab72c56ba6844a11a8f21e3c05b021aa6e899",
+    "identityContract": "9b9a007f7984371a10ffb672f759d40cbb1254c98ee37b01c16c45e36043fbe0",
+    "imageManifest": "ebd21087c4ab079aeabde4d8dffba82a658f134bbc2468a990cacfaffbad5ef9",
+    "localHandoff": "acfc85301a155a99e4351567f9aa618d16a7fe707adf2284b1a8b0290246674e",
+    "preparedPreflight": "72fdbee41f9966889102f6680e13e7783379f4633d944b4c62585f8722784432",
+    "runAtSeal": "d4093313909270093590d0ea362a818a43b4be091f41dafd1866eb6d7cc0b9a3",
+    "runtimeTemplate": "1770e1fa9654151edc92ef6e278112a7aa18d44cb0cf0960d249df8ca50524a3"
+  },
+  "implementationTreeSha256": "8671124919cf012695ea4d2bbebe334e8143743ca902b1e4ed5d463335d2e98b",
+  "ordinal": 17,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T07:45:10.521818Z",
+    "elapsedSeconds": "3108.028000",
+    "endedAt": "2026-07-19T05:56:58.549Z",
+    "hardDeadline": "2026-07-19T08:05:10.521818Z",
+    "imagePaidStartedAt": "2026-07-19T04:43:12.859Z",
+    "imageStartToAuthoritativeZeroSeconds": "4425.690000",
+    "startedAt": "2026-07-19T05:05:10.521818Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "ea457a2c153485b4ca66cd0c164e588e864189eaa523376fa76b74133604a54a",
+  "promotionEligible": true,
+  "readinessCommit": "b75185a76bb0847e8c0080d4cae77a4deee92518",
+  "runId": "run_20260719_043415_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "4cb38b7a702e18c1d777382dd0c1e00b09f8f55c",
+  "sealedCommandSetSha256": "450f27ab698fc4b9db479f4d098bcc16b65b3decbbc0bbcde2d71891f03f7a9f",
+  "sessionId": "phase7-integration-20260719T043415Z",
+  "stageAttemptCounts": {
+    "archive": 1,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 1,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 1,
+    "seed": 1,
+    "verify": 1,
+    "warmup": 1
+  },
+  "terminalEvidenceHashes": {
+    "archiveTask": "d768644def749091676082f660cbdee306248f6837deaa0786f4d26831b1b1b0",
+    "archiveValidation": "f6cd60cb52f717374ec9a7ff62d8962b66c7e401df67a974f8f232d0e9bf986e",
+    "cleanupInventory": "b3feda735490963ac53b6593c1904cc2665b638e72df426921944a87a20f7700",
+    "cleanupVerification": "10a4dc3b1727a6e22c8f694455df1f0ab5fd5a534871a079269125b06a8cbb0d",
+    "commands": "036c5945078bb1dab0cefaa4b2530014d3017d2f17f1a13741ff7c4da1ade0c0",
+    "correctness": "8c657863e3225ce9a059c36ce159ce331e8c5b0295d3f9545124f4de7fdc87f5",
+    "costReconciliation": "537288211fe617dcb6fe4f8774f4e71e26449c5252149bd97767b658f116a0e2",
+    "costStatus": "bfec38cc0b7d858df91e4da348c96351be64aa5a5806129d887a67ee0d6af1b1",
+    "deploymentVerification": "c1059b31adf67b8a9e3c32094d90099267daac1bbbfb7cb58fff5d9f44476a27",
+    "diagnosis": "6127c8b7907944c2f58e96ee4f4621923b8b1a084e3e136a77040e248a54e0a9",
+    "failures": "25c6ec441c9dc6bb717bf6e17152e724163dd6cfba506595af87dd351aefd90d",
+    "finalEvaluation": "627ecbcaba926f62de99062f38b63c01c9d593c4ad7875cee43cc78cb3d5695a",
+    "finalEvidenceStatus": "86c1ddc764c135f68c543255bf22a999c2f95c9e8716a09ce37652b7413d7481",
+    "fixVerification": "f92950ce5df91b6a990c162a1c72ee722614450966a9ccd359ddb8ce453924e5",
+    "improvementBacklog": "ba726b119675f1e36a1e0e2c80bc682bbe3dddfcf8131b6dfadc7fdff85db33f",
+    "infra": "c8910488b771c429342448d2ea882e8dd810cc2baf7de67313512f5bfa4e4ad3",
+    "metricsSummary": "672d27d28c9c79e0d698c52f8a0ea16583303673e7d8244df2ffad093adc1c7f",
+    "postCleanupTagging": "88bc996e26ab8695d5a622262933ca87f0e8b5edb07f36502c3df559af68d21d",
+    "report": "e5924878b2432d276145f99108db2c7572bf9986acbc1b3b0f17cc61126feaf6",
+    "run": "519b6f57456317e4beb69872030b7383d14637679753d5731c752e12285f8e9b",
+    "scoreArchiveStderr": "d2eb1488ffab143c6dc1ad58911be67c53f716ceb43b2146b5b4cbe76501c547",
+    "scoreCancellation": "f13584405cfc5a6846c749b48488f7c9fa61016dc44b2bdeb974f73e9fbab2c6",
+    "scorePartialSummary": "5fee2c047f4a9cfa056626a07af41a15c95b3bd6e95f42866390a2b72c7f71e4",
+    "scoreWorkerTree": "aeb464e2e2a78571966b46ca284fa1995c77aa50dc270eab4955abf9f8af7c94",
+    "seed": "99fac3dcf8a0aeb4d993c00c9e0bb5c149ed3ec321ecdd7f5007737f4181cd57",
+    "terminalManifest": "076e6ad68dfb28c916570ebcb43261b99bf1c31bbcf7ebbb39b91f4fb981c4ef",
+    "warmup": "d1bbbf2b18d1eeb60bc9a433a673fbada151ac3a57965dde4de59af9c7830d0a"
+  },
+  "verdict": "failed",
+  "entrySha256": "fc394d015347e66f458c49244c4168b8c0ef25239cdc0994fa9adced4a1a2e0c"
+}

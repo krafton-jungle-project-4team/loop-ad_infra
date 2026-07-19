@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { applyT3EndToEndBudget } from './calculate-t3-e2e-cost.mjs';
+
+function base(runUpperBoundUsd, accruedUpperBoundUsd = 0) {
+    return {
+        model: 'base',
+        budget: {
+            runUpperBoundUsd,
+            accruedUpperBoundUsd,
+            cleanupReserveUsd: 5,
+        },
+    };
+}
+
+test('allows only a T3 end-to-end run that preserves the five-dollar reserve under USD 30', () => {
+    const result = applyT3EndToEndBudget(base(18.5));
+    assert.equal(result.taskScope.topology, 'T3');
+    assert.equal(result.taskScope.route, '/events');
+    assert.equal(result.taskScope.warmupSeconds, 900);
+    assert.equal(result.taskScope.independentRepetitions, 3);
+    assert.equal(result.budget.hardCapUsd, 30);
+    assert.equal(result.budget.newDeployAccruedStopUsd, 24);
+    assert.equal(result.budget.cleanupReserveUsd, 5);
+    assert.equal(result.budget.projectedPlusReserveUsd, 23.5);
+    assert.equal(result.budget.mayStart, true);
+});
+
+test('fails closed when the T3 projection plus cleanup reserve reaches USD 30', () => {
+    const result = applyT3EndToEndBudget(base(25));
+    assert.equal(result.budget.projectedPlusReserveUsd, 30);
+    assert.equal(result.budget.checks.projectedPlusReserveBelowHardCap, false);
+    assert.equal(result.budget.mayStart, false);
+});
+
+test('fails closed at the USD 24 accrued deploy stop', () => {
+    const result = applyT3EndToEndBudget(base(1, 24));
+    assert.equal(result.budget.checks.accruedBelowNewDeployStop, false);
+    assert.equal(result.budget.mayStart, false);
+});

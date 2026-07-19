@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateGeneratorControl } from './generator-control-evaluator.mjs';
+
+test('fast-control capability is independent from collector and producer metrics', () => {
+    const attempted = 450_000;
+    const result = evaluateGeneratorControl({
+        aggregate: { passed: true, targetRps: 30_000, actualRps: 29_900, attemptedRequests: attempted,
+            completedRequests: attempted, transportErrors: 0, http202: attempted, http5xx: 0,
+            nodeCount: 1, processesPerNode: 1, processCount: 1, configuredConnections: 12_000,
+            firstByteMs: { p95: 2, p99: 5 }, latencyCorrectedMs: { p95: 3, p99: 7 },
+            enaAllowanceDelta: { pps_allowance_exceeded: 0 }, nodes: [{
+                processObservation: { maxOhaCpuPercent: 80 }, socketTelemetry: { oha_open_fds: 12_010, conntrack_count: 12_000 },
+                limits: { ulimitNofile: 1_048_576, conntrack: { max: 65_536 } },
+            }] },
+        alb: { requestCount: 0, fixedResponseCount: attempted, rejectedConnectionCount: 0, elb5xx: 0 },
+    });
+    assert.equal(result.result, 'capable');
+    assert.equal(result.passed, true);
+});
+
+test('fails closed on rate, transport, ALB count, or allowance evidence', () => {
+    const aggregate = { passed: true, targetRps: 50_000, actualRps: 40_000, attemptedRequests: 600_000,
+        completedRequests: 599_000, transportErrors: 1_000, http202: 599_000, http5xx: 0,
+        nodeCount: 1, processesPerNode: 1, processCount: 1, configuredConnections: 12_000,
+        firstByteMs: {}, latencyCorrectedMs: {}, enaAllowanceDelta: { pps_allowance_exceeded: 1 },
+        nodes: [{ processObservation: { maxOhaCpuPercent: 80 }, socketTelemetry: { oha_open_fds: 12_010, conntrack_count: 12_000 }, limits: { ulimitNofile: 1_048_576, conntrack: { max: 65_536 } } }] };
+    const result = evaluateGeneratorControl({ aggregate, alb: { requestCount: 500_000, fixedResponseCount: 500_000, rejectedConnectionCount: 0, elb5xx: 0 } });
+    assert.equal(result.result, 'generator-limited');
+    assert.equal(result.passed, false);
+});

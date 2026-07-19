@@ -1,0 +1,111 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { evaluateCapacityInterval } from './capacity-evaluator.mjs';
+import { evaluateOha12kProbe } from './oha12k-evaluator.mjs';
+
+export function evaluateOha12kInterval(input) {
+    const capacityDecision = evaluateCapacityInterval({
+        candidate: input.candidate,
+        kind: 'probe',
+        targetRps: input.aggregate.targetRps,
+        durationSeconds: input.aggregate.durationSeconds,
+        oha: input.aggregate,
+        beforeHosts: input.beforeHosts,
+        afterHosts: input.afterHosts,
+        cloudwatch: input.cloudwatch,
+        taskBefore: input.taskBefore,
+        taskAfter: input.taskAfter,
+        logs: input.logs,
+    });
+    const alb = {
+        requestCount: metric(input.cloudwatch, 'alb_requests_sum'),
+        target5xx: metric(input.cloudwatch, 'alb_target_5xx_sum'),
+        elb5xx: metric(input.cloudwatch, 'alb_elb_5xx_sum'),
+        targetConnectionErrors: metric(input.cloudwatch, 'alb_target_connection_errors_sum'),
+    };
+    const admission = admissionSignals(input.candidate, input.beforeHosts, input.afterHosts);
+    const producer = producerSignals(input.candidate, input.beforeHosts, input.afterHosts, capacityDecision);
+    const target = {
+        ...admission,
+        ...producer,
+        kinesisThrottle: capacityDecision.kinesis.writeThrottle + capacityDecision.kinesis.shards.totalWriteThrottle,
+        producerTimeout: capacityDecision.producer.totals.timeouts,
+        producerFinalFailure: capacityDecision.producer.totals.failures,
+        taskSafetyPassed: capacityDecision.checks.exactFourTaskStateBefore &&
+            capacityDecision.checks.exactFourTaskStateAfter && capacityDecision.checks.noRestartOomPanicFatal,
+        http202MatchesIncomingRecords: relativeDifference(input.aggregate.http202, capacityDecision.kinesis.incomingRecords) <= 0.001,
+        recovered: capacityDecision.checks.producerRecovered,
+        queueGrowing: !capacityDecision.checks.producerRecovered,
+    };
+    const classification = evaluateOha12kProbe({ aggregate: input.aggregate, alb, target });
+    return { evaluatedAt: new Date().toISOString(), aggregate: input.aggregate, capacityDecision, alb, target, classification };
+}
+
+function admissionSignals(candidate, beforeHosts, afterHosts) {
+    let admissionRejections = 0;
+    let admissionAtMax = false;
+    for (let index = 0; index < afterHosts.length; index += 1) {
+        const before = beforeHosts[index];
+        const after = afterHosts[index];
+        if (candidate === 'java-kpl') {
+            admissionRejections += delta(after.connections.rejected_total, before.connections.rejected_total);
+            admissionAtMax ||= after.connections.high_water > before.connections.high_water &&
+                after.connections.high_water >= after.connections.max;
+        } else {
+            admissionRejections += delta(after.admission.rejected_total, before.admission.rejected_total);
+            admissionAtMax ||= after.admission.high_water_in_flight > before.admission.high_water_in_flight &&
+                after.admission.high_water_in_flight >= after.admission.max_in_flight;
+        }
+    }
+    return { admissionRejections, admissionAtMax };
+}
+
+function producerSignals(candidate, beforeHosts, afterHosts, decision) {
+    if (candidate === 'go-batch') {
+        return {
+            producerQueueAtMax: afterHosts.some((after, index) =>
+                delta(after.kinesis.put_records.queue_full, beforeHosts[index].kinesis.put_records.queue_full) > 0 ||
+                (after.kinesis.put_records.queue_high_water > beforeHosts[index].kinesis.put_records.queue_high_water &&
+                    after.kinesis.put_records.queue_high_water >= 2_048)),
+            producerOutstandingGrowing: afterHosts.some((after, index) =>
+                after.kinesis.put_records.outstanding_records > beforeHosts[index].kinesis.put_records.outstanding_records),
+            producerAckLatencyGrowing: (decision.producer.ackLatencyUpperBoundMs.p95 ?? 0) > 500,
+        };
+    }
+    if (candidate === 'java-kpl') {
+        return {
+            producerQueueAtMax: afterHosts.some((after, index) =>
+                delta(after.kpl.queueFull, beforeHosts[index].kpl.queueFull) > 0),
+            producerOutstandingGrowing: afterHosts.some((after, index) =>
+                after.kpl.outstandingRecords > beforeHosts[index].kpl.outstandingRecords ||
+                after.kpl.outstandingBytes > beforeHosts[index].kpl.outstandingBytes),
+            producerAckLatencyGrowing: (decision.producer.ackLatencyUpperBoundMs.p95 ?? 0) > 500,
+        };
+    }
+    return {
+        producerQueueAtMax: false,
+        producerOutstandingGrowing: false,
+        producerAckLatencyGrowing: (decision.producer.ackLatencyUpperBoundMs.p95 ?? 0) > 500,
+    };
+}
+
+function metric(summary, id) {
+    const value = summary?.metrics?.[id]?.sum;
+    if (!Number.isFinite(value) || value < 0) throw new Error(`missing metric ${id}.sum`);
+    return value;
+}
+function delta(after, before) { const value = after - before; if (!Number.isFinite(value) || value < 0) throw new Error('counter decreased'); return value; }
+function relativeDifference(left, right) { return Math.abs(left - right) / Math.max(left, 1); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} is required`); return value; }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    const input = JSON.parse(readFileSync(requiredOption('--input'), 'utf8'));
+    const result = evaluateOha12kInterval(input);
+    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    const output = process.argv.includes('--output') ? requiredOption('--output') : undefined;
+    if (output) writeFileSync(output, serialized, 'utf8');
+    process.stdout.write(serialized);
+}

@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mapAlbFrontends } from './alb-frontend-map.mjs';
+
+test('maps every ALB DNS answer to ENI, subnet, AZ, and AZ ID', () => {
+    const result = mapAlbFrontends({
+        dnsAnswers: [{ address: '10.0.0.20', ttl: 60 }, { address: '10.0.1.20', ttl: 60 }],
+        networkInterfaces: [
+            { eniId: 'eni-a', privateIp: '10.0.0.20', subnetId: 'subnet-a', availabilityZone: 'ap-northeast-2a', availabilityZoneId: 'apne2-az1' },
+            { eniId: 'eni-c', privateIp: '10.0.1.20', subnetId: 'subnet-c', availabilityZone: 'ap-northeast-2c', availabilityZoneId: 'apne2-az3' },
+        ],
+        subnets: [],
+    });
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.mappings.map((item) => item.availabilityZone), ['ap-northeast-2a', 'ap-northeast-2c']);
+});
+
+test('fails closed when a DNS answer cannot be mapped', () => {
+    assert.equal(mapAlbFrontends({
+        dnsAnswers: [{ address: '10.0.0.20', ttl: 60 }, { address: '10.0.1.20', ttl: 60 }],
+        networkInterfaces: [{ eniId: 'eni-a', privateIp: '10.0.0.20', subnetId: 'subnet-a', availabilityZone: 'ap-northeast-2a' }],
+        subnets: [],
+    }).passed, false);
+});

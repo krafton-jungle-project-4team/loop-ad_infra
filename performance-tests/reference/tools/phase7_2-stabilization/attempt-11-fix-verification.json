@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 11,
+  "runId": "run_20260718_162042_phase7_integration",
+  "sessionId": "phase7-integration-20260718T162042Z",
+  "verifiedAt": "2026-07-18T17:43:03Z",
+  "status": "passed",
+  "failureEvidence": {
+    "diagnosisSha256": "1371a1fac48639705545a3acd71ae68af680defb213fa3123329db2d2d921c14",
+    "originalDecodedBytes": 1237,
+    "originalSha256": "ccf793450f286f1b02bded7b61a2bac3318fc9e42783c35138ba5b2aeec8553f",
+    "originalLastByte": 112,
+    "pinnedImageValidationExitCode": 1,
+    "rawError": "Missing LF on last line ... Fatal errors found in configuration."
+  },
+  "fix": {
+    "commit": "42774cdca4f415385b4b649099dc1db6ea6c8857",
+    "sourceFile": "src/perf-phase7-integration-stack.ts",
+    "sourceFileSha256": "28cb3c28956500806d98ea3cf695bf8439ba427353f22f1d6add34d542dc6713",
+    "testFile": "test/perf-phase7-integration.test.ts",
+    "testFileSha256": "78c28afc9e770cccdd656d141df46d4ccb25d4adc1b8de359c0943f44b289295",
+    "mechanism": "Retain exactly one terminal LF in haproxyConfig before deriving canonical Base64 and the published SHA-256 from the same UTF-8 Buffer."
+  },
+  "exactByteRegression": {
+    "decodedBytes": 1238,
+    "deployedSha256": "557bc67cd9b4bb10e582c2e3f1425ee0ca57dee51b78dc57f739259f4e21c4b9",
+    "publishedSha256": "557bc67cd9b4bb10e582c2e3f1425ee0ca57dee51b78dc57f739259f4e21c4b9",
+    "lastByte": 10,
+    "penultimateByte": 112,
+    "exactlyOneTrailingLf": true,
+    "canonicalBase64": true,
+    "heredocAbsent": true
+  },
+  "templateVerification": {
+    "exactContextSynth": "passed",
+    "historicalIdentityUsedForLocalDiagnosisOnly": true,
+    "awsRequests": 0,
+    "runtimeTemplateSha256": "44633fe017523a83c68969a39f8e8be1a14bcfbf4c4a0ffd450d088873dfc1b5",
+    "repositoryTemplateValidator": "passed",
+    "taskDefinitionsChecked": 5,
+    "cfnLintVersion": "1.53.0",
+    "cfnLintRawExitCode": 6,
+    "acceptedE1022": 8,
+    "acceptedW3005": 3,
+    "unexpectedFindings": 0,
+    "launchTemplateDecodedByteUpperBounds": {
+      "c6i.xlarge": 7705,
+      "c6in.xlarge": 9424,
+      "c6in.large": 15224,
+      "r7g.2xlarge": 8426,
+      "c7g.large": 7679
+    },
+    "loadGeneratorMarginLimitBytes": 15360,
+    "loadGeneratorMarginRemainingBytes": 136
+  },
+  "pinnedRuntimeValidation": {
+    "image": "haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
+    "platform": "linux/amd64",
+    "command": "haproxy -c -f /dev/stdin",
+    "input": "exact decoded payload from synthesized HAProxy LaunchTemplate UserData",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "tests": {
+    "focusedExactByteRegression": "passed",
+    "phase7JestPassed": 14,
+    "phase7NodePassed": 27,
+    "phase7PythonPassed": 138,
+    "npmRunTestPhase7": "passed",
+    "npmRunBuild": "passed",
+    "failed": 0
+  },
+  "cleanupBeforeMutation": {
+    "verificationSha256": "62c59e27134abf549033ed9356d9d93e9fc8006a4720eb2842fb9c0439441bcf",
+    "authoritativeServiceInventoryZero": true,
+    "taggingApiResidualsZero": true
+  },
+  "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+  "phase5": "skipped"
+}

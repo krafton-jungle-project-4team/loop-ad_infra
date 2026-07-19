@@ -1,0 +1,99 @@
+export const PHASE7_DIAGNOSTIC_IDENTITY_MODE = 'balanced-pool-sampled-with-replacement';
+
+export function evaluateDiagnosticStage({
+    stage,
+    invocationResults,
+    aggregate,
+    payloadManifest,
+    archive,
+    startEpoch,
+    durationSeconds,
+    terminalHardStopSignals = [],
+}) {
+    if (!['warmup', 'score'].includes(stage)) throw new Error('stage must be warmup or score');
+    if (!Array.isArray(invocationResults) || !aggregate || !payloadManifest ||
+        !Number.isInteger(startEpoch) || !Number.isInteger(durationSeconds) || durationSeconds < 1 ||
+        !Array.isArray(terminalHardStopSignals) || terminalHardStopSignals.some((value) => typeof value !== 'string' || !value)) {
+        throw new Error('invalid Phase 7 diagnostic stage evidence');
+    }
+    const archiveStartedAtMilliseconds = actualArchiveStartedAtMilliseconds(archive);
+    const scoreWindow = actualRequestWindow(aggregate);
+    const checks = {
+        aggregateContractPassed: aggregate.passed === true,
+        orchestrationComplete: invocationResults.every((value) => value.exitCode === 0),
+        allCompletedResponsesAre202: aggregate.completedRequests === aggregate.http202,
+        forwardProgressObserved: aggregate.attemptedRequests > 0 && aggregate.http202 > 0,
+        noTerminalHardStopSignal: terminalHardStopSignals.length === 0,
+        strictThroughputAtLeast49500: aggregate.actualRps >= 49_500,
+        diagnosticContinuationAtLeast35000: aggregate.actualRps >= 35_000,
+        transportErrorsZero: aggregate.transportErrors === 0,
+        transportErrorRateAtMostPoint001: aggregate.attemptedRequests > 0 &&
+            aggregate.transportErrors / aggregate.attemptedRequests <= 0.001,
+        http429And5xxZero: aggregate.http429 === 0 && aggregate.http5xx === 0,
+        warmupAndScorePoolsSeparated: payloadManifest.warmupScoreIdentitySeparated === true,
+        balancedAcross120Shards: payloadManifest.kinesisPartitioning?.rowsPerShard?.min === 4 &&
+            payloadManifest.kinesisPartitioning?.rowsPerShard?.max === 4,
+        requestUniquenessNotClaimed: payloadManifest.globalRequestEventIdUniquenessGuaranteed === false,
+        archiveStartedOnceInsideScoreWindow: stage === 'warmup' || (
+            archive?.runTaskInvocationCount === 1 && archive?.taskCardinality === 1 &&
+            archiveStartedAtMilliseconds >= scoreWindow.startedAtMilliseconds &&
+            archiveStartedAtMilliseconds < scoreWindow.endedAtMilliseconds
+        ),
+        archiveTaskSucceeded: stage === 'warmup' || archive?.exitCode === 0,
+    };
+    const strictAcceptancePassed = Object.entries(checks).every(([name, passed]) =>
+        name === 'requestUniquenessNotClaimed' || name === 'diagnosticContinuationAtLeast35000' || passed);
+    const hardStopChecks = [
+        'aggregateContractPassed',
+        'orchestrationComplete',
+        'forwardProgressObserved',
+        'noTerminalHardStopSignal',
+        'archiveTaskSucceeded',
+    ];
+    const failedHardStopChecks = hardStopChecks.filter((name) => checks[name] !== true);
+    const hardStopRequired = failedHardStopChecks.length > 0;
+    const diagnosticContinuationAllowed = !hardStopRequired;
+    const acceptanceFailed = !strictAcceptancePassed;
+    return {
+        checks,
+        strictAcceptancePassed,
+        acceptanceFailed,
+        diagnosticContinuationAllowed,
+        hardStopRequired,
+        hardStopSignals: [...terminalHardStopSignals].sort(),
+        continuationReason: continuationReason({
+            strictAcceptancePassed,
+            hardStopRequired,
+            failedHardStopChecks,
+            actualRps: aggregate.actualRps,
+        }),
+    };
+}
+
+function actualArchiveStartedAtMilliseconds(archive) {
+    if (archive?.timingSource !== 'ecs-task.startedAt' || typeof archive.startedAt !== 'string') return Number.NaN;
+    return Date.parse(archive.startedAt);
+}
+
+function actualRequestWindow(aggregate) {
+    const nodes = Array.isArray(aggregate?.nodes) ? aggregate.nodes : [];
+    const starts = nodes.map((node) => Date.parse(node?.startedAt));
+    const ends = nodes.map((node) => Date.parse(node?.endedAt));
+    if (nodes.length === 0 || starts.some((value) => !Number.isFinite(value)) ||
+        ends.some((value) => !Number.isFinite(value))) {
+        return { startedAtMilliseconds: Number.NaN, endedAtMilliseconds: Number.NaN };
+    }
+    const startedAtMilliseconds = Math.min(...starts);
+    const endedAtMilliseconds = Math.max(...ends);
+    if (endedAtMilliseconds <= startedAtMilliseconds) {
+        return { startedAtMilliseconds: Number.NaN, endedAtMilliseconds: Number.NaN };
+    }
+    return { startedAtMilliseconds, endedAtMilliseconds };
+}
+
+function continuationReason({ strictAcceptancePassed, hardStopRequired, failedHardStopChecks, actualRps }) {
+    if (hardStopRequired) return `hard-stop:${failedHardStopChecks.join(',')}`;
+    if (strictAcceptancePassed) return 'strict-acceptance-passed';
+    if (actualRps < 35_000) return 'below-35000-forward-progress-diagnostic-continuation';
+    return 'acceptance-failed-diagnostic-continuation';
+}

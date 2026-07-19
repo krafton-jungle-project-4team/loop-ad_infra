@@ -1,0 +1,201 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const REGION = 'ap-northeast-2';
+const runId = requiredOption('--run-id');
+const stageLabel = requiredOption('--stage-label');
+const durationSeconds = requiredInteger('--duration-seconds');
+const startEpoch = requiredInteger('--start-epoch');
+const evidenceBucket = requiredOption('--evidence-bucket');
+const evidencePrefix = requiredOption('--evidence-prefix').replace(/\/$/, '');
+const outputDir = requiredOption('--output-dir');
+const expectedCount = integerOption('--expected-count', 4);
+
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel)) throw new Error('invalid stage label');
+if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(evidenceBucket) || !/^[A-Za-z0-9][A-Za-z0-9_./=-]{0,255}$/.test(evidencePrefix)) throw new Error('invalid evidence destination');
+if (durationSeconds < 1 || durationSeconds > 1_500 || startEpoch < Math.floor(Date.now() / 1000) - 30) throw new Error('invalid telemetry timing');
+
+const instanceIds = awsJson([
+    'ec2', 'describe-instances', '--region', REGION, '--filters',
+    'Name=tag:Name,Values=perf-phase1-loop-ad-collector',
+    'Name=instance-state-name,Values=running',
+    '--query', 'Reservations[].Instances[].InstanceId',
+]).sort();
+if (instanceIds.length !== expectedCount) throw new Error(`expected ${expectedCount} collectors, found ${instanceIds.length}`);
+
+mkdirSync(outputDir, { recursive: true });
+const remoteRoot = `/var/tmp/loopad-root-cause-${runId}-${stageLabel}`;
+const script = `set -euo pipefail
+run_dir='${remoteRoot}'
+rm -rf "$run_dir"
+mkdir -p "$run_dir"
+cid="$(sudo -n docker ps --filter 'label=com.amazonaws.ecs.container-name=collector' --format '{{.ID}}')"
+test -n "$cid"
+trace_path='/tmp/loopad-request-traces.ndjson'
+connection_path='/tmp/loopad-connection-lifecycle.ndjson'
+trace_start_bytes="$(sudo -n docker exec "$cid" stat -c %s "$trace_path")"
+connection_start_bytes="$(sudo -n docker exec "$cid" stat -c %s "$connection_path")"
+[[ "$trace_start_bytes" =~ ^[0-9]+$ && "$connection_start_bytes" =~ ^[0-9]+$ ]]
+collection_start_epoch="$(( ${startEpoch} - 2 ))"
+now="$(date +%s)"
+if (( collection_start_epoch > now )); then sleep "$(( collection_start_epoch - now ))"; fi
+end_epoch="$(( ${startEpoch} + ${durationSeconds} + 15 ))"
+: >"$run_dir/debug-vars.ndjson"
+: >"$run_dir/measurement-boundaries.ndjson"
+: >"$run_dir/host-network.log"
+: >"$run_dir/ss-tin.log"
+: >"$run_dir/process.tsv"
+: >"$run_dir/fast-connections.tsv"
+printf 'timestamp_utc\\tcpu_percent\\tmem_usage\\tnet_io\\tblock_io\\tpids\\topen_fds\\n' >"$run_dir/process.tsv"
+printf 'timestamp_unix_ns\\topen_fds\\tlisten_recv_q\\tlisten_send_q\\tprocs_running\\tload1\\n' >"$run_dir/fast-connections.tsv"
+capture_boundary() {
+  kind="$1"
+  timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%S.%NZ')"
+  snapshot="$(curl -fsS --max-time 3 http://127.0.0.1:8080/debug/vars)"
+  counters="$(printf '%s' "$snapshot" | jq -c '{enqueued:(.kinesis.put_records.enqueued//0),api_calls:(.kinesis.put_records.api_calls//0),record_attempts:(.kinesis.put_records.record_attempts//0),successes:(.kinesis.put_records.successes//0),failures:(.kinesis.put_records.failures//0),retries:(.kinesis.put_records.retries//0),partial_failures:(.kinesis.put_records.partial_failures//0),timeouts:(.kinesis.put_records.timeouts//0),queue_full:(.kinesis.put_records.queue_full//0),queue_depth:(.kinesis.put_records.queue_depth//0),sender_queue_depth:(.kinesis.put_records.sender_queue_depth//0),outstanding_records:(.kinesis.put_records.outstanding_records//0),api_calls_in_flight:(.kinesis.put_records.api_calls_in_flight//0)}')"
+  jq -cn --arg kind "$kind" --arg timestampUtc "$timestamp_utc" --argjson measurementStartEpoch '${startEpoch}' --argjson measurementEndEpoch '${startEpoch + durationSeconds}' --argjson counters "$counters" '{kind:$kind,timestampUtc:$timestampUtc,measurementStartEpoch:$measurementStartEpoch,measurementEndEpoch:$measurementEndEpoch,counters:$counters}' >>"$run_dir/measurement-boundaries.ndjson"
+}
+capture_boundary start
+(
+  while (( $(date +%s) <= end_epoch )) && [[ ! -e "$run_dir/abort-requested" ]]; do
+    ts="$(date -u '+%Y-%m-%dT%H:%M:%S.%NZ')"
+    snapshot="$(curl -fsS --max-time 3 http://127.0.0.1:8080/debug/vars)"
+    jq -cn --arg timestamp "$ts" --argjson snapshot "$snapshot" '{timestamp_utc:$timestamp,snapshot:$snapshot}' >>"$run_dir/debug-vars.ndjson"
+    sleep 0.25
+  done
+) &
+debug_pid=$!
+host_pid="$(sudo -n docker inspect --format '{{.State.Pid}}' "$cid")"
+(
+  while (( $(date +%s) <= end_epoch )) && [[ ! -e "$run_dir/abort-requested" ]]; do
+    open_fds="$(find "/proc/$host_pid/fd" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)"
+    read -r recv_q send_q < <(ss -Hltpn 'sport = :8080' | awk 'NR==1{recv=$2;send=$3} END{print recv+0,send+0}')
+    read -r load1 _ _ procs _ </proc/loadavg
+    printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$(date +%s%N)" "$open_fds" "\${recv_q:-0}" "\${send_q:-0}" "\${procs%/*}" "$load1" >>"$run_dir/fast-connections.tsv"
+    sleep 0.25
+  done
+) &
+fast_pid=$!
+while (( $(date +%s) <= end_epoch )) && [[ ! -e "$run_dir/abort-requested" ]]; do
+  ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  stats="$(sudo -n docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}|{{.BlockIO}}|{{.PIDs}}' "$cid")"
+  host_pid="$(sudo -n docker inspect --format '{{.State.Pid}}' "$cid")"
+  open_fds="$(find "/proc/$host_pid/fd" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)"
+  printf '%s\\t%s\\t%s\\n' "$ts" "\${stats//|/$'\\t'}" "$open_fds" >>"$run_dir/process.tsv"
+  { printf 'timestamp_utc=%s\\n' "$ts"; ss -tin 2>&1 || true; } >>"$run_dir/ss-tin.log"
+  interface="$(ip route show default | awk 'NR==1 {print $5}')"
+  {
+    printf 'timestamp_utc=%s\\n' "$ts"
+    printf '[listen_accept]\\n'; ss -Hltpn 2>&1 || true
+    printf '[proc_net_snmp]\\n'; cat /proc/net/snmp
+    printf '[proc_net_netstat]\\n'; cat /proc/net/netstat
+    printf '[sockstat]\\n'; cat /proc/net/sockstat
+    printf '[softnet]\\n'; cat /proc/net/softnet_stat
+    printf '[nstat]\\n'; nstat -az 2>&1 || true
+    printf '[tc_qdisc]\\n'; tc -s qdisc show 2>&1 || true
+    printf '[ip_link]\\n'; ip -s link 2>&1 || true
+    printf '[ethtool]\\n'; ethtool -S "$interface" 2>&1 || true
+    printf '[interrupts]\\n'; cat /proc/interrupts
+    printf '[softirqs]\\n'; cat /proc/softirqs
+    printf '[cgroup_cpu_stat]\\n'; cat "/proc/$host_pid/root/sys/fs/cgroup/cpu.stat" 2>&1 || cat /sys/fs/cgroup/cpu.stat
+    printf '[conntrack]\\n'; cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || true; cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true
+  } >>"$run_dir/host-network.log"
+  sleep 1
+done
+wait "$debug_pid"
+wait "$fast_pid"
+capture_boundary end
+aborted=false
+[[ -e "$run_dir/abort-requested" ]] && aborted=true
+trace_end_bytes="$(sudo -n docker exec "$cid" stat -c %s "$trace_path")"
+connection_end_bytes="$(sudo -n docker exec "$cid" stat -c %s "$connection_path")"
+(( trace_end_bytes >= trace_start_bytes && connection_end_bytes >= connection_start_bytes ))
+trace_snapshot="/tmp/loopad-stage-traces-${runId}-${stageLabel}.ndjson"
+connection_snapshot="/tmp/loopad-stage-connections-${runId}-${stageLabel}.ndjson"
+sudo -n docker exec "$cid" sh -c "tail -c +$((trace_start_bytes + 1)) '$trace_path' > '$trace_snapshot'; tail -c +$((connection_start_bytes + 1)) '$connection_path' > '$connection_snapshot'"
+sudo -n docker cp "$cid:$trace_snapshot" "$run_dir/request-traces.ndjson"
+sudo -n docker cp "$cid:$connection_snapshot" "$run_dir/connection-lifecycle.ndjson"
+sudo -n docker exec "$cid" rm -f "$trace_snapshot" "$connection_snapshot"
+printf '{"aborted":%s,"packaged_at":"%s","trace_start_bytes":%s,"trace_end_bytes":%s,"connection_start_bytes":%s,"connection_end_bytes":%s}\n' \
+  "$aborted" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$trace_start_bytes" "$trace_end_bytes" "$connection_start_bytes" "$connection_end_bytes" >"$run_dir/telemetry-state.json"
+gzip -9 "$run_dir/request-traces.ndjson"
+gzip -9 "$run_dir/connection-lifecycle.ndjson"
+gzip -9 "$run_dir/debug-vars.ndjson" "$run_dir/measurement-boundaries.ndjson" "$run_dir/host-network.log" "$run_dir/ss-tin.log"
+sha256sum "$run_dir/request-traces.ndjson.gz" >"$run_dir/request-traces.sha256"
+sha256sum "$run_dir/connection-lifecycle.ndjson.gz" >"$run_dir/connection-lifecycle.sha256"
+tar -C "$run_dir" -czf "$run_dir/artifacts.tgz" telemetry-state.json debug-vars.ndjson.gz measurement-boundaries.ndjson.gz host-network.log.gz ss-tin.log.gz process.tsv fast-connections.tsv request-traces.ndjson.gz request-traces.sha256 connection-lifecycle.ndjson.gz connection-lifecycle.sha256
+instance_id="$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token | xargs -I{} curl -fsS -H 'X-aws-ec2-metadata-token: {}' http://169.254.169.254/latest/meta-data/instance-id)"
+aws s3 cp "$run_dir/artifacts.tgz" "s3://${evidenceBucket}/${evidencePrefix}/$instance_id/artifacts.tgz" --region ${REGION} --only-show-errors
+rm -rf "$run_dir"
+printf 'COLLECTOR_EVIDENCE_URI=s3://${evidenceBucket}/${evidencePrefix}/%s/artifacts.tgz\\n' "$instance_id"`;
+
+const sent = awsJson([
+    'ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+    '--instance-ids', ...instanceIds, '--timeout-seconds', `${durationSeconds + 360}`,
+    '--parameters', JSON.stringify({ commands: [script], executionTimeout: [`${durationSeconds + 300}`] }),
+    '--comment', `loop-ad ${runId} ${stageLabel} collector telemetry`,
+]);
+
+const state = { runId, stageLabel, durationSeconds, startEpoch, commandId: sent.Command.CommandId, instanceIds, evidenceBucket, evidencePrefix, startedAt: new Date().toISOString() };
+writeJson(join(outputDir, 'collection-start.json'), state);
+process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+
+if (process.argv.includes('--wait')) {
+    const results = [];
+    for (const [index, instanceId] of instanceIds.entries()) {
+        const invocation = await waitForInvocation(sent.Command.CommandId, instanceId, durationSeconds + 360);
+        if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0) throw new Error(`collector telemetry failed on ${instanceId}: ${invocation.Status}`);
+        const collector = `collector-${(index + 1).toString().padStart(2, '0')}`;
+        const directory = join(outputDir, collector);
+        mkdirSync(directory, { recursive: true });
+        const archive = join(directory, 'artifacts.tgz');
+        const uri = `s3://${evidenceBucket}/${evidencePrefix}/${instanceId}/artifacts.tgz`;
+        awsExec(['s3', 'cp', uri, archive, '--region', REGION, '--only-show-errors']);
+        execFileSync('tar', ['-xzf', archive, '-C', directory]);
+        const sha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
+        unlinkSync(archive);
+        results.push({ collector, instanceId, uri, archiveSha256: sha256, archiveRetained: false, invocationStatus: invocation.Status });
+    }
+    const completed = { ...state, completedAt: new Date().toISOString(), collectors: results, passed: results.length === expectedCount };
+    writeJson(join(outputDir, 'collection-complete.json'), completed);
+    process.stdout.write(`${JSON.stringify(completed, null, 2)}\n`);
+}
+
+async function waitForInvocation(commandId, instanceId, timeoutSeconds) {
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+            const invocation = awsJson(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', instanceId]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error(`collector telemetry timed out for ${instanceId}`);
+}
+
+function awsJson(args) {
+    return JSON.parse(awsExec([...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }));
+}
+function awsExec(args, options = {}) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        try {
+            return execFileSync('aws', args, options);
+        } catch (error) {
+            const details = `${error.stderr ?? ''}\n${error.message ?? ''}`;
+            if (attempt === 7 || !/CreateOAuth2Token.*Rate exceeded|Throttl|TooManyRequests|RequestLimitExceeded/i.test(details)) throw error;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(8_000, 500 * 2 ** attempt));
+        }
+    }
+    throw new Error('unreachable AWS retry state');
+}
+function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function integerOption(name, fallback) { const index = process.argv.indexOf(name); if (index < 0) return fallback; const value = Number(process.argv[index + 1]); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }

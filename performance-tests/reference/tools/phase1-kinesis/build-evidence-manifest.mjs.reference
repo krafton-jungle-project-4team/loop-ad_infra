@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { lstat, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, relative, resolve, sep } from 'node:path';
+
+const root = resolve(requiredOption('--root'));
+const output = resolve(requiredOption('--output'));
+if (output === root || output.startsWith(`${root}${sep}`)) {
+    throw new Error('--output must be outside --root so the manifest cannot hash itself');
+}
+
+const files = await walk(root);
+const entries = [];
+let totalBytes = 0;
+for (const path of files) {
+    const metadata = await stat(path);
+    const sha256 = await hashFile(path);
+    totalBytes += metadata.size;
+    entries.push({ path: relative(root, path), bytes: metadata.size, sha256 });
+}
+const result = {
+    schemaVersion: 1,
+    createdAt: new Date().toISOString(),
+    algorithm: 'sha256',
+    root: relative(process.cwd(), root),
+    fileCount: entries.length,
+    totalBytes,
+    files: entries,
+    passed: entries.length > 0 && entries.every((entry) => /^[0-9a-f]{64}$/.test(entry.sha256)),
+};
+await writeFile(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output: relative(process.cwd(), output), fileCount: result.fileCount,
+    totalBytes: result.totalBytes, passed: result.passed }, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+async function walk(directory) {
+    const children = await readdir(directory, { withFileTypes: true });
+    const paths = [];
+    for (const child of children.sort((left, right) => left.name.localeCompare(right.name))) {
+        const path = resolve(directory, child.name);
+        const metadata = await lstat(path);
+        if (metadata.isSymbolicLink()) throw new Error(`symbolic links are not allowed in evidence roots: ${path}`);
+        if (metadata.isDirectory()) paths.push(...await walk(path));
+        else if (metadata.isFile()) paths.push(path);
+    }
+    return paths;
+}
+
+function hashFile(path) {
+    return new Promise((resolveHash, reject) => {
+        const hash = createHash('sha256');
+        const input = createReadStream(path);
+        input.on('error', reject);
+        input.on('data', (chunk) => hash.update(chunk));
+        input.on('end', () => resolveHash(hash.digest('hex')));
+    });
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index < 0 ? undefined : process.argv[index + 1];
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}

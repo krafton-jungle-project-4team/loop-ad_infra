@@ -1,0 +1,5 @@
+<clickhouse>
+  <!-- Phase 7 overlaps ingestion/merge work with a 4.5 GiB archive read-back query. -->
+  <max_server_memory_usage>7516192768</max_server_memory_usage>
+  <max_server_memory_usage_to_ram_ratio>0.875</max_server_memory_usage_to_ram_ratio>
+</clickhouse>

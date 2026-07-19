@@ -1,0 +1,23 @@
+export function mapAlbFrontends({ dnsAnswers, networkInterfaces, subnets }) {
+    const subnetById = new Map(subnets.map((subnet) => [subnet.subnetId, subnet]));
+    const mappings = dnsAnswers.map((answer) => {
+        const eni = networkInterfaces.find((candidate) =>
+            candidate.privateIp === answer.address ||
+            candidate.privateIps?.includes(answer.address));
+        const subnet = eni ? subnetById.get(eni.subnetId) : undefined;
+        return {
+            address: answer.address,
+            ttl: answer.ttl,
+            eniId: eni?.eniId ?? null,
+            subnetId: eni?.subnetId ?? null,
+            availabilityZone: eni?.availabilityZone ?? subnet?.availabilityZone ?? null,
+            availabilityZoneId: eni?.availabilityZoneId ?? subnet?.availabilityZoneId ?? null,
+            mapped: Boolean(eni && (eni.availabilityZone || subnet?.availabilityZone)),
+        };
+    });
+    return {
+        dnsAnswers: dnsAnswers.toSorted((left, right) => left.address.localeCompare(right.address)),
+        mappings: mappings.toSorted((left, right) => left.address.localeCompare(right.address)),
+        passed: mappings.length >= 2 && mappings.every((mapping) => mapping.mapped),
+    };
+}

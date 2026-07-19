@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const runDir = requiredOption('--run-dir');
+const outputPath = requiredOption('--output');
+const stages = optionValue('--stages').split(',').map((value) => value.trim()).filter(Boolean);
+const targetRps = Object.fromEntries(stages.map((stage) => [stage, Number(stage.replace(/k$/, '')) * 1_000]));
+
+const result = {
+    generatedAt: new Date().toISOString(),
+    runDir,
+    stages: Object.fromEntries(stages.map((stage) => [stage, summarizeStage(stage, targetRps[stage])])),
+};
+result.passed = Object.values(result.stages).every((stage) => stage.passed);
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function summarizeStage(stage, target) {
+    const load = readJson(join(runDir, 'stages', stage, 'load', 'oha-summary.json'));
+    const cloudWatch = readJson(join(runDir, 'stages', stage, 'metrics', 'cloudwatch-summary.json')).metrics;
+    const pre = collectorSnapshots(join(runDir, 'debug-vars', stage, 'pre'));
+    const post = collectorSnapshots(join(runDir, 'debug-vars', stage, 'post'));
+    if (pre.length !== 4 || post.length !== 4) throw new Error(`${stage}: expected four pre and four post debug snapshots`);
+
+    const counters = {};
+    for (const key of [
+        'put_record_operations_total', 'put_record_attempts_total', 'put_record_successes_total',
+        'put_record_throttles_total', 'put_record_failures_total', 'put_record_retries_total',
+    ]) {
+        counters[key] = sumDelta(pre, post, (snapshot) => snapshot.kinesis[key]);
+    }
+    const totalAllocBytes = sumDelta(pre, post, (snapshot) => snapshot.go.total_alloc_bytes);
+    const mallocs = hasPath(pre[0], ['go', 'mallocs'])
+        ? sumDelta(pre, post, (snapshot) => snapshot.go.mallocs)
+        : null;
+    const numGC = sumDelta(pre, post, (snapshot) => snapshot.go.num_gc);
+    const gcPauseNanoseconds = hasPath(pre[0], ['go', 'gc_pause_total_nanoseconds'])
+        ? sumDelta(pre, post, (snapshot) => snapshot.go.gc_pause_total_nanoseconds)
+        : null;
+    const operations = counters.put_record_operations_total;
+    const profiles = profileCompleteness(join(runDir, 'pprof', stage));
+    const checks = {
+        actualRpsAtLeast99Percent: load.actualRps >= target * 0.99,
+        http202AtLeast99Point9Percent: load.http202 / load.attemptedRequests >= 0.999,
+        http429Zero: load.http429 === 0,
+        http5xxAtMostPoint1Percent: load.http5xx / load.attemptedRequests <= 0.001,
+        transportErrorsZero: load.transportErrors === 0,
+        p95AtMost100ms: load.latencyMs.p95 <= 100,
+        p99AtMost200ms: load.latencyMs.p99 <= 200,
+        kinesisIncomingEquals202: cloudWatch.kinesis_incoming_records_sum.sum === load.http202,
+        albRequestsEquals202: cloudWatch.alb_requests_sum.sum === load.http202,
+        operationsEqual202: operations === load.http202,
+        attemptsEqualOperations: counters.put_record_attempts_total === operations,
+        successesEqualOperations: counters.put_record_successes_total === operations,
+        retriesZero: counters.put_record_retries_total === 0,
+        failuresZero: counters.put_record_failures_total === 0,
+        throttlesZero: counters.put_record_throttles_total === 0 && cloudWatch.kinesis_write_throttle_sum.sum === 0,
+        profilesComplete: profiles.complete,
+    };
+
+    return {
+        targetRps: target,
+        load,
+        cloudWatch: {
+            kinesisIncomingRecords: cloudWatch.kinesis_incoming_records_sum.sum,
+            kinesisWriteThrottles: cloudWatch.kinesis_write_throttle_sum.sum,
+            albRequests: cloudWatch.alb_requests_sum.sum,
+            ecsCpuMaximumPercent: cloudWatch.ecs_cpuutilization_maximum.max,
+            ecsMemoryMaximumPercent: cloudWatch.ecs_memoryutilization_maximum.max,
+        },
+        collectorDeltas: counters,
+        allocation: {
+            totalAllocBytes,
+            totalAllocBytesPerOperation: operations > 0 ? totalAllocBytes / operations : null,
+            mallocs,
+            mallocsPerOperation: mallocs !== null && operations > 0 ? mallocs / operations : null,
+            numGC,
+            gcPauseNanoseconds,
+            postHeapObjectsByHost: post.map((snapshot) => snapshot.go.heap_objects),
+            postGoroutinesByHost: post.map((snapshot) => snapshot.go.goroutines),
+        },
+        admission: {
+            rejectedDelta: sumDelta(pre, post, (snapshot) => snapshot.admission.rejected_total),
+            postHighWaterByHost: hasPath(post[0], ['admission', 'high_water_in_flight'])
+                ? post.map((snapshot) => snapshot.admission.high_water_in_flight)
+                : null,
+        },
+        profiles,
+        checks,
+        passed: Object.values(checks).every(Boolean),
+    };
+}
+
+function collectorSnapshots(directory) {
+    return readdirSync(directory)
+        .filter((name) => /^collector-[0-9]{2}\.json$/.test(name))
+        .sort()
+        .map((name) => readJson(join(directory, name)));
+}
+
+function profileCompleteness(directory) {
+    const expected = [];
+    for (const phase of ['pre', 'post']) {
+        for (let host = 1; host <= 4; host++) {
+            for (const kind of ['allocs', 'heap', 'goroutine']) {
+                expected.push(join(directory, phase, `collector-${String(host).padStart(2, '0')}-${kind}.pb.gz`));
+            }
+        }
+    }
+    for (let host = 1; host <= 4; host++) {
+        expected.push(join(directory, 'cpu', `collector-${String(host).padStart(2, '0')}-cpu.pb.gz`));
+    }
+    const missing = expected.filter((path) => !existsSync(path) || statSync(path).size === 0);
+    return { expectedCount: expected.length, presentCount: expected.length - missing.length, missing, complete: missing.length === 0 };
+}
+
+function sumDelta(pre, post, accessor) {
+    return post.reduce((sum, snapshot, index) => sum + accessor(snapshot) - accessor(pre[index]), 0);
+}
+
+function hasPath(value, keys) {
+    return keys.every((key) => ((value = value?.[key]) !== undefined));
+}
+
+function readJson(path) {
+    return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}

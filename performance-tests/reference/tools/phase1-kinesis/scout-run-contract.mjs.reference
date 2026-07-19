@@ -1,0 +1,19 @@
+export const SCOUT_STAGES = Object.freeze([1_000, 10_000, 30_000, 50_000]);
+export const SCOUT_TIMING = Object.freeze({ probeSeconds: 15, cooldownSeconds: 15, cloudWatchDelaySeconds: 90 });
+
+export function scoutRunPlan(candidate) {
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+    return {
+        candidate,
+        collectorHosts: 4,
+        tasksPerHost: 1,
+        classificationValues: ['feasible', 'unsafe', 'inconclusive'],
+        stages: SCOUT_STAGES.map((targetRps) => ({
+            targetRps,
+            kind: targetRps === 1_000 ? 'smoke' : 'probe',
+            durationSeconds: SCOUT_TIMING.probeSeconds,
+            cooldownSeconds: SCOUT_TIMING.cooldownSeconds,
+        })),
+        excluded: ['warmup', 'measurement-repetitions', 'variance-or-iqr', 'ranking', 'optional-50k-300s'],
+    };
+}

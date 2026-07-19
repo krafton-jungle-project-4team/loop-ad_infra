@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { aggregateLiveProgress, emptyLiveHistogram, liveHistogramDelta } from './live-progress-histogram.mjs';
+
+function row(index, phase = 'measurement') {
+    return {
+        phase, phase_started_at: '2026-07-15T12:00:00Z', completed_requests: 100 + index,
+        http_429: 0, http_5xx: 0, current_tcp_connections: 750, trace_dropped: 0,
+        protocol_errors: 0, hidden_retries: 0, elapsed_seconds: 60, planned_rps: 3125,
+        target_physical_connections: 750,
+        service_histogram: { method: 'fixed-width-upper-bound', unit: 'nanoseconds', bucket_width_nanoseconds: 10_000_000,
+            max_nanoseconds: 20_000_000, counts: [0, 50, 50], count: 100, overflow_count: 0 },
+    };
+}
+
+test('aggregates exactly sixteen processes and preserves the common phase', () => {
+    const aggregate = aggregateLiveProgress(Array.from({ length: 16 }, (_, index) => row(index)));
+    assert.equal(aggregate.transition, false);
+    assert.equal(aggregate.plannedRps, 50_000);
+    assert.equal(aggregate.targetConnections, 12_000);
+    assert.equal(aggregate.physicalConnections, 12_000);
+    assert.equal(aggregate.histogram.count, 1_600);
+});
+
+test('marks a mixed reset epoch as a transition instead of merging it', () => {
+    const rows = Array.from({ length: 16 }, (_, index) => row(index));
+    rows[15] = { ...rows[15], phase: 'warmup' };
+    assert.equal(aggregateLiveProgress(rows).transition, true);
+});
+
+test('subtracts cumulative histograms and fails closed on regression', () => {
+    const previous = { ...row(0).service_histogram, counts: [0, 5, 5], count: 10 };
+    const current = { ...row(0).service_histogram, counts: [0, 15, 25], count: 40 };
+    assert.deepEqual(liveHistogramDelta(current, previous).counts, [0, 10, 20]);
+    assert.equal(emptyLiveHistogram(current).count, 0);
+    assert.throws(() => liveHistogramDelta(previous, current), /regressed/);
+});

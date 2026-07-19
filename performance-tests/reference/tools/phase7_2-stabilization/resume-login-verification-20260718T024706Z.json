@@ -1,0 +1,22 @@
+{
+  "awsLogin": {
+    "exitCode": 0,
+    "profile": "default",
+    "result": "Updated profile default to use arn:aws:iam::742711170910:root credentials."
+  },
+  "cli": {
+    "account": "742711170910",
+    "arn": "arn:aws:iam::742711170910:root",
+    "region": "ap-northeast-2",
+    "userId": "742711170910"
+  },
+  "lockedBoto3": {
+    "account": "742711170910",
+    "arn": "arn:aws:iam::742711170910:root",
+    "region": "ap-northeast-2",
+    "userId": "742711170910"
+  },
+  "schemaVersion": 1,
+  "staticCredentialMaterialCaptured": false,
+  "verifiedAt": "2026-07-18T02:47:06Z"
+}

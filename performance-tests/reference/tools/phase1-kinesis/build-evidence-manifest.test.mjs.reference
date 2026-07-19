@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+test('evidence manifest hashes every regular file deterministically', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'loopad-evidence-manifest-'));
+    const root = join(directory, 'evidence');
+    mkdirSync(join(root, 'nested'), { recursive: true });
+    writeFileSync(join(root, 'a.txt'), 'alpha\n');
+    writeFileSync(join(root, 'nested', 'b.txt'), 'beta\n');
+    const output = join(directory, 'manifest.json');
+    execFileSync(process.execPath, [new URL('./build-evidence-manifest.mjs', import.meta.url).pathname,
+        '--root', root, '--output', output]);
+    const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(manifest.passed, true);
+    assert.equal(manifest.fileCount, 2);
+    assert.equal(manifest.totalBytes, 11);
+    assert.deepEqual(manifest.files.map((entry) => entry.path), ['a.txt', 'nested/b.txt']);
+    assert.ok(manifest.files.every((entry) => /^[0-9a-f]{64}$/.test(entry.sha256)));
+});

@@ -1,0 +1,315 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const payloadDir = join(scriptDir, 'payloads');
+const outputPath = join(payloadDir, 'sdk-compatible-event-bodies.ndjson');
+const manifestPath = join(payloadDir, 'sdk-compatible-event-bodies.manifest.json');
+
+const shardCount = 120;
+const rowCount = 480;
+const hashSpace = 1n << 128n;
+const targetRps = 50_000;
+const profiles = [
+    { name: 'compact', targetBytes: 1_092 },
+    { name: 'standard', targetBytes: 1_413 },
+    { name: 'expanded', targetBytes: 1_518 },
+];
+const requiredEnvelopeFields = [
+    'project_id',
+    'write_key',
+    'schema_version',
+    'event_id',
+    'event_name',
+    'event_time',
+    'source',
+    'user_id',
+    'session_id',
+    'properties_json',
+];
+
+const shardTargets = Array.from({ length: shardCount }, (_, shardIndex) => (
+    Math.floor(rowCount / shardCount) + (shardIndex < rowCount % shardCount ? 1 : 0)
+));
+const rowsByShard = Array.from({ length: shardCount }, () => []);
+let candidate = 0;
+let accepted = 0;
+
+while (accepted < rowCount) {
+    candidate += 1;
+    if (candidate > rowCount * 20) {
+        throw new Error(`Unable to fill all ${shardCount} shard buckets after ${candidate} candidates.`);
+    }
+
+    const eventId = `evt_phase1_${candidate.toString().padStart(8, '0')}`;
+    const shardIndex = shardIndexFor(eventId);
+    const shardRows = rowsByShard[shardIndex];
+    const target = shardTargets[shardIndex];
+    if (!shardRows || target === undefined) {
+        throw new Error(`Invalid shard index ${shardIndex}.`);
+    }
+    if (shardRows.length >= target) {
+        continue;
+    }
+
+    const profile = profiles[(shardIndex + shardRows.length) % profiles.length];
+    if (!profile) {
+        throw new Error('Unable to select a payload profile.');
+    }
+    const body = createBody({
+        candidate,
+        eventId,
+        profileName: profile.name,
+        targetBytes: profile.targetBytes,
+    });
+    shardRows.push({
+        body,
+        bodyBytes: Buffer.byteLength(body),
+        eventId,
+        profile: profile.name,
+        shardIndex,
+    });
+    accepted += 1;
+}
+
+const rows = [];
+const maxRowsPerShard = Math.max(...shardTargets);
+for (let slot = 0; slot < maxRowsPerShard; slot += 1) {
+    for (const shardRows of rowsByShard) {
+        const row = shardRows[slot];
+        if (row) {
+            rows.push(row);
+        }
+    }
+}
+
+validateRows(rows);
+mkdirSync(payloadDir, { recursive: true });
+const output = `${rows.map((row) => row.body).join('\n')}\n`;
+writeFileSync(outputPath, output, 'utf8');
+
+const bodySizes = rows.map((row) => row.bodyBytes).sort((left, right) => left - right);
+const shardDistribution = rowsByShard.map((shardRows, shardIndex) => {
+    const bodyBytesInPool = shardRows.reduce((sum, row) => sum + row.bodyBytes, 0);
+    const partitionKeyBytesInPool = shardRows.reduce((sum, row) => sum + Buffer.byteLength(row.eventId), 0);
+    const bytesInPool = bodyBytesInPool + partitionKeyBytesInPool;
+    const expectedRecordsPerSecond = targetRps * shardRows.length / rowCount;
+    const expectedBytesPerSecond = targetRps * bytesInPool / rowCount;
+    return {
+        shardIndex,
+        poolRows: shardRows.length,
+        poolBytes: bytesInPool,
+        poolBodyBytes: bodyBytesInPool,
+        poolPartitionKeyBytes: partitionKeyBytesInPool,
+        profileCounts: Object.fromEntries(profiles.map((profile) => [
+            profile.name,
+            shardRows.filter((row) => row.profile === profile.name).length,
+        ])),
+        expectedRecordsPerSecond,
+        expectedBytesPerSecond,
+        expectedRecordCapacityUtilization: expectedRecordsPerSecond / 1_000,
+        expectedByteCapacityUtilization: expectedBytesPerSecond / 1_048_576,
+    };
+});
+const profileCounts = Object.fromEntries(profiles.map((profile) => [
+    profile.name,
+    rows.filter((row) => row.profile === profile.name).length,
+]));
+const fileSha256 = createHash('sha256').update(output).digest('hex');
+const maxExpectedRecordsPerSecond = Math.max(...shardDistribution.map((shard) => shard.expectedRecordsPerSecond));
+const maxExpectedBytesPerSecond = Math.max(...shardDistribution.map((shard) => shard.expectedBytesPerSecond));
+
+if (maxExpectedRecordsPerSecond >= 1_000 || maxExpectedBytesPerSecond >= 1_048_576) {
+    throw new Error(`Pool exceeds a Kinesis shard write limit at ${targetRps} RPS.`);
+}
+
+writeFileSync(manifestPath, `${JSON.stringify({
+    generator: 'performance-tests/phase1-kinesis/generate-payload-pool.mjs',
+    sourceContract: 'loop-ad_event_sdk-compatible hotel_rec_promo.v1 envelope',
+    output: 'sdk-compatible-event-bodies.ndjson',
+    contentType: 'application/json',
+    lineFormat: 'one pre-serialized JSON request body per LF-terminated line',
+    runtimeSelection: 'oha -Z randomly selects one complete line for each HTTP request',
+    rows: rowCount,
+    uniqueEventIds: new Set(rows.map((row) => row.eventId)).size,
+    sha256: fileSha256,
+    requiredEnvelopeFields,
+    profiles: {
+        counts: profileCounts,
+        targetBodyBytes: Object.fromEntries(profiles.map((profile) => [profile.name, profile.targetBytes])),
+    },
+    bodyBytes: {
+        min: bodySizes[0],
+        max: bodySizes.at(-1),
+        mean: bodySizes.reduce((sum, value) => sum + value, 0) / bodySizes.length,
+        p50: percentile(bodySizes, 0.50),
+        p95: percentile(bodySizes, 0.95),
+        p99: percentile(bodySizes, 0.99),
+    },
+    kinesisPartitioning: {
+        partitionKeyField: 'event_id',
+        hashAlgorithm: 'MD5, interpreted as an unsigned 128-bit integer',
+        shardMapping: `floor(hash * ${shardCount} / 2^128)`,
+        capacityBytes: 'UTF-8 data bytes plus UTF-8 partition-key bytes',
+        shardCount,
+        targetRps,
+        shardWriteLimits: {
+            recordsPerSecond: 1_000,
+            bytesPerSecond: 1_048_576,
+        },
+        poolRowsPerShard: {
+            min: Math.min(...shardTargets),
+            max: Math.max(...shardTargets),
+        },
+        expectedAtTarget: {
+            maxRecordsPerSecond: maxExpectedRecordsPerSecond,
+            maxBytesPerSecond: maxExpectedBytesPerSecond,
+            maxRecordCapacityUtilization: maxExpectedRecordsPerSecond / 1_000,
+            maxByteCapacityUtilization: maxExpectedBytesPerSecond / 1_048_576,
+        },
+        shards: shardDistribution,
+    },
+}, null, 2)}\n`, 'utf8');
+
+console.log(JSON.stringify({
+    outputPath,
+    manifestPath,
+    rows: rows.length,
+    uniqueEventIds: new Set(rows.map((row) => row.eventId)).size,
+    profileCounts,
+    bodyBytes: {
+        min: bodySizes[0],
+        max: bodySizes.at(-1),
+        mean: bodySizes.reduce((sum, value) => sum + value, 0) / bodySizes.length,
+    },
+    fileSha256,
+    maxExpectedRecordsPerSecond,
+    maxExpectedBytesPerSecond,
+}, null, 2));
+
+function shardIndexFor(partitionKey) {
+    const digest = createHash('md5').update(partitionKey, 'utf8').digest('hex');
+    return Number(BigInt(`0x${digest}`) * BigInt(shardCount) / hashSpace);
+}
+
+function createBody({ candidate: candidateNumber, eventId, profileName, targetBytes }) {
+    const eventTime = new Date(Date.UTC(2026, 6, 10) + (candidateNumber % 86_400) * 1_000).toISOString();
+    const profileFields = profileName === 'compact'
+        ? {
+            placement: 'recommendation_card',
+        }
+        : profileName === 'standard'
+            ? {
+                placement: 'recommendation_card',
+                content_id: `hotel_${(candidateNumber % 4_096).toString().padStart(4, '0')}`,
+                campaign_id: `campaign_${(candidateNumber % 128).toString().padStart(3, '0')}`,
+            }
+            : {
+                placement: 'recommendation_card',
+                content_id: `hotel_${(candidateNumber % 4_096).toString().padStart(4, '0')}`,
+                campaign_id: `campaign_${(candidateNumber % 128).toString().padStart(3, '0')}`,
+                element: 'hotel_recommendation_carousel_card',
+                page: '/hotel/recommendations',
+            };
+    const properties = {
+        sdk: {
+            name: 'loop-ad_event_sdk',
+            version: 'perf-test',
+        },
+        perf: {
+            profile: profileName,
+            pool: `phase1-kinesis-${rowCount}`,
+        },
+        locale: 'ko-KR',
+        device_type: candidateNumber % 2 === 0 ? 'desktop' : 'mobile',
+        recommendation_context: '',
+        ...profileFields,
+    };
+    const envelope = {
+        project_id: 'demo-shoppingmall',
+        write_key: 'perf_public_write_key',
+        schema_version: 'hotel_rec_promo.v1',
+        event_id: eventId,
+        event_name: 'hotel_recommendation_impression',
+        event_time: eventTime,
+        source: 'browser_sdk',
+        user_id: `user_${candidateNumber.toString().padStart(8, '0')}`,
+        session_id: `session_${(candidateNumber % 2_048).toString().padStart(8, '0')}`,
+        properties_json: '',
+    };
+
+    envelope.properties_json = JSON.stringify(properties);
+    const baseBody = JSON.stringify(envelope);
+    const missingBytes = targetBytes - Buffer.byteLength(baseBody);
+    if (missingBytes < 0) {
+        throw new Error(`${profileName} base body is ${-missingBytes} bytes larger than its ${targetBytes}-byte target.`);
+    }
+    properties.recommendation_context = deterministicContext(candidateNumber, missingBytes);
+    envelope.properties_json = JSON.stringify(properties);
+    const body = JSON.stringify(envelope);
+    const bodyBytes = Buffer.byteLength(body);
+    if (bodyBytes !== targetBytes) {
+        throw new Error(`${eventId} expected ${targetBytes} bytes but generated ${bodyBytes}.`);
+    }
+    return body;
+}
+
+function deterministicContext(candidateNumber, length) {
+    const seed = `hotel-context-${candidateNumber.toString(36)}-`;
+    if (length <= seed.length) {
+        return seed.slice(0, length);
+    }
+    return `${seed}${'x'.repeat(length - seed.length)}`;
+}
+
+function validateRows(rowsToValidate) {
+    if (rowsToValidate.length !== rowCount) {
+        throw new Error(`Expected ${rowCount} rows, generated ${rowsToValidate.length}.`);
+    }
+    if (new Set(rowsToValidate.map((row) => row.eventId)).size !== rowCount) {
+        throw new Error('Payload pool contains duplicate event_id values.');
+    }
+    for (const [index, row] of rowsToValidate.entries()) {
+        const body = JSON.parse(row.body);
+        if (JSON.stringify(Object.keys(body).sort()) !== JSON.stringify([...requiredEnvelopeFields].sort())) {
+            throw new Error(`Row ${index + 1} has an unexpected envelope shape.`);
+        }
+        if (body.event_id !== row.eventId || shardIndexFor(body.event_id) !== row.shardIndex) {
+            throw new Error(`Row ${index + 1} has an invalid partition-key mapping.`);
+        }
+        const properties = JSON.parse(body.properties_json);
+        if (properties.perf?.profile !== row.profile || Object.values(properties).includes(null)) {
+            throw new Error(`Row ${index + 1} has invalid properties_json.`);
+        }
+    }
+    for (const profile of profiles) {
+        const count = rowsToValidate.filter((row) => row.profile === profile.name).length;
+        if (count !== rowCount / profiles.length) {
+            throw new Error(`${profile.name} expected ${rowCount / profiles.length} rows, generated ${count}.`);
+        }
+    }
+    for (const [shardIndex, shardRows] of rowsByShard.entries()) {
+        if (shardRows.length !== 4) {
+            throw new Error(`Shard ${shardIndex} expected 4 rows, generated ${shardRows.length}.`);
+        }
+        let duplicatedProfiles = 0;
+        for (const profile of profiles) {
+            const count = shardRows.filter((row) => row.profile === profile.name).length;
+            if (count < 1 || count > 2) {
+                throw new Error(`Shard ${shardIndex} expected 1 or 2 ${profile.name} rows, generated ${count}.`);
+            }
+            if (count === 2) duplicatedProfiles += 1;
+        }
+        if (duplicatedProfiles !== 1) {
+            throw new Error(`Shard ${shardIndex} must duplicate exactly one payload profile.`);
+        }
+    }
+}
+
+function percentile(sortedValues, ratio) {
+    return sortedValues[Math.ceil(sortedValues.length * ratio) - 1];
+}

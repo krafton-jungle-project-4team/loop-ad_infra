@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+test('combined scout and final plan preserves four dollar reserve', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'combined-cost-'));
+    const scout = join(dir, 'scout.json'); const final = join(dir, 'final.json'); const output = join(dir, 'out.json');
+    writeFileSync(scout, JSON.stringify({ runUpperBoundUsd: 3.5 }));
+    writeFileSync(final, JSON.stringify({ runUpperBoundUsd: 12.5 }));
+    execFileSync('node', ['performance-tests/phase1-kinesis/combine-capacity-costs.mjs', '--scout-cost', scout, '--final-cost', final, '--output', output]);
+    assert.equal(JSON.parse(readFileSync(output)).passed, true);
+});
+
+test('combined plan fails above sixteen dollars', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'combined-cost-'));
+    const scout = join(dir, 'scout.json'); const final = join(dir, 'final.json');
+    writeFileSync(scout, JSON.stringify({ runUpperBoundUsd: 4 }));
+    writeFileSync(final, JSON.stringify({ runUpperBoundUsd: 12.01 }));
+    const result = spawnSync('node', ['performance-tests/phase1-kinesis/combine-capacity-costs.mjs', '--scout-cost', scout, '--final-cost', final, '--output', join(dir, 'out.json')]);
+    assert.equal(result.status, 2);
+});

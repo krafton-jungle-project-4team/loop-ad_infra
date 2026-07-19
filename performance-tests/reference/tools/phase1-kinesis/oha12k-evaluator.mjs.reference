@@ -1,0 +1,98 @@
+export function evaluateOha12kProbe({ aggregate, alb, target }) {
+    validateInput(aggregate, alb, target);
+    const transportErrorRatio = ratio(aggregate.transportErrors, aggregate.attemptedRequests);
+    const generatorToAlbDifferenceRatio = relativeDifference(aggregate.completedRequests, alb.requestCount);
+    const allowanceExceeded = Object.entries(aggregate.enaAllowanceDelta)
+        .filter(([key]) => key.endsWith('allowance_exceeded'))
+        .reduce((total, [, value]) => total + value, 0);
+    const nodeSignals = aggregate.nodes.map((node) => ({
+        nodeId: node.nodeId,
+        cpuSaturated: node.processObservation.maxOhaCpuPercent >= 190,
+        fileDescriptorLimited: node.socketTelemetry.oha_open_fds >= node.limits.ulimitNofile * 0.95,
+        conntrackLimited: node.limits.conntrack.max > 0 && node.socketTelemetry.conntrack_count >= node.limits.conntrack.max * 0.95,
+        ephemeralPortCapacitySufficient: node.limits.ephemeralPortRange.high - node.limits.ephemeralPortRange.low + 1 >= node.configuredConnections,
+        commandMatchesPlan: node.commandMatchesPlan,
+    }));
+    const generatorChecks = {
+        aggregateContractPassed: aggregate.passed === true,
+        actualRpsAtLeastNinetyNinePercent: aggregate.actualRps >= aggregate.targetRps * 0.99,
+        transportErrorsAtMostPointOnePercent: transportErrorRatio <= 0.001,
+        enaAllowanceExceededZero: allowanceExceeded === 0,
+        processResourcesBounded: nodeSignals.every((node) => !node.cpuSaturated && !node.fileDescriptorLimited && !node.conntrackLimited),
+        ephemeralPortCapacitySufficient: nodeSignals.every((node) => node.ephemeralPortCapacitySufficient),
+        generatorAndAlbCountsMatch: generatorToAlbDifferenceRatio <= 0.001,
+    };
+    const targetCausePresent = target.admissionRejections > 0 || target.admissionAtMax || target.producerQueueAtMax ||
+        target.producerOutstandingGrowing || target.kinesisThrottle > 0 || alb.target5xx > 0 || target.producerTimeout > 0 ||
+        target.producerFinalFailure > 0 || target.recovered !== true;
+    const generatorOnlySignal = nodeSignals.some((node) => node.cpuSaturated || node.fileDescriptorLimited || node.conntrackLimited || !node.commandMatchesPlan) ||
+        allowanceExceeded > 0 || (!generatorChecks.actualRpsAtLeastNinetyNinePercent && !targetCausePresent);
+    const generatorResult = Object.values(generatorChecks).every(Boolean)
+        ? 'capable'
+        : generatorOnlySignal && !targetCausePresent ? 'generator-limited' : 'inconclusive';
+
+    const targetChecks = {
+        http202AtLeastNinetyNinePointNinePercent: ratio(aggregate.http202, aggregate.attemptedRequests) >= 0.999,
+        http429Zero: aggregate.http429 === 0,
+        target5xxAtMostPointOnePercent: ratio(alb.target5xx, aggregate.attemptedRequests) <= 0.001,
+        elb5xxZero: alb.elb5xx === 0,
+        firstByteP95AtMost100ms: aggregate.firstByteMs.worstNode.p95 <= 100,
+        firstByteP99AtMost500ms: aggregate.firstByteMs.worstNode.p99 <= 500,
+        kinesisThrottleZero: target.kinesisThrottle === 0,
+        producerTimeoutZero: target.producerTimeout === 0,
+        producerFinalFailureZero: target.producerFinalFailure === 0,
+        noTaskSafetyFailure: target.taskSafetyPassed === true,
+        http202MatchesIncomingRecords: target.http202MatchesIncomingRecords === true,
+        recovered: target.recovered === true,
+    };
+    const unsafe = target.kinesisThrottle > 0 || target.producerTimeout > 0 || target.producerFinalFailure > 0 ||
+        target.taskSafetyPassed !== true || target.recovered !== true || target.queueGrowing === true;
+    let targetResult;
+    if (unsafe) targetResult = 'unsafe';
+    else if (Object.values(targetChecks).every(Boolean)) targetResult = 'capacity-pass';
+    else if (target.admissionRejections > 0 || target.admissionAtMax) targetResult = 'collector-admission-bound';
+    else if (target.producerQueueAtMax || target.producerOutstandingGrowing || target.producerAckLatencyGrowing) targetResult = 'producer-or-ack-bound';
+    else if (alb.target5xx > 0 || alb.targetConnectionErrors > 0 || !targetChecks.firstByteP95AtMost100ms || !targetChecks.firstByteP99AtMost500ms) targetResult = 'target-path-bound';
+    else targetResult = 'inconclusive';
+
+    const bottlenecks = [];
+    if (generatorResult === 'generator-limited') bottlenecks.push('load-generator');
+    if (targetResult === 'collector-admission-bound') bottlenecks.push('collector-admission');
+    if (targetResult === 'producer-or-ack-bound') bottlenecks.push('producer-or-ack');
+    if (targetResult === 'target-path-bound') bottlenecks.push('target-path');
+    if (targetResult === 'unsafe') bottlenecks.push('unsafe-target-state');
+    return {
+        evaluatedAt: new Date().toISOString(),
+        generator: {
+            result: generatorResult,
+            checks: generatorChecks,
+            transportErrorRatio,
+            generatorToAlbDifferenceRatio,
+            allowanceExceeded,
+            nodeSignals,
+            mayIncreaseTopology: generatorResult === 'generator-limited',
+        },
+        target: { result: targetResult, checks: targetChecks, unsafe },
+        primaryBottleneck: bottlenecks[0] ?? null,
+        secondaryBottleneck: bottlenecks[1] ?? null,
+    };
+}
+
+function validateInput(aggregate, alb, target) {
+    if (![30_000, 50_000].includes(aggregate?.targetRps)) throw new Error('invalid aggregate target RPS');
+    for (const [name, value] of Object.entries({ requestCount: alb?.requestCount, target5xx: alb?.target5xx,
+        elb5xx: alb?.elb5xx, targetConnectionErrors: alb?.targetConnectionErrors })) {
+        if (!Number.isFinite(value) || value < 0) throw new Error(`invalid ALB ${name}`);
+    }
+    for (const name of ['admissionRejections', 'kinesisThrottle', 'producerTimeout', 'producerFinalFailure']) {
+        if (!Number.isFinite(target?.[name]) || target[name] < 0) throw new Error(`invalid target ${name}`);
+    }
+}
+
+function ratio(numerator, denominator) {
+    return denominator > 0 ? numerator / denominator : Infinity;
+}
+
+function relativeDifference(left, right) {
+    return Math.abs(left - right) / Math.max(left, 1);
+}

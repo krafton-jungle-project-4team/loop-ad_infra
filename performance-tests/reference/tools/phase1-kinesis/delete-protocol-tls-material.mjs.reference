@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const certificateArn = requiredOption('--certificate-arn');
+const secretArn = requiredOption('--secret-arn');
+const output = requiredOption('--output');
+if (!/^arn:aws:acm:ap-northeast-2:[0-9]{12}:certificate\/[0-9a-f-]+$/.test(certificateArn)) throw new Error('invalid certificate ARN');
+if (!/^arn:aws:secretsmanager:ap-northeast-2:[0-9]{12}:secret:/.test(secretArn)) throw new Error('invalid secret ARN');
+
+const before = {
+    certificateAbsent: absent(['acm', 'describe-certificate', '--region', REGION, '--certificate-arn', certificateArn], ['ResourceNotFoundException']),
+    secretAbsent: absent(['secretsmanager', 'describe-secret', '--region', REGION, '--secret-id', secretArn], ['ResourceNotFoundException']),
+};
+if (!before.certificateAbsent) aws(['acm', 'delete-certificate', '--region', REGION, '--certificate-arn', certificateArn]);
+if (!before.secretAbsent) aws(['secretsmanager', 'delete-secret', '--region', REGION, '--secret-id', secretArn, '--force-delete-without-recovery']);
+const checks = {
+    certificateAbsent: absent(['acm', 'describe-certificate', '--region', REGION, '--certificate-arn', certificateArn], ['ResourceNotFoundException']),
+    secretAbsent: absent(['secretsmanager', 'describe-secret', '--region', REGION, '--secret-id', secretArn], ['ResourceNotFoundException']),
+};
+const result = { deletedAt: new Date().toISOString(), region: REGION, certificateArn, secretArn, before, checks,
+    passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function aws(args) { const text = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' }).trim(); return text ? JSON.parse(text) : {}; }
+function absent(args, markers) { try { aws(args); return false; } catch (error) { return markers.some((marker) => String(error.stderr ?? error.message).includes(marker)); } }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

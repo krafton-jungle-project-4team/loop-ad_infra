@@ -1,0 +1,502 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isPhase7InternalProxyNlbDnsName } from '../../phase1-kinesis/connection-path-destination.mjs';
+import { aggregateOha12k, parseCounterText } from '../../phase1-kinesis/oha12k-aggregate.mjs';
+import {
+    evaluateDiagnosticStage,
+    PHASE7_DIAGNOSTIC_IDENTITY_MODE,
+} from './phase7_diagnostic_contract.mjs';
+import {
+    cancelOwnedStageWork,
+    createArchiveTaskState,
+    monitorTerminalHardStops,
+    reconcileOwnedStageCommands,
+    runArchiveTaskOnceAt,
+    validateArchiveConfig,
+    validateHardStopConfig,
+} from './phase7_aws_task_orchestration.mjs';
+
+const REGION = 'ap-northeast-2';
+const NODE_COUNT = 8;
+const PROCESSES_PER_NODE = 2;
+const TOTAL_CONNECTIONS = 12_000;
+const TARGET_RPS = 50_000;
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const invokeOha = resolve(scriptDirectory, '../../phase1-kinesis/invoke-oha.mjs');
+
+const runId = required('--run-id');
+const stage = required('--stage');
+const instanceIds = required('--instance-ids').split(',').filter(Boolean).sort();
+const targetBaseUrl = required('--target-base-url');
+const targetConnectDnsName = required('--target-connect-dns-name');
+const caCertificate = resolve(required('--ca-certificate'));
+const evidenceBucket = required('--evidence-bucket');
+const payloadPool = resolve(required('--payload-pool'));
+const payloadManifestPath = resolve(required('--payload-manifest'));
+const outputDirectory = resolve(required('--output-dir'));
+const durationSeconds = integer('--duration-seconds');
+const archiveConfigPath = option('--archive-config');
+const hardStopConfigPath = resolve(required('--hard-stop-config'));
+
+if (!/^run_[0-9]{8}_[0-9]{6}_phase7_integration$/.test(runId)) throw new Error('invalid Phase 7 run ID');
+if (!['warmup', 'score'].includes(stage)) throw new Error('stage must be warmup or score');
+if (durationSeconds !== (stage === 'warmup' ? 180 : 300)) throw new Error('warmup/score duration contract changed');
+if (instanceIds.length !== NODE_COUNT || new Set(instanceIds).size !== NODE_COUNT || !instanceIds.every((value) => /^i-[0-9a-f]+$/.test(value))) {
+    throw new Error('exactly eight unique load-generator instance IDs are required');
+}
+if (!/^https:\/\/[a-z0-9.-]+$/.test(targetBaseUrl)) throw new Error('invalid canonical TLS URL');
+if (!isPhase7InternalProxyNlbDnsName(targetConnectDnsName)) {
+    throw new Error('unexpected Phase 7 protocol NLB DNS name');
+}
+if (stage === 'score' && !archiveConfigPath) throw new Error('score requires one archive task configuration');
+if (stage === 'warmup' && archiveConfigPath) throw new Error('warmup must not start archive work');
+const archiveConfig = archiveConfigPath ? json(resolve(archiveConfigPath)) : null;
+if (archiveConfig) validateArchiveConfig(archiveConfig);
+const hardStopConfig = json(hardStopConfigPath);
+validateHardStopConfig(hardStopConfig, runId);
+
+const payloadManifest = json(payloadManifestPath);
+if (payloadManifest.runId !== runId || payloadManifest.stage !== stage ||
+    payloadManifest.identityMode !== PHASE7_DIAGNOSTIC_IDENTITY_MODE ||
+    payloadManifest.runtimeSelection !== 'oha -Z random sampling with replacement' ||
+    payloadManifest.globalRequestEventIdUniquenessGuaranteed !== false ||
+    payloadManifest.kinesisPartitioning?.rowsPerShard?.min !== 4 ||
+    payloadManifest.kinesisPartitioning?.rowsPerShard?.max !== 4) {
+    throw new Error('payload manifest does not satisfy the Phase 7 diagnostic contract');
+}
+
+mkdirSync(outputDirectory, { recursive: false });
+const stamp = runId.match(/^run_([0-9]{8}_[0-9]{6})_/)?.[1];
+const workerRunId = `run_${stamp}_phase7_${stage}`;
+// Minute alignment makes the five scored Kinesis IncomingRecords datapoints
+// separable without including warmup traffic in either boundary bucket.
+const startEpoch = Math.ceil((Date.now() / 1_000 + 120) / 60) * 60;
+const offeredRpsPerNode = TARGET_RPS / NODE_COUNT;
+const connectionsPerNode = TOTAL_CONNECTIONS / NODE_COUNT;
+const nodePlans = instanceIds.map((instanceId, index) => ({
+    nodeIndex: index + 1,
+    nodeId: `node-${String(index + 1).padStart(2, '0')}`,
+    instanceId,
+    startEpoch,
+    offeredRps: offeredRpsPerNode,
+    connections: connectionsPerNode,
+    processesPerNode: PROCESSES_PER_NODE,
+    processes: Array.from({ length: PROCESSES_PER_NODE }, (_, processIndex) => ({
+        processIndex: processIndex + 1,
+        processId: `process-${String(processIndex + 1).padStart(2, '0')}`,
+        offeredRps: offeredRpsPerNode / PROCESSES_PER_NODE,
+        connections: connectionsPerNode / PROCESSES_PER_NODE,
+        requestedRequests: offeredRpsPerNode / PROCESSES_PER_NODE * durationSeconds,
+    })),
+}));
+const topology = {
+    schemaVersion: 1,
+    runId,
+    stage,
+    targetRps: TARGET_RPS,
+    durationSeconds,
+    completionMode: 'exact-request-count',
+    requestedRequests: TARGET_RPS * durationSeconds,
+    nodeCount: NODE_COUNT,
+    processesPerNode: PROCESSES_PER_NODE,
+    processCount: NODE_COUNT * PROCESSES_PER_NODE,
+    totalConnections: TOTAL_CONNECTIONS,
+    startEpoch,
+    payloadManifest,
+    nodes: nodePlans,
+};
+writeJson(join(outputDirectory, 'topology-manifest.json'), topology);
+
+const abortController = new AbortController();
+const monitorAbortController = new AbortController();
+const activeChildren = new Map();
+const externalTermination = externalTerminationPromise();
+const hardStopMonitorState = {
+    schemaVersion: 1,
+    runId,
+    stage,
+    startedAt: new Date().toISOString(),
+    polls: [],
+    hardStopSignals: [],
+};
+const archiveState = stage === 'score' ? createArchiveTaskState(runId) : null;
+const nodePromises = nodePlans.map(runNode);
+const archivePromise = stage === 'score'
+    ? runArchiveTaskOnceAt({
+        epoch: startEpoch + 5,
+        config: archiveConfig,
+        runId,
+        state: archiveState,
+        awsJson,
+        sleep,
+        signal: abortController.signal,
+        onStateChange: (value) => writeJson(join(outputDirectory, 'archive-attempt.json'), value),
+        onResult: (value) => writeJson(join(outputDirectory, 'archive-task.json'), value),
+    })
+    : Promise.resolve(null);
+const terminalMonitorPromise = monitorTerminalHardStops({
+    config: hardStopConfig,
+    runId,
+    stage,
+    startEpoch,
+    state: hardStopMonitorState,
+    signal: monitorAbortController.signal,
+    awsJson,
+    sleep,
+}).then((signals) => {
+    const error = new Error(`Phase 7 terminal hard stop: ${signals.join(',')}`);
+    error.name = 'Phase7TerminalHardStop';
+    error.hardStopSignals = signals;
+    throw error;
+});
+let invocationResults;
+let archive;
+try {
+    [invocationResults, archive] = await Promise.race([
+        Promise.all([Promise.all(nodePromises), archivePromise]),
+        terminalMonitorPromise,
+        externalTermination.promise,
+    ]);
+    monitorAbortController.abort();
+    await terminalMonitorPromise.catch((error) => {
+        if (error?.name !== 'AbortError') throw error;
+    });
+} catch (error) {
+    abortController.abort();
+    monitorAbortController.abort();
+    hardStopMonitorState.hardStopSignals = [...(error?.hardStopSignals ?? [])].sort();
+    hardStopMonitorState.failedAt = new Date().toISOString();
+    hardStopMonitorState.failure = {
+        name: String(error?.name ?? 'Error').slice(0, 100),
+        message: String(error?.message ?? error).slice(0, 500),
+    };
+    writeJson(join(outputDirectory, 'hard-stop-monitor.json'), hardStopMonitorState);
+    const localChildren = terminateActiveChildren(activeChildren);
+    const localCommandDiscovery = loadLocalStartedLoadCommands(nodePlans);
+    let commandDiscovery;
+    try {
+        commandDiscovery = await reconcileOwnedStageCommands({
+            runId,
+            stage,
+            plans: nodePlans,
+            localCommands: localCommandDiscovery.commands,
+            awsJson,
+            sleep,
+        });
+    } catch (reconciliationError) {
+        commandDiscovery = {
+            workerRunId,
+            commands: localCommandDiscovery.commands,
+            errors: [{
+                nodeId: null,
+                message: `exact remote SSM reconciliation failed: ${String(reconciliationError?.message ?? reconciliationError).slice(0, 500)}`,
+            }],
+            reconciliation: [],
+        };
+    }
+    commandDiscovery.commands = commandDiscovery.commands.map((command) => ({
+        ...command,
+        workerStateBucket: evidenceBucket,
+        workerStateKey: `generator-evidence/${runId}/${stage}/${command.nodeId}/worker-terminal-state.json`,
+    }));
+    const commandDiscoveryErrors = [...localCommandDiscovery.errors, ...commandDiscovery.errors];
+    writeJson(join(outputDirectory, 'ssm-command-reconciliation.json'), {
+        schemaVersion: 1,
+        runId,
+        stage,
+        workerRunId,
+        localCommands: localCommandDiscovery.commands,
+        commands: commandDiscovery.commands,
+        errors: commandDiscoveryErrors,
+        reconciliation: commandDiscovery.reconciliation,
+    });
+    let cancellation;
+    try {
+        cancellation = await cancelOwnedStageWork({
+            runId,
+            stage,
+            cause: error,
+            ssmCommands: commandDiscovery.commands,
+            commandDiscoveryErrors,
+            commandReconciliation: commandDiscovery.reconciliation,
+            localChildren,
+            archiveConfig,
+            archiveState,
+            awsJson,
+            sleep,
+        });
+    } catch (cancellationError) {
+        cancellation = {
+            schemaVersion: 1,
+            runId,
+            stage,
+            requestedAt: new Date().toISOString(),
+            cause: { name: String(error?.name ?? 'Error'), message: String(error?.message ?? error).slice(0, 500) },
+            nextState: 'cleanup-only',
+            newWorkAllowed: false,
+            cancellationComplete: false,
+            cancellationError: {
+                name: String(cancellationError?.name ?? 'Error'),
+                message: String(cancellationError?.message ?? cancellationError).slice(0, 500),
+            },
+            localChildren,
+            commandDiscoveryErrors,
+            commandReconciliation: commandDiscovery.reconciliation,
+        };
+    }
+    writeJson(join(outputDirectory, 'cancellation-evidence.json'), cancellation);
+    await Promise.allSettled([...nodePromises, archivePromise]);
+    externalTermination.dispose();
+    throw error;
+}
+externalTermination.dispose();
+hardStopMonitorState.completedAt = new Date().toISOString();
+writeJson(join(outputDirectory, 'hard-stop-monitor.json'), hardStopMonitorState);
+const nodes = nodePlans.map(loadNodeEvidence);
+const aggregate = aggregateOha12k({ manifest: topology, nodes });
+const diagnosticDecision = evaluateDiagnosticStage({
+    stage,
+    invocationResults,
+    aggregate,
+    payloadManifest,
+    archive,
+    startEpoch,
+    durationSeconds,
+});
+const result = {
+    schemaVersion: 1,
+    workload: 'phase7-throughput-diagnostic',
+    runId,
+    stage,
+    identityMode: PHASE7_DIAGNOSTIC_IDENTITY_MODE,
+    acceptanceBasis: payloadManifest.acceptanceBasis,
+    globalRequestEventIdUniquenessGuaranteed: false,
+    aggregate,
+    archive,
+    ...diagnosticDecision,
+    completedAt: new Date().toISOString(),
+};
+writeJson(join(outputDirectory, 'stage-summary.json'), result);
+process.stdout.write(`${JSON.stringify({ stage, actualRps: aggregate.actualRps, http202: aggregate.http202, checks: diagnosticDecision.checks }, null, 2)}\n`);
+if (stage === 'score' && archive?.exitCode !== 0) process.exitCode = 2;
+
+async function runNode(plan) {
+    const nodeDirectory = join(outputDirectory, plan.nodeId);
+    mkdirSync(nodeDirectory, { recursive: true });
+    const args = [
+        invokeOha,
+        '--instance-id', plan.instanceId,
+        '--target-base-url', targetBaseUrl,
+        '--target-connect-base-url', `https://${targetConnectDnsName}`,
+        '--tls-server-name', new URL(targetBaseUrl).hostname,
+        '--ca-certificate', caCertificate,
+        '--run-id', workerRunId,
+        '--rps', String(plan.offeredRps),
+        '--duration-seconds', String(durationSeconds),
+        '--connections', String(plan.connections),
+        '--processes-per-node', String(PROCESSES_PER_NODE),
+        '--experiment-mode', 'connection-path-crossover',
+        '--start-epoch', String(startEpoch),
+        '--node-id', plan.nodeId,
+        '--stage-label', stage,
+        '--repetition', '1',
+        '--instrumentation', 'on',
+        '--evidence-bucket', evidenceBucket,
+        '--evidence-prefix', `generator-evidence/${runId}/${stage}`,
+        '--payload-pool', payloadPool,
+        '--payload-manifest', payloadManifestPath,
+        '--output-dir', nodeDirectory,
+    ];
+    let processHandle;
+    let result;
+    try {
+        result = await child(process.execPath, args, (handle) => {
+            processHandle = handle;
+            activeChildren.set(plan.nodeId, handle);
+        });
+    } finally {
+        if (activeChildren.get(plan.nodeId) === processHandle) activeChildren.delete(plan.nodeId);
+    }
+    writeFileSync(join(nodeDirectory, 'orchestrator.stdout.log'), result.stdout, 'utf8');
+    writeFileSync(join(nodeDirectory, 'orchestrator.stderr.log'), result.stderr, 'utf8');
+    if (result.exitCode !== 0) throw new Error(`${plan.nodeId} oha invocation failed with ${result.exitCode}`);
+    return result;
+}
+
+function loadNodeEvidence(plan) {
+    const directory = join(outputDirectory, plan.nodeId);
+    const command = json(join(directory, 'oha-command.json'));
+    const processPlans = command.processes ?? [];
+    return {
+        nodeId: plan.nodeId,
+        summary: json(join(directory, 'oha-summary.json')),
+        report: json(join(directory, 'oha-report.json')),
+        command,
+        bootstrap: json(join(directory, 'load-generator-bootstrap.json')),
+        telemetryTsv: readFileSync(join(directory, 'load-generator-telemetry.tsv'), 'utf8'),
+        enaBefore: parseCounterText(readFileSync(join(directory, 'ena-allowance-before.txt'), 'utf8')),
+        enaAfter: parseCounterText(readFileSync(join(directory, 'ena-allowance-after.txt'), 'utf8')),
+        processes: processPlans.map((processPlan) => ({
+            processId: processPlan.processId,
+            command: processPlan.command,
+            summary: json(join(directory, processPlan.processId, 'oha-summary.json')),
+            report: json(join(directory, processPlan.processId, 'oha-report.json')),
+        })),
+    };
+}
+
+function child(executable, args, onSpawn) {
+    return new Promise((resolvePromise, reject) => {
+        // Each invoker owns a process group so SIGTERM also reaches a blocking
+        // AWS CLI child. Otherwise an orphaned CLI could accept SendCommand
+        // after the local Node process was recorded as terminated.
+        const processHandle = spawn(executable, args, {
+            detached: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        onSpawn?.(processHandle);
+        let stdout = '';
+        let stderr = '';
+        processHandle.stdout.setEncoding('utf8');
+        processHandle.stderr.setEncoding('utf8');
+        processHandle.stdout.on('data', (value) => { stdout += value; });
+        processHandle.stderr.on('data', (value) => { stderr += value; });
+        processHandle.on('error', reject);
+        processHandle.on('close', (exitCode) => resolvePromise({ exitCode, stdout, stderr }));
+    });
+}
+
+function awsJson(args) {
+    const output = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+        env: { ...process.env, AWS_MAX_ATTEMPTS: '1', AWS_RETRY_MODE: 'standard' },
+    });
+    return output.trim() ? JSON.parse(output) : {};
+}
+
+function externalTerminationPromise() {
+    let rejectPromise;
+    const promise = new Promise((_, reject) => { rejectPromise = reject; });
+    const handlers = new Map();
+    for (const signal of ['SIGTERM', 'SIGINT']) {
+        const handler = () => {
+            const error = new Error(`Phase 7 orchestrator received ${signal}`);
+            error.name = 'ExternalTermination';
+            error.hardStopSignals = [`orchestrator-${signal.toLowerCase()}`];
+            rejectPromise(error);
+        };
+        handlers.set(signal, handler);
+        process.once(signal, handler);
+    }
+    return {
+        promise,
+        dispose() {
+            for (const [signal, handler] of handlers) process.removeListener(signal, handler);
+        },
+    };
+}
+
+function writeJson(path, value) {
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function json(path) {
+    return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function required(name) {
+    const value = option(name);
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
+function integer(name) {
+    const value = Number(required(name));
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
+    return value;
+}
+
+function option(name) {
+    const index = process.argv.indexOf(name);
+    return index < 0 ? undefined : process.argv[index + 1];
+}
+
+function terminateActiveChildren(children) {
+    return [...children.entries()].map(([nodeId, handle]) => {
+        const alreadyExited = handle.exitCode !== null || handle.signalCode !== null;
+        let terminationSignalSent = false;
+        let terminationError = null;
+        if (!alreadyExited) {
+            try {
+                process.kill(-handle.pid, 'SIGTERM');
+                terminationSignalSent = true;
+            } catch (error) {
+                terminationError = {
+                    name: String(error?.name ?? 'Error').slice(0, 100),
+                    message: String(error?.message ?? error).slice(0, 500),
+                };
+            }
+        }
+        return {
+            nodeId,
+            processGroupId: handle.pid,
+            alreadyExited,
+            terminationRequested: !alreadyExited,
+            terminationSignalSent,
+            terminationError,
+        };
+    });
+}
+
+function loadLocalStartedLoadCommands(plans) {
+    const commands = [];
+    const errors = [];
+    for (const plan of plans) {
+        const path = join(outputDirectory, plan.nodeId, 'ssm-command-started.json');
+        if (!existsSync(path)) continue;
+        try {
+            const value = json(path);
+            const expectedComment = `loop-ad ${workerRunId} oha ${plan.offeredRps}rps ${durationSeconds}s`;
+            if (value.kind !== 'phase7-oha-load-command' || value.runId !== workerRunId ||
+                value.stageLabel !== stage || value.nodeId !== plan.nodeId || value.instanceId !== plan.instanceId ||
+                value.comment !== expectedComment) {
+                throw new Error('SSM command-start evidence ownership mismatch');
+            }
+            commands.push({
+                nodeId: plan.nodeId,
+                instanceId: plan.instanceId,
+                commandId: value.commandId,
+                comment: expectedComment,
+            });
+        } catch (error) {
+            errors.push({ nodeId: plan.nodeId, message: String(error?.message ?? error).slice(0, 500) });
+        }
+    }
+    return { commands, errors };
+}
+
+function sleep(milliseconds, signal) {
+    return new Promise((resolvePromise, reject) => {
+        if (signal?.aborted) {
+            const error = new Error('Phase 7 orchestration sleep cancelled');
+            error.name = 'AbortError';
+            reject(error);
+            return;
+        }
+        const timeout = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolvePromise();
+        }, milliseconds);
+        const onAbort = () => {
+            clearTimeout(timeout);
+            const error = new Error('Phase 7 orchestration sleep cancelled');
+            error.name = 'AbortError';
+            reject(error);
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}

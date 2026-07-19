@@ -1,0 +1,158 @@
+#!/usr/bin/env node
+
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export function buildRecoveredLatencyStage({ manifest, summaries, afterSnapshots, errorLogs,
+    telemetryPassed, proxyTelemetryPassed = true, recoveryPassed, loadInvocationsPassed,
+    protocolCorrect = true, stageDir }) {
+    if (!['oha', 'reference'].includes(manifest.driver)) throw new Error('only oha and reference stages can be recovered');
+    if (summaries.length !== 4 || ![4, 6].includes(afterSnapshots.length)) throw new Error('four generator and four or six collector summaries are required');
+    const startedAt = summaries.map((item) => item.startedAt).sort()[0];
+    const endedAt = summaries.map((item) => item.endedAt).sort().at(-1);
+    const sum = (field) => summaries.reduce((total, item) => total + (item[field] ?? 0), 0);
+    const attempted = sum('attemptedRequests');
+    const aggregate = {
+        offeredRps: manifest.targetRps,
+        configuredConnections: manifest.connections,
+        actualRps: manifest.driver === 'reference' ? sum('achieved_rps') : sum('actualRps'),
+        completedRequests: sum('completedRequests'),
+        attemptedRequests: attempted,
+        transportErrors: sum('transportErrors'),
+        transportErrorRate: attempted === 0 ? 1 : sum('transportErrors') / attempted,
+        http202: sum('http202'),
+        http429: sum('http429'),
+        http5xx: sum('http5xx'),
+        latencyMs: maxPercentiles(summaries, 'latencyMs', ['p50', 'p95', 'p99']),
+        firstByteMs: maxPercentiles(summaries, 'firstByteMs', ['p95', 'p99']),
+        maxEstablished: manifest.driver === 'reference'
+            ? sum('configured_connections')
+            : summaries.reduce((total, item) => total + item.connectionObservation.maxOhaEstablished, 0),
+        maxSynSent: Math.max(...summaries.map((_, index) => maxTsvColumn(join(stageDir, 'load', node(index),
+            manifest.driver === 'reference' ? 'host-250ms.tsv' : 'load-generator-telemetry.tsv'),
+            manifest.driver === 'reference' ? 'syn_sent' : 'oha_syn_sent'))),
+        maxTimeWait: Math.max(...summaries.map((_, index) => maxTsvColumn(join(stageDir, 'load', node(index),
+            manifest.driver === 'reference' ? 'host-250ms.tsv' : 'load-generator-telemetry.tsv'),
+            manifest.driver === 'reference' ? 'time_wait' : 'tcp_tw'))),
+    };
+    const traceDrops = afterSnapshots.reduce((total, snapshot) => total + (snapshot.trace?.dropped ?? 0) +
+        (snapshot.trace?.write_errors ?? 0) + (snapshot.backend_connections?.recorder?.dropped ?? 0) +
+        (snapshot.backend_connections?.recorder?.write_errors ?? 0), 0) +
+        (manifest.driver === 'reference' ? summaries.reduce((total, summary) => total + (summary.trace_dropped ?? 0), 0) : 0);
+    const physicalConnectionFraction = aggregate.maxEstablished / manifest.connections;
+    const checks = {
+        allLoadCommandsSucceeded: loadInvocationsPassed,
+        collectorTelemetryComplete: telemetryPassed,
+        proxyTelemetryComplete: manifest.topology !== 'T3' || proxyTelemetryPassed,
+        recoveryPassed,
+        traceBufferClean: traceDrops === 0,
+        protocolCorrect,
+        physicalConnectionsAtLeast99Percent: physicalConnectionFraction >= 0.99,
+        actualRpsAtLeast95Percent: aggregate.actualRps >= manifest.targetRps * 0.95,
+        transportErrorWithinStageLimit: aggregate.transportErrorRate <= (manifest.unscoredWarmup ? 0.05 : 0.01),
+        clientP95Observed: Number.isFinite(aggregate.latencyMs.p95),
+        clientP95WithinStageLimit: aggregate.latencyMs.p95 < (manifest.unscoredWarmup ? 1_000 : 500),
+        referenceDriverContract: manifest.driver !== 'reference' || summaries.every((summary) => summary.valid && summary.schedule_accuracy >= 0.99 &&
+            summary.dispatch_accuracy >= 0.99 && summary.connection_establishment_accuracy >= 0.99 &&
+            summary.hidden_retries === 0 && summary.silent_drops === 0),
+        noApplicationRejection: afterSnapshots.every((snapshot) => snapshot.admission.rejected_total === 0 &&
+            (snapshot.kinesis.put_records?.queue_full ?? 0) === 0),
+        applicationDrained: afterSnapshots.every((snapshot) => snapshot.admission.current_in_flight === 0 &&
+            (snapshot.kinesis.put_records?.queue_depth ?? 0) === 0 &&
+            (snapshot.kinesis.put_records?.sender_queue_depth ?? 0) === 0 &&
+            (snapshot.kinesis.put_records?.outstanding_records ?? 0) === 0 &&
+            (snapshot.kinesis.put_records?.api_calls_in_flight ?? 0) === 0),
+        kinesisFailuresZero: afterSnapshots.every((snapshot) => (snapshot.kinesis.put_records?.failures ?? 0) === 0 &&
+            (snapshot.kinesis.put_records?.timeouts ?? 0) === 0),
+        noFatalRuntimeLogs: errorLogs.complete !== false && Object.values(errorLogs.categories ?? {}).every((value) => value === 0),
+    };
+    const safetyPassed = Object.values(checks).every(Boolean);
+    const firstInvocation = json(join(stageDir, 'load', 'node-01', 'ssm-invocation.json'));
+    return {
+        runId: manifest.runId,
+        sessionId: manifest.sessionId,
+        stageLabel: manifest.stageLabel,
+        repetition: manifest.repetition,
+        targetPath: manifest.targetPath,
+        targetRps: manifest.targetRps,
+        connections: manifest.connections,
+        durationSeconds: manifest.durationSeconds,
+        instrumentation: manifest.instrumentation,
+        driver: manifest.driver,
+        unscoredWarmup: manifest.unscoredWarmup === true,
+        topology: manifest.topology ?? null,
+        processStartMode: manifest.processStartMode,
+        targetConnectBaseUrl: manifest.targetConnectBaseUrl,
+        collectorCount: afterSnapshots.length,
+        clientProtocol: manifest.clientProtocol,
+        streamsPerConnection: manifest.streamsPerConnection,
+        loadBalancerKind: manifest.loadBalancerKind,
+        targetProtocolVersion: manifest.targetProtocolVersion,
+        referenceBinaryS3Uri: manifest.referenceBinaryS3Uri,
+        referenceBinarySha256: manifest.referenceBinarySha256,
+        randomSeed: manifest.randomSeed,
+        directTarget: manifest.directTarget,
+        directCollectors: manifest.directCollectors ?? [],
+        startEpoch: firstInvocation.startEpoch,
+        startedAt,
+        endedAt,
+        generators: manifest.generators,
+        aggregate,
+        physicalConnectionFraction,
+        traceDrops,
+        telemetryResult: { code: 0, signal: null, recovered: true },
+        recoveryResult: { code: 0, signal: null, error: null, recovered: true },
+        checks,
+        safetyPassed,
+        stopReason: safetyPassed ? null : Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
+        evidence: {
+            stageDir,
+            collectorPrefix: `${manifest.sessionId}/${manifest.runId}/collector-evidence/${manifest.stageLabel}/repetition-${String(manifest.repetition).padStart(2, '0')}`,
+            generatorPrefix: `${manifest.sessionId}/${manifest.runId}/diagnostics/${manifest.stageLabel}/repetition-${String(manifest.repetition).padStart(2, '0')}`,
+            albAccessLogPrefix: manifest.albAccessLogPrefix,
+        },
+        recoveredFromRunOwnedArtifacts: true,
+    };
+}
+
+export const buildRecoveredReferenceStage = buildRecoveredLatencyStage;
+
+function maxPercentiles(summaries, field, names) {
+    return Object.fromEntries(names.map((name) => [name, Math.max(...summaries.map((item) => item[field][name]))]));
+}
+function maxTsvColumn(path, field) {
+    const lines = readFileSync(path, 'utf8').trim().split('\n');
+    const header = lines.shift()?.split('\t') ?? [];
+    const index = header.indexOf(field);
+    if (index < 0) throw new Error(`missing ${field} in ${path}`);
+    return Math.max(0, ...lines.map((line) => Number(line.split('\t')[index]) || 0));
+}
+function node(index) { return `node-${String(index + 1).padStart(2, '0')}`; }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+
+if (process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === fileURLToPath(import.meta.url)) {
+    const stageDir = option('--stage-dir');
+    if (!stageDir) throw new Error('--stage-dir is required');
+    const manifest = json(join(stageDir, 'stage-manifest.json'));
+    const summaryName = manifest.driver === 'reference' ? 'reference-summary.json' : 'oha-summary.json';
+    const summaries = [0, 1, 2, 3].map((index) => json(join(stageDir, 'load', node(index), summaryName)));
+    const afterDirectory = join(stageDir, 'debug', 'after');
+    const afterSnapshots = readdirSync(afterDirectory).filter((name) => /^collector-[0-9]{2}\.json$/.test(name)).sort()
+        .map((name) => json(join(afterDirectory, name)));
+    const errorLogs = json(join(stageDir, 'logs', 'collector-error-logs.json'));
+    const telemetryPassed = json(join(stageDir, 'collector-telemetry-summary.json')).checks?.samplesPresent === true;
+    const proxyTelemetryPassed = manifest.topology !== 'T3' || json(join(stageDir, 'proxy-telemetry', 'summary.json')).passed === true;
+    const recoveryPassed = json(join(stageDir, 'recovery', 'summary.json')).passed === true;
+    const protocolCorrect = [0, 1, 2, 3].every((index) => json(join(stageDir, 'load', node(index), 'protocol-correctness.json')).passed === true);
+    const loadInvocationsPassed = [0, 1, 2, 3].every((index) => {
+        const invocation = json(join(stageDir, 'load', node(index), 'ssm-invocation.json'));
+        return invocation.status === 'Success' && invocation.responseCode === 0;
+    });
+    const result = buildRecoveredLatencyStage({ manifest, summaries, afterSnapshots, errorLogs,
+        telemetryPassed, proxyTelemetryPassed, recoveryPassed, loadInvocationsPassed, protocolCorrect, stageDir });
+    writeFileSync(join(stageDir, 'stage-summary.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify({ stageDir, safetyPassed: result.safetyPassed, aggregate: result.aggregate }, null, 2)}\n`);
+    if (!result.safetyPassed) process.exitCode = 2;
+}

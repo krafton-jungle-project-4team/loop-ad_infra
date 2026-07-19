@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 16,
+  "runId": "run_20260719_020156_phase7_integration",
+  "verifiedAt": "2026-07-19T03:33:24Z",
+  "failure": "all eight local GetCommandInvocation observers terminated on transient SSM endpoint connect/read timeouts",
+  "fix": {
+    "summary": "Keep SendCommand one-shot and add absolute-deadline bounded retry only to read-only GetCommandInvocation and exact S3-to-local artifact recovery, with transient evidence, exponential backoff, jitter and short read CLI timeouts.",
+    "commit": "0a8238b2af2494733f8dcdec26e817cf276285e0",
+    "sendCommandAttemptContract": 1,
+    "retryableOperations": [
+      "ssm:GetCommandInvocation",
+      "s3:GetObject-artifact-download"
+    ],
+    "immediateFailureClasses": [
+      "credentials",
+      "expired-session",
+      "authorization",
+      "validation",
+      "unknown"
+    ]
+  },
+  "verification": {
+    "phase1ConnectionPathTests": {
+      "command": "npm run test:phase1-connection-path",
+      "passed": 70,
+      "failed": 0
+    },
+    "focusedRetryTests": {
+      "passed": 11,
+      "failed": 0,
+      "coverage": [
+        "InvocationDoesNotExist then success",
+        "connect and read timeout then success",
+        "eight concurrent observers recover independently",
+        "ServiceUnavailable and InternalServerError then success",
+        "credentials authorization validation and unknown fail immediately",
+        "absolute deadline exhaustion",
+        "SendCommand remains one-shot"
+      ]
+    },
+    "implementationManifestTests": {
+      "command": "python3 -m unittest performance-tests/phase7-integration/tests/test_finalize_manifest.py",
+      "passed": 2,
+      "failed": 0
+    },
+    "nodeSyntax": "passed",
+    "diffCheck": "passed",
+    "awsRequests": 0
+  },
+  "status": "passed",
+  "deferredLocal": {
+    "wholePhase7HandoffRequiredBeforeNextStrictAttempt": true,
+    "status": "pending-batched-whole-local"
+  }
+}

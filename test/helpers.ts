@@ -9,6 +9,7 @@ import {
     LoopAdDevSecretsStack,
     type DeveloperAllowlistConfig,
 } from '../src/loop-ad-stack';
+import { LoopAdPerfPhase0Stack } from '../src/perf-phase0-stack';
 
 export const ROOT = `${__dirname}/..`;
 export const EXPECTED_APP_INTERNAL_PORT = 8080;
@@ -114,6 +115,17 @@ export function synthCertificate(): LoopAdDevCertificateStack {
             region: 'us-east-1',
         },
         publicHostedZone: testPublicHostedZone,
+    });
+}
+
+export function synthPerfPhase0(): LoopAdPerfPhase0Stack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+        },
+    });
+    return new LoopAdPerfPhase0Stack(app, 'LoopAdPerfPhase0Stack', {
+        env: testEnv,
     });
 }
 

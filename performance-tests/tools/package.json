@@ -1,0 +1,11 @@
+{
+  "name": "loop-ad-performance-evidence-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "generate": "node generate-evidence.mjs",
+    "validate": "node validate-evidence.mjs",
+    "check": "node check-curated-tree.mjs"
+  }
+}

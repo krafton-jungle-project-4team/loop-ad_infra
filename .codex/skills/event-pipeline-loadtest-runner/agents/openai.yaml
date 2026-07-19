@@ -1,0 +1,7 @@
+interface:
+  display_name: "이벤트 파이프라인 실험 실행"
+  short_description: "Phase 0~6 성능·archive 실험의 안전한 전체 실행"
+  default_prompt: "Use $event-pipeline-loadtest-runner to resolve the active contract and safely run, verify, clean up, document, and commit a Phase 0-6 performance or archive experiment."
+
+policy:
+  allow_implicit_invocation: true

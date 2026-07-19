@@ -1,0 +1,47 @@
+{
+    "name": "loop-ad_aws_cdk",
+    "version": "0.1.0",
+    "private": true,
+    "description": "AWS CDK v2 infrastructure for loop-ad.",
+    "license": "UNLICENSED",
+    "scripts": {
+        "test:phase1-admission-scaleout": "node --test performance-tests/phase1-kinesis/admission-scaleout-contract.test.mjs performance-tests/phase1-kinesis/calculate-admission-scaleout-cost.test.mjs performance-tests/phase1-kinesis/admission-scaleout-start-gate.test.mjs",
+        "test:phase1-root-cause": "node --test performance-tests/phase1-kinesis/latency-root-cause-contract.test.mjs performance-tests/phase1-kinesis/analyze-prehandler-connection-wave.test.mjs performance-tests/phase1-kinesis/evaluate-fanout-crossover.test.mjs performance-tests/phase1-kinesis/evaluate-connection-instrumentation-overhead.test.mjs performance-tests/phase1-kinesis/fanout-crossover-contract.test.mjs",
+        "test:phase1-protocol-crossover": "node --test performance-tests/phase1-kinesis/protocol-crossover-contract.test.mjs performance-tests/phase1-kinesis/evaluate-protocol-crossover.test.mjs performance-tests/phase1-kinesis/calculate-protocol-crossover-cost.test.mjs performance-tests/phase1-kinesis/import-protocol-certificate.test.mjs performance-tests/phase1-kinesis/register-quic-targets.test.mjs performance-tests/phase1-kinesis/build-evidence-manifest.test.mjs",
+        "test:phase1-connection-path": "node --test performance-tests/phase1-kinesis/aws-observation-retry.test.mjs performance-tests/phase1-kinesis/connection-path-crossover-contract.test.mjs performance-tests/phase1-kinesis/connection-path-readiness.test.mjs performance-tests/phase1-kinesis/connection-path-haproxy-profile.test.mjs performance-tests/phase1-kinesis/connection-path-performance-baseline.test.mjs performance-tests/phase1-kinesis/connection-path-safety-evaluator.test.mjs performance-tests/phase1-kinesis/aligned-final-ack-accounting.test.mjs performance-tests/phase1-kinesis/calculate-connection-path-cost.test.mjs performance-tests/phase1-kinesis/connection-path-deadline-gate.test.mjs performance-tests/phase1-kinesis/evaluate-connection-path-crossover.test.mjs performance-tests/phase1-kinesis/p95-goal-contract.test.mjs",
+        "build": "tsc --noEmit",
+        "test": "jest --runInBand",
+        "test:phase4": "jest --runInBand test/perf-phase4-clickhouse.test.ts test/perf-phase4-clickhouse-ecs.test.ts test/phase4-clickhouse-handler.test.ts",
+        "phase4:consumer:test": "mvn --batch-mode --no-transfer-progress -f performance-tests/phase4-clickhouse/consumer/pom.xml test",
+        "phase4:consumer:memory-gate": "performance-tests/phase4-clickhouse/run-java-memory-gate.sh",
+        "test:phase7": "jest --runInBand test/perf-phase7-integration.test.ts && node --test performance-tests/phase7-integration/tests/*.test.mjs && UV_CACHE_DIR=/tmp/loopad-phase7-uv-cache uv run --project performance-tests/phase4-clickhouse/producer-env --locked python -m unittest discover -s performance-tests/phase7-integration/tests -v",
+        "phase7:local": "performance-tests/phase7-integration/run-local.sh",
+        "test:phase1-correctness": "node --test performance-tests/phase1-kinesis/verify-actual-kinesis-correctness.test.mjs performance-tests/phase1-kinesis/comparison-start-gate.test.mjs performance-tests/phase1-kinesis/capacity-topology.test.mjs performance-tests/phase1-kinesis/capacity-start-gate.test.mjs performance-tests/phase1-kinesis/calculate-capacity-cost.test.mjs performance-tests/phase1-kinesis/combine-capacity-costs.test.mjs performance-tests/phase1-kinesis/capacity-evaluator.test.mjs performance-tests/phase1-kinesis/capacity-run-contract.test.mjs performance-tests/phase1-kinesis/scout-run-contract.test.mjs performance-tests/phase1-kinesis/oha-load-contract.test.mjs performance-tests/phase1-kinesis/oha12k-contract.test.mjs performance-tests/phase1-kinesis/oha12k-aggregate.test.mjs performance-tests/phase1-kinesis/oha12k-evaluator.test.mjs performance-tests/phase1-kinesis/oha12k-start-gate.test.mjs performance-tests/phase1-kinesis/oha12k-decision.test.mjs performance-tests/phase1-kinesis/generator-diagnosis-contract.test.mjs performance-tests/phase1-kinesis/generator-diagnosis-start-gate.test.mjs performance-tests/phase1-kinesis/generator-control-evaluator.test.mjs performance-tests/phase1-kinesis/alb-access-log.test.mjs performance-tests/phase1-kinesis/persistent-warmup-gate.test.mjs performance-tests/phase1-kinesis/persistent-measurement-evaluator.test.mjs performance-tests/phase1-kinesis/alb-warmup-cleanup.test.mjs performance-tests/phase1-kinesis/tcp-alb-diagnosis-contract.test.mjs performance-tests/phase1-kinesis/tcp-alb-diagnosis-start-gate.test.mjs performance-tests/phase1-kinesis/vpc-flow-log.test.mjs performance-tests/phase1-kinesis/alb-frontend-map.test.mjs performance-tests/phase1-kinesis/tcp-alb-worker-contract.test.mjs performance-tests/phase1-kinesis/verify-tcp-alb-recovery.test.mjs",
+        "verify": "npm run build && npm test && npm run test:phase1-correctness && npm run test:phase1-admission-scaleout && npm run test:phase1-root-cause && npm run test:phase1-protocol-crossover && npm run test:phase1-connection-path && npm run test:phase7",
+        "synth": "cdk -c environment=dev synth",
+        "deploy": "cdk -c environment=dev deploy",
+        "destroy": "cdk -c environment=dev destroy",
+        "secrets:sync": "node scripts/sync-dev-secrets.mjs",
+        "cdk": "cdk"
+    },
+    "devDependencies": {
+        "@types/aws-lambda": "8.10.152",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^20.0.0",
+        "aws-cdk": "2.1128.1",
+        "esbuild": "0.25.9",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.5",
+        "ts-node": "^10.9.2",
+        "typescript": "~5.9.3"
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "3.1088.0",
+        "@aws-sdk/client-secrets-manager": "3.1088.0",
+        "aws-cdk-lib": "^2.260.0",
+        "constructs": "^10.5.0",
+        "dotenv": "^17.4.2",
+        "ipaddr.js": "^2.4.0",
+        "zod": "^4.4.3"
+    }
+}

@@ -1,0 +1,168 @@
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT } from './helpers';
+
+const SRC_DIR = join(ROOT, 'src');
+const DOCS_DIR = join(ROOT, 'docs');
+
+describe('local repository contracts', () => {
+    it('keeps npm scripts deploy-capable but removes secret-writing helpers', () => {
+        const packageJson = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
+            scripts: Record<string, string>;
+        };
+
+        expect(packageJson.scripts).toEqual({
+            'test:phase1-admission-scaleout': 'node --test performance-tests/phase1-kinesis/admission-scaleout-contract.test.mjs performance-tests/phase1-kinesis/calculate-admission-scaleout-cost.test.mjs performance-tests/phase1-kinesis/admission-scaleout-start-gate.test.mjs',
+			'test:phase1-root-cause': 'node --test performance-tests/phase1-kinesis/latency-root-cause-contract.test.mjs performance-tests/phase1-kinesis/analyze-prehandler-connection-wave.test.mjs performance-tests/phase1-kinesis/evaluate-fanout-crossover.test.mjs performance-tests/phase1-kinesis/evaluate-connection-instrumentation-overhead.test.mjs performance-tests/phase1-kinesis/fanout-crossover-contract.test.mjs',
+			'test:phase1-protocol-crossover': 'node --test performance-tests/phase1-kinesis/protocol-crossover-contract.test.mjs performance-tests/phase1-kinesis/evaluate-protocol-crossover.test.mjs performance-tests/phase1-kinesis/calculate-protocol-crossover-cost.test.mjs performance-tests/phase1-kinesis/import-protocol-certificate.test.mjs performance-tests/phase1-kinesis/register-quic-targets.test.mjs performance-tests/phase1-kinesis/build-evidence-manifest.test.mjs',
+			'test:phase1-connection-path': 'node --test performance-tests/phase1-kinesis/connection-path-crossover-contract.test.mjs performance-tests/phase1-kinesis/connection-path-readiness.test.mjs performance-tests/phase1-kinesis/connection-path-haproxy-profile.test.mjs performance-tests/phase1-kinesis/connection-path-performance-baseline.test.mjs performance-tests/phase1-kinesis/connection-path-safety-evaluator.test.mjs performance-tests/phase1-kinesis/aligned-final-ack-accounting.test.mjs performance-tests/phase1-kinesis/calculate-connection-path-cost.test.mjs performance-tests/phase1-kinesis/connection-path-deadline-gate.test.mjs performance-tests/phase1-kinesis/evaluate-connection-path-crossover.test.mjs performance-tests/phase1-kinesis/p95-goal-contract.test.mjs',
+            build: 'tsc --noEmit',
+            test: 'jest --runInBand',
+			'test:phase4': 'jest --runInBand test/perf-phase4-clickhouse.test.ts test/perf-phase4-clickhouse-ecs.test.ts test/phase4-clickhouse-handler.test.ts',
+			'phase4:consumer:test': 'mvn --batch-mode --no-transfer-progress -f performance-tests/phase4-clickhouse/consumer/pom.xml test',
+			'phase4:consumer:memory-gate': 'performance-tests/phase4-clickhouse/run-java-memory-gate.sh',
+			'test:phase7': 'jest --runInBand test/perf-phase7-integration.test.ts && UV_CACHE_DIR=/tmp/loopad-phase7-uv-cache uv run --project performance-tests/phase4-clickhouse/producer-env python -m unittest discover -s performance-tests/phase7-integration/tests -v',
+			'phase7:local': 'performance-tests/phase7-integration/run-local.sh',
+            'test:phase1-correctness': 'node --test performance-tests/phase1-kinesis/verify-actual-kinesis-correctness.test.mjs performance-tests/phase1-kinesis/comparison-start-gate.test.mjs performance-tests/phase1-kinesis/capacity-topology.test.mjs performance-tests/phase1-kinesis/capacity-start-gate.test.mjs performance-tests/phase1-kinesis/calculate-capacity-cost.test.mjs performance-tests/phase1-kinesis/combine-capacity-costs.test.mjs performance-tests/phase1-kinesis/capacity-evaluator.test.mjs performance-tests/phase1-kinesis/capacity-run-contract.test.mjs performance-tests/phase1-kinesis/scout-run-contract.test.mjs performance-tests/phase1-kinesis/oha-load-contract.test.mjs performance-tests/phase1-kinesis/oha12k-contract.test.mjs performance-tests/phase1-kinesis/oha12k-aggregate.test.mjs performance-tests/phase1-kinesis/oha12k-evaluator.test.mjs performance-tests/phase1-kinesis/oha12k-start-gate.test.mjs performance-tests/phase1-kinesis/oha12k-decision.test.mjs performance-tests/phase1-kinesis/generator-diagnosis-contract.test.mjs performance-tests/phase1-kinesis/generator-diagnosis-start-gate.test.mjs performance-tests/phase1-kinesis/generator-control-evaluator.test.mjs performance-tests/phase1-kinesis/alb-access-log.test.mjs performance-tests/phase1-kinesis/persistent-warmup-gate.test.mjs performance-tests/phase1-kinesis/persistent-measurement-evaluator.test.mjs performance-tests/phase1-kinesis/alb-warmup-cleanup.test.mjs performance-tests/phase1-kinesis/tcp-alb-diagnosis-contract.test.mjs performance-tests/phase1-kinesis/tcp-alb-diagnosis-start-gate.test.mjs performance-tests/phase1-kinesis/vpc-flow-log.test.mjs performance-tests/phase1-kinesis/alb-frontend-map.test.mjs performance-tests/phase1-kinesis/tcp-alb-worker-contract.test.mjs performance-tests/phase1-kinesis/verify-tcp-alb-recovery.test.mjs',
+			verify: 'npm run build && npm test && npm run test:phase1-correctness && npm run test:phase1-admission-scaleout && npm run test:phase1-root-cause && npm run test:phase1-protocol-crossover && npm run test:phase1-connection-path && npm run test:phase7',
+            synth: 'cdk -c environment=dev synth',
+            deploy: 'cdk -c environment=dev deploy',
+            destroy: 'cdk -c environment=dev destroy',
+            'secrets:sync': 'node scripts/sync-dev-secrets.mjs',
+            cdk: 'cdk',
+        });
+        expect(existsSync(join(ROOT, 'scripts/put-openai-api-key.mjs'))).toBe(false);
+        expect(existsSync(join(ROOT, 'scripts/estimate-dev-monthly-cost.mjs'))).toBe(false);
+        expect(existsSync(join(ROOT, 'scripts/sync-dev-secrets.mjs'))).toBe(true);
+    });
+
+    it('keeps the CDK bin entrypoint thin', () => {
+        const binText = readFileSync(join(ROOT, 'bin/loop-ad_aws_cdk.ts'), 'utf8');
+
+        expect(binText).toContain("import { main } from '../src/cdk-app';");
+        expect(binText).toContain('main();');
+        expect(binText).not.toContain('LoopAdDevRuntimeStack');
+        expect(binText.split('\n').filter((line) => line.trim().length > 0)).toHaveLength(3);
+    });
+
+    it('keeps sensitive values in Secrets Manager names and the sync script contract only', () => {
+        const sourceText = sourceFiles(SRC_DIR)
+            .concat([join(ROOT, 'bin/loop-ad_aws_cdk.ts'), join(ROOT, 'scripts/sync-dev-secrets.mjs')])
+            .map((file) => readFileSync(file, 'utf8'))
+            .join('\n');
+
+        expect(sourceText).toContain('LOOP_AD_SECRET_PREFIX');
+        expect(sourceText).toContain('describe-secret');
+        expect(sourceText).toContain('put-secret-value');
+        expect(sourceText).not.toContain('DEFAULT_DEV_SECRET_PREFIX');
+        expect(sourceText).not.toContain('DEFAULT_SECRET_PREFIX');
+        expect(sourceText).not.toContain('DEFAULT_REGION');
+        expect(sourceText).not.toContain('DEFAULT_ENV_FILE');
+        expect(sourceText).not.toContain('create-secret');
+        expect(sourceText).not.toContain('get-secret-value');
+        expect(sourceText).not.toContain('batch-get-secret-value');
+        expect(readFileSync(join(ROOT, '.env.example'), 'utf8')).not.toContain('_SECRET_ARN');
+        expect(readFileSync(join(ROOT, '.env.example'), 'utf8')).toContain('CDK_DEFAULT_ACCOUNT');
+        expect(readFileSync(join(ROOT, '.env.example'), 'utf8')).toContain('LOOP_AD_REGION');
+        expect(readFileSync(join(ROOT, '.env.example'), 'utf8')).toContain('LOOP_AD_SECRET_PREFIX');
+        expect(readFileSync(join(ROOT, '.gitignore'), 'utf8')).toContain('.env.secrets');
+        expect(sourceText).not.toContain('fromGeneratedSecret');
+        expect(sourceText).not.toContain('SecureString');
+        expect(sourceText).not.toContain('valueForSecureStringParameter');
+        expect(sourceText).not.toContain('fromSecureStringParameterAttributes');
+    });
+
+    it('keeps L1 constructs limited to documented exceptions', () => {
+        const allowed = new Set([
+            'cdk.CfnOutput',
+            'secretsmanager.CfnSecret',
+			'elbv2.CfnTargetGroup',
+			'elbv2.CfnListener',
+			'ecs.CfnClusterCapacityProviderAssociations',
+			'iam.CfnInstanceProfile',
+			'ec2.CfnLaunchTemplate',
+			'ec2.CfnInstance',
+        ]);
+        const violations = sourceFiles(SRC_DIR).flatMap((file) => {
+            const source = readFileSync(file, 'utf8');
+            const matches = [...source.matchAll(/new\s+([a-zA-Z0-9_]+\.Cfn[A-Za-z0-9_]+)/g)];
+
+            return matches.flatMap((match) => {
+                const constructName = match[1];
+                return constructName && !allowed.has(constructName) ? [`${file}: ${constructName}`] : [];
+            });
+        });
+
+        expect(violations).toEqual([]);
+    });
+
+    it('removes stale docs and keeps the new document set focused', () => {
+        expect(readdirSync(DOCS_DIR).sort()).toEqual([
+            'app-repository-guide.md',
+            'architecture-modernized.html',
+            'explanation_aws_kinesis_producer_comparison.md',
+			'explanation_connection_path_50k_baseline.md',
+            'explanation_haproxy_default_connection_path.md',
+			'explanation_kinesis_go_microbatch_library_decision.md',
+			'explanation_nlb_connection_pinning_and_haproxy_redistribution.md',
+            'explanation_phase0_generator_alb_ceiling.md',
+            'explanation_phase1_kinesis_transition_results.md',
+            'guide_aws_event_pipeline_performance_test.md',
+            'guide_haproxy_connection_path_operations.md',
+            'guide_phase1_kinesis_producer_capacity_test.md',
+            'guide_phase1_kinesis_transition_performance_test.md',
+			'guide_phase4_kinesis_clickhouse_ingest_performance_test.md',
+			'guide_phase4_kinesis_ecs_clickhouse_test_draft.md',
+			'guide_phase4_kinesis_lambda_clickhouse_test_draft.md',
+			'guide_phase6_clickhouse_s3_archive_lifecycle_test.md',
+			'guide_phase7_end_to_end_integration_test.md',
+            'guide_verify_actual_kinesis_producer_correctness.md',
+            'process_aws_perf_test_result_recording.md',
+			'process_phase4_kinesis_ecs_clickhouse_goal_prompt.md',
+			'process_phase4_kinesis_lambda_clickhouse_goal_prompt.md',
+			'process_phase6_clickhouse_s3_archive_aws_goal_prompt.md',
+			'process_phase6_clickhouse_s3_archive_goal_prompt.md',
+			'process_phase6_clickhouse_s3_archive_local_goal_prompt.md',
+			'process_phase7_1_local_integration_goal_prompt.md',
+			'process_phase7_2_aws_integration_goal_prompt.md',
+			'process_phase7_2_deployment_readiness_goal_prompt.md',
+			'process_phase7_end_to_end_integration_goal_prompt.md',
+			'resources_clickhouse_ec2_lambda_handoff.md',
+            'secrets-setup.md',
+            'template_aws_perf_test_run_report.md',
+        ]);
+        expect(readFileSync(join(DOCS_DIR, 'app-repository-guide.md'), 'utf8')).not.toContain('사용하는 서비스');
+    });
+
+    it('keeps reusable GitHub workflows OIDC-based and infra checks deploy-free', () => {
+        const ecsWorkflow = readFileSync(join(ROOT, '.github/workflows/ecs-deploy.yml'), 'utf8');
+        const frontendWorkflow = readFileSync(join(ROOT, '.github/workflows/frontend-deploy.yml'), 'utf8');
+        const infraWorkflow = readFileSync(join(ROOT, '.github/workflows/infra-check.yml'), 'utf8');
+
+        expect(ecsWorkflow).toContain('id-token: write');
+        expect(ecsWorkflow).toContain('runs-on: ubuntu-24.04-arm');
+        expect(ecsWorkflow).toContain('--platform linux/arm64');
+        expect(frontendWorkflow).toContain('id-token: write');
+        expect(infraWorkflow).toContain('npm run build');
+        expect(infraWorkflow).toContain('npm test');
+        expect(infraWorkflow).toContain('npm run cdk -- -c environment=${{ inputs.environment }} synth --quiet');
+        expect(infraWorkflow).toContain('CDK_DEFAULT_ACCOUNT');
+        expect(infraWorkflow).toContain('LOOP_AD_REGION');
+        expect(infraWorkflow).toContain('LOOP_AD_SECRET_PREFIX');
+        expect(infraWorkflow).not.toContain('default: /loop-ad/dev');
+        expect(infraWorkflow).not.toContain('_SECRET_ARN');
+        expect(infraWorkflow).not.toContain('cdk deploy');
+        expect(infraWorkflow).not.toContain('cdk destroy');
+    });
+});
+
+function sourceFiles(dir: string): string[] {
+    return readdirSync(dir).flatMap((entry) => {
+        const path = join(dir, entry);
+        if (statSync(path).isDirectory()) {
+            return sourceFiles(path);
+        }
+
+        return path.endsWith('.ts') ? [path] : [];
+    });
+}

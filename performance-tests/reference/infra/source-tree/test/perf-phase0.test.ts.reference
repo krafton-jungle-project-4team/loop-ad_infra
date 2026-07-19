@@ -1,0 +1,530 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { ROOT, resourcesOf, synthPerfPhase0 } from './helpers';
+
+interface LoopAdEventPayload {
+    readonly project_id: string;
+    readonly write_key: string;
+    readonly schema_version: string;
+    readonly event_id: string;
+    readonly event_name: string;
+    readonly event_time: string;
+    readonly source: string;
+    readonly user_id: string;
+    readonly session_id: string;
+    readonly properties_json: string;
+}
+
+type PayloadProfile = 'compact' | 'standard' | 'expanded';
+
+interface LoopAdEventPayloadRow extends LoopAdEventPayload {
+    readonly payload_size_profile: PayloadProfile;
+    readonly payload_actual_bytes: string;
+}
+
+interface SerializedLoopAdEventPayloadRow {
+    readonly body_json: string;
+    readonly payload_size_profile: PayloadProfile;
+    readonly payload_actual_bytes: string;
+}
+
+const PAYLOAD_PROFILES: PayloadProfile[] = ['compact', 'standard', 'expanded'];
+const PHASE0_PAYLOAD_FILE = join(ROOT, 'performance-tests/phase0/payloads/sdk-compatible-events.tsv');
+const PHASE0_SERIALIZED_PAYLOAD_FILE = join(ROOT, 'performance-tests/phase0/payloads/sdk-compatible-event-bodies.tsv');
+const PHASE0_SWEEP_SCRIPT = join(ROOT, 'performance-tests/phase0/run-ec2-artillery-sweep.sh');
+const PHASE0_KEEPALIVE_SCENARIO = join(ROOT, 'performance-tests/phase0/alb-fixed-response-keepalive.yml');
+const PHASE0_KEEPALIVE_WORKER_SCRIPT = join(ROOT, 'performance-tests/phase0/run-ec2-artillery-keepalive-worker.sh');
+const PHASE0_KEEPALIVE_MULTIPROCESS_SCRIPT = join(ROOT, 'performance-tests/phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh');
+const PHASE0_OHA_WORKER_SCRIPT = join(ROOT, 'performance-tests/phase0/run-ec2-oha-worker.sh');
+const PHASE0_OHA_PAYLOAD_POOL = join(ROOT, 'performance-tests/phase0/payloads/oha-body-pool-12.ndjson');
+const PHASE0_OHA_PAYLOAD_POOL_MANIFEST = join(ROOT, 'performance-tests/phase0/payloads/oha-body-pool-12.manifest.json');
+
+describe('performance test phase 0 infrastructure', () => {
+    it('creates an isolated internal ALB fixed-response endpoint', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+            Type: 'application',
+            Scheme: 'internal',
+        }, 1);
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 80,
+            Protocol: 'HTTP',
+            DefaultActions: [
+                Match.objectLike({
+                    Type: 'fixed-response',
+                    FixedResponseConfig: Match.objectLike({
+                        StatusCode: '404',
+                    }),
+                }),
+            ],
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+            Conditions: [
+                Match.objectLike({
+                    Field: 'path-pattern',
+                    PathPatternConfig: {
+                        Values: ['/__fixed'],
+                    },
+                }),
+            ],
+            Actions: [
+                Match.objectLike({
+                    Type: 'fixed-response',
+                    FixedResponseConfig: Match.objectLike({
+                        StatusCode: '204',
+                    }),
+                }),
+            ],
+        });
+        template.resourceCountIs('AWS::ECS::Service', 0);
+        template.resourceCountIs('AWS::ECS::TaskDefinition', 0);
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+        expect(templateText).toContain('Custom::VpcRestrictDefaultSG');
+    });
+
+    it('can temporarily expose the ALB to a single local Artillery probe CIDR', () => {
+        const template = Template.fromStack(synthPerfPhase0({
+            phase0LocalProbeCidr: '203.0.113.10/32',
+        }));
+
+        template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+            Type: 'application',
+            Scheme: 'internet-facing',
+        }, 1);
+        template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+            GroupDescription: 'Perf phase 0 internal ALB fixed response endpoint.',
+            SecurityGroupIngress: Match.arrayWith([
+                Match.objectLike({
+                    CidrIp: '203.0.113.10/32',
+                    FromPort: 80,
+                    ToPort: 80,
+                    IpProtocol: 'tcp',
+                    Description: 'Local Artillery probe may reach ALB HTTP listener.',
+                }),
+            ]),
+        });
+        template.hasOutput('Phase0LocalArtilleryTargetUrl', {});
+    });
+
+    it('rejects broad local Artillery probe CIDRs', () => {
+        expect(() => Template.fromStack(synthPerfPhase0({
+            phase0LocalProbeCidr: '0.0.0.0/0',
+        }))).toThrow('phase0LocalProbeCidr only accepts an IPv4 /32 CIDR');
+    });
+
+    it('creates a security group for EC2 load generators', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+
+        template.resourceCountIs('AWS::EC2::SecurityGroup', 2);
+        template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+            GroupDescription: 'Perf phase 0 internal ALB fixed response endpoint.',
+        });
+        template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+            GroupDescription: 'Perf phase 0 EC2 load generators.',
+        });
+    });
+
+    it('creates an ECS on EC2 capacity provider for load generation', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+        template.resourceCountIs('AWS::ECS::CapacityProvider', 1);
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase0-loop-ad-load-generator',
+            MinSize: '4',
+            MaxSize: '4',
+        });
+        expect(templateText).toContain('perf-phase0-loop-ad-ec2');
+        expect(templateText).toContain('c6in.xlarge');
+    });
+
+    it('can switch the EC2 load generator to Spot through context', () => {
+        const template = Template.fromStack(synthPerfPhase0({
+            phase0LoadGeneratorSpotPrice: '0.80',
+        }));
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                InstanceMarketOptions: Match.objectLike({
+                    MarketType: 'spot',
+                    SpotOptions: Match.objectLike({
+                        MaxPrice: '0.8',
+                    }),
+                }),
+            }),
+        });
+        expect(templateText).toContain('Phase0LoadGeneratorLaunchType');
+        expect(templateText).toContain('EC2 Spot');
+    });
+
+    it('can right-size the EC2 load generator to one c6in.large through context', () => {
+        const template = Template.fromStack(synthPerfPhase0({
+            phase0LoadGeneratorInstanceType: 'c6in.large',
+            phase0LoadGeneratorDesiredCapacity: 1,
+        }));
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase0-loop-ad-load-generator',
+            MinSize: '1',
+            MaxSize: '1',
+        });
+        expect(templateText).toContain('c6in.large');
+        expect(templateText).toContain('Phase0LoadGeneratorDesiredCapacity');
+    });
+
+    it('creates an EC2 load generator instance role with SSM and ECS instance access', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.resourcePropertiesCountIs('AWS::IAM::Role', {
+            RoleName: 'loop-ad-perf-phase0-load-generator-instance',
+            AssumeRolePolicyDocument: {
+                Statement: [
+                    Match.objectLike({
+                        Principal: {
+                            Service: 'ec2.amazonaws.com',
+                        },
+                    }),
+                ],
+            },
+        }, 1);
+        expect(templateText).toContain('AmazonSSMManagedInstanceCore');
+        expect(templateText).toContain('AmazonEC2ContainerServiceforEC2Role');
+        expect(templateText).not.toContain('"iam:PassRole","Resource":"*"');
+    });
+
+    it('tunes EC2 load generator hosts for high-connection Artillery runs', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const templateText = JSON.stringify(template.toJSON());
+        const parameters = Object.values(template.toJSON().Parameters ?? {});
+
+        expect(templateText).toContain('net.ipv4.ip_local_port_range = 1024 65535');
+        expect(templateText).toContain('net.ipv4.tcp_tw_reuse = 1');
+        expect(templateText).toContain('* soft nofile 1048576');
+        expect(templateText).toContain('systemctl enable --now docker');
+        expect(templateText).toContain('dnf install -y git jq awscli-2');
+        expect(templateText).not.toContain('yum install');
+        expect(parameters).toContainEqual(expect.objectContaining({
+            Default: '/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id',
+        }));
+        expect(templateText).not.toContain('/aws/service/ecs/optimized-ami/amazon-linux-2/');
+        template.resourcePropertiesCountIs('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                MetadataOptions: { HttpTokens: 'required' },
+            }),
+        }, 1);
+    });
+
+    it('outputs EC2 load generator inputs and direct Artillery commands', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const templateText = JSON.stringify(template.toJSON());
+
+        expect(templateText).toContain('Phase0LoadGeneratorTargetBaseUrl');
+        expect(templateText).toContain('Phase0LoadGeneratorSubnetIds');
+        expect(templateText).toContain('Phase0LoadGeneratorSecurityGroupId');
+        expect(templateText).toContain('Phase0LoadGeneratorClusterName');
+        expect(templateText).toContain('Phase0LoadGeneratorAutoScalingGroupName');
+        expect(templateText).toContain('Phase0LoadGeneratorSsmStartSessionCommand');
+        expect(templateText).toContain('Phase0Ec2KeepAlivePlan');
+        expect(templateText).toContain('4 hosts x 5 Artillery processes x 625 keep-alive VUs/process x about 5 req/sec = about 62500 HTTP requests/sec');
+        expect(templateText).toContain('Phase0Ec2KeepAliveWorkerCommand');
+        expect(templateText).toContain('PROCESSES_PER_HOST=5');
+        expect(templateText).toContain('VUS_PER_PROCESS=625');
+        expect(templateText).toContain('REQUESTS_PER_VU=750');
+        expect(templateText).toContain('VU_THINK_SECONDS=0.15');
+        expect(templateText).toContain('./performance-tests/phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh');
+        expect(templateText).toContain('Phase0Ec2ArtillerySweepPlan');
+        expect(templateText).toContain('1x500=500,2x750=1500,3x1000=3000,4x1250=5000');
+        expect(templateText).toContain('Phase0Ec2ArtillerySweepCommand');
+        expect(templateText).toContain('./performance-tests/phase0/run-ec2-artillery-sweep.sh');
+        expect(templateText).not.toContain('run-fargate');
+    });
+
+    it('uses an xlarge-safe default sweep and permits an explicit larger-host override', () => {
+        const script = readFileSync(PHASE0_SWEEP_SCRIPT, 'utf8');
+
+        expect(script).toContain('MAX_PROCESSES="${MAX_PROCESSES:-4}"');
+        expect(script).toContain('p4_1250:4:1250:180');
+        expect(script).toContain('process_count > MAX_PROCESSES');
+        expect(script).toContain('performance-tests/$RUN_ID');
+        expect(script).toContain('npx artillery@latest');
+        expect(script).toContain('artilleryio/artillery:latest');
+        expect(script).toContain('--network host');
+        expect(script).toContain('validate_step_results');
+        expect(script).toContain('step-summary.json');
+        expect(script).toContain('sdk-compatible-event-bodies.tsv');
+        expect(script).toContain('errors.ERR_SOCKET_TIMEOUT');
+        expect(script).toContain('http.codes.204');
+        expect(script).not.toContain('p14_3500:14:3500:180');
+    });
+
+    it('uses precomputed SDK-compatible Artillery payload rows with optional-field size variation', () => {
+        const scenario = readFileSync(join(ROOT, 'performance-tests/phase0/alb-fixed-response.yml'), 'utf8');
+        const payloadRows = readPhase0PayloadRows();
+        const serializedRows = readSerializedPhase0PayloadRows();
+
+        expect(scenario).toContain('path: "./payloads/sdk-compatible-event-bodies.tsv"');
+        expect(scenario).toContain('order: sequence');
+        expect(scenario).toContain('body: "{{ body_json }}"');
+        expect(scenario).not.toContain('json:');
+        expect(scenario).not.toContain('processor:');
+        expect(scenario).not.toContain('function:');
+        expect(scenario).not.toContain('event_type');
+        expect(new Set(payloadRows.map((row) => row.payload_size_profile))).toEqual(new Set(PAYLOAD_PROFILES));
+        expect(payloadRows.length).toBeGreaterThanOrEqual(128);
+        expect(serializedRows).toHaveLength(payloadRows.length);
+
+        for (const [index, serialized] of serializedRows.entries()) {
+            const source = payloadRows[index];
+
+            if (!source) {
+                throw new Error(`Serialized payload row ${index + 2} has no source row.`);
+            }
+
+            const body = JSON.parse(serialized.body_json) as LoopAdEventPayload;
+            const bodyBytes = Buffer.byteLength(serialized.body_json, 'utf8');
+
+            expect(serialized.body_json).toBe(JSON.stringify(eventPayloadFields(source)));
+            expect(serialized.payload_size_profile).toBe(source.payload_size_profile);
+            expect(Number(serialized.payload_actual_bytes)).toBe(bodyBytes);
+            expect(bodyBytes).toBeGreaterThanOrEqual(1024);
+            expect(bodyBytes).toBeLessThanOrEqual(1536);
+            expect(Object.keys(body).sort()).toEqual([
+                'event_id',
+                'event_name',
+                'event_time',
+                'project_id',
+                'properties_json',
+                'schema_version',
+                'session_id',
+                'source',
+                'user_id',
+                'write_key',
+            ]);
+            expect(() => JSON.parse(body.properties_json)).not.toThrow();
+            expect(serialized.body_json).not.toMatch(/[\t\r\n]/);
+        }
+
+        const compactPayload = firstPayloadByProfile(payloadRows, 'compact');
+        const standardPayload = firstPayloadByProfile(payloadRows, 'standard');
+        const expandedPayload = firstPayloadByProfile(payloadRows, 'expanded');
+        const payloads = [compactPayload, standardPayload, expandedPayload];
+        const compactSize = payloadSizeBytes(compactPayload);
+        const standardSize = payloadSizeBytes(standardPayload);
+        const expandedSize = payloadSizeBytes(expandedPayload);
+
+        for (const payload of payloads) {
+            const properties = JSON.parse(payload.properties_json) as Record<string, unknown>;
+            const perf = properties.perf as Record<string, unknown>;
+            const eventPayload = eventPayloadFields(payload);
+
+            expect(Object.keys(eventPayload).sort()).toEqual([
+                'event_id',
+                'event_name',
+                'event_time',
+                'project_id',
+                'properties_json',
+                'schema_version',
+                'session_id',
+                'source',
+                'user_id',
+                'write_key',
+            ]);
+            expect(eventPayload.project_id).toBe('demo-shoppingmall');
+            expect(eventPayload.write_key).toBe('perf_public_write_key');
+            expect(eventPayload.schema_version).toBe('hotel_rec_promo.v1');
+            expect(eventPayload.source).toBe('browser_sdk');
+            expect(properties.sdk).toMatchObject({
+                name: 'loop-ad_event_sdk',
+                version: 'perf-test',
+            });
+            expect(perf.profile).toBe(payload.payload_size_profile);
+            expect(properties).not.toHaveProperty('perf_padding');
+            expect(Number(payload.payload_actual_bytes)).toBe(payloadSizeBytes(payload));
+        }
+
+        expect(compactSize).toBeGreaterThanOrEqual(1024);
+        expect(compactSize).toBeLessThanOrEqual(1100);
+        expect(standardSize).toBeGreaterThan(compactSize);
+        expect(standardSize).toBeLessThanOrEqual(1536);
+        expect(expandedSize).toBeGreaterThan(standardSize);
+        expect(expandedSize).toBeLessThanOrEqual(1536);
+
+        const compactProperties = JSON.parse(compactPayload.properties_json) as Record<string, unknown>;
+        const standardProperties = JSON.parse(standardPayload.properties_json) as Record<string, unknown>;
+        const expandedProperties = JSON.parse(expandedPayload.properties_json) as Record<string, unknown>;
+
+        expect(compactProperties).not.toHaveProperty('content_id');
+        expect(standardProperties).toHaveProperty('content_id');
+        expect(standardProperties).not.toHaveProperty('element');
+        expect(expandedProperties).toHaveProperty('element');
+        for (const properties of [compactProperties, standardProperties, expandedProperties]) {
+            expect(Object.values(properties)).not.toContain(null);
+        }
+    });
+
+    it('defines a keep-alive VU model for realistic source traffic', () => {
+        const scenario = readFileSync(PHASE0_KEEPALIVE_SCENARIO, 'utf8');
+        const script = readFileSync(PHASE0_KEEPALIVE_WORKER_SCRIPT, 'utf8');
+        const multiprocessScript = readFileSync(PHASE0_KEEPALIVE_MULTIPROCESS_SCRIPT, 'utf8');
+
+        expect(scenario).toContain('arrivalCount: 2500');
+        expect(scenario).toContain('maxSockets: 1');
+        expect(scenario).toContain('think: 0.15');
+        expect(scenario).toContain('count: 750');
+        expect(scenario).toContain('timeout: 10');
+        expect(scenario).toContain('POST ALB fixed response with keep-alive VU loop');
+        expect(script).toContain('VUS_PER_WORKER="${VUS_PER_WORKER:-2500}"');
+        expect(script).toContain('REQUESTS_PER_VU="${REQUESTS_PER_VU:-750}"');
+        expect(script).toContain('VU_THINK_SECONDS="${VU_THINK_SECONDS:-0.15}"');
+        expect(script).toContain('HTTP_TIMEOUT_SECONDS="${HTTP_TIMEOUT_SECONDS:-10}"');
+        expect(script).toContain('sdk-compatible-event-bodies.tsv');
+        expect(script).toContain('EXPECTED_REQUESTS=$((VUS_PER_WORKER * REQUESTS_PER_VU))');
+        expect(script).toContain('worker-summary.json');
+        expect(script).toContain('errors.');
+        expect(multiprocessScript).toContain('PROCESSES_PER_HOST="${PROCESSES_PER_HOST:-5}"');
+        expect(multiprocessScript).toContain('VUS_PER_PROCESS="${VUS_PER_PROCESS:-625}"');
+        expect(multiprocessScript).toContain('TELEMETRY_INTERVAL_SECONDS="${TELEMETRY_INTERVAL_SECONDS:-5}"');
+        expect(multiprocessScript).toContain('run-ec2-artillery-keepalive-worker.sh');
+        expect(multiprocessScript).toContain('host-summary.json');
+        expect(multiprocessScript).toContain('host-telemetry.tsv');
+        expect(multiprocessScript).toContain('artillery-process-telemetry.tsv');
+        expect(multiprocessScript).toContain("printf '%b\\n'");
+        expect(multiprocessScript).toContain('/proc/net/sockstat');
+        expect(multiprocessScript).toContain('for (field_index = 2; field_index <= NF; field_index += 2)');
+        expect(multiprocessScript).not.toContain('for (index = 2; index <= NF; index += 2)');
+    });
+
+    it('defines a same-spec oha comparison worker with telemetry', () => {
+        const script = readFileSync(PHASE0_OHA_WORKER_SCRIPT, 'utf8');
+
+        expect(script).toContain('CONNECTIONS_PER_HOST="${CONNECTIONS_PER_HOST:-3125}"');
+        expect(script).toContain('REQUESTS_PER_HOST="${REQUESTS_PER_HOST:-2343750}"');
+        expect(script).toContain('DURATION_SECONDS="${DURATION_SECONDS:-0}"');
+        expect(script).toContain('BODY_POOL_FILE="${BODY_POOL_FILE:-}"');
+        expect(script).toContain('QUERY_PER_SECOND="${QUERY_PER_SECOND:-0}"');
+        expect(script).toContain('HTTP_TIMEOUT_SECONDS="${HTTP_TIMEOUT_SECONDS:-10}"');
+        expect(script).toContain('ghcr.io/hatoo/oha@sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072');
+        expect(script).toContain('sdk-compatible-event-bodies.tsv');
+        expect(script).toContain('$3 == 1476');
+        expect(script).toContain('--network host');
+        expect(script).toContain('--output-format json');
+        expect(script).toContain('load_limit=(-z "${DURATION_SECONDS}s" --wait-ongoing-requests-after-deadline)');
+        expect(script).toContain('body_args=(-Z /payload-pool.ndjson)');
+        expect(script).toContain('rate_args=(-q "$QUERY_PER_SECOND" --latency-correction)');
+        expect(script).toContain('[.statusCodeDistribution[]?] | add // 0');
+        expect(script).toContain('[.errorDistribution[]?] | add // 0');
+        expect(script).toContain('effective_success_rate=');
+        expect(script).toContain('rate >= 0.999');
+        expect(script).toContain('host-telemetry.tsv');
+        expect(script).toContain('oha-process-telemetry.tsv');
+        expect(script).toContain('for (field_index = 2; field_index <= NF; field_index += 2)');
+        expect(script).not.toContain('for (index = 2; index <= NF; index += 2)');
+    });
+
+    it('builds a balanced SDK-compatible body pool for oha random line selection', () => {
+        const bodies = readFileSync(PHASE0_OHA_PAYLOAD_POOL, 'utf8').trimEnd().split('\n');
+        const manifest = JSON.parse(readFileSync(PHASE0_OHA_PAYLOAD_POOL_MANIFEST, 'utf8')) as {
+            poolRows: number;
+            minBodyBytes: number;
+            maxBodyBytes: number;
+            profileCounts: Record<PayloadProfile, number>;
+            entries: Array<{ bodyBytes: number; sha256: string }>;
+        };
+
+        expect(bodies).toHaveLength(12);
+        expect(manifest.poolRows).toBe(12);
+        expect(manifest.profileCounts).toEqual({ compact: 4, standard: 4, expanded: 4 });
+        expect(manifest.minBodyBytes).toBeGreaterThanOrEqual(1024);
+        expect(manifest.maxBodyBytes).toBeLessThanOrEqual(1536);
+        for (const [index, body] of bodies.entries()) {
+            const entry = manifest.entries[index];
+            if (!entry) {
+                throw new Error(`Missing oha payload pool manifest entry at index ${index}.`);
+            }
+            expect(() => JSON.parse(body)).not.toThrow();
+            expect(Buffer.byteLength(body)).toBe(entry.bodyBytes);
+            expect(createHash('sha256').update(body).digest('hex')).toBe(entry.sha256);
+        }
+    });
+
+    it('limits phase 0 security group ingress to load generator traffic', () => {
+        const template = Template.fromStack(synthPerfPhase0());
+        const resources = resourcesOf(template);
+        const serialized = JSON.stringify(resources);
+
+        expect(serialized).not.toContain('0.0.0.0/0","FromPort":80');
+        expect(serialized).toContain('EC2 load generators may reach ALB HTTP listener.');
+        expect(serialized).toContain('EC2 load generators may send phase 0 traffic to ALB.');
+    });
+});
+
+function readPhase0PayloadRows(): LoopAdEventPayloadRow[] {
+    const [headerLine, ...dataLines] = readFileSync(PHASE0_PAYLOAD_FILE, 'utf8').trimEnd().split('\n');
+
+    if (!headerLine) {
+        throw new Error('Phase 0 payload TSV is missing a header row.');
+    }
+
+    const headers = headerLine.split('\t');
+
+    return dataLines.map((line) => {
+        const values = line.split('\t');
+        const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+
+        return row as unknown as LoopAdEventPayloadRow;
+    });
+}
+
+function readSerializedPhase0PayloadRows(): SerializedLoopAdEventPayloadRow[] {
+    const [headerLine, ...dataLines] = readFileSync(PHASE0_SERIALIZED_PAYLOAD_FILE, 'utf8').trimEnd().split('\n');
+
+    if (!headerLine) {
+        throw new Error('Phase 0 serialized payload TSV is missing a header row.');
+    }
+
+    const headers = headerLine.split('\t');
+
+    return dataLines.map((line) => {
+        const values = line.split('\t');
+        const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+
+        return row as unknown as SerializedLoopAdEventPayloadRow;
+    });
+}
+
+function firstPayloadByProfile(rows: LoopAdEventPayloadRow[], profile: PayloadProfile): LoopAdEventPayloadRow {
+    const row = rows.find((candidate) => candidate.payload_size_profile === profile);
+
+    if (!row) {
+        throw new Error(`Missing phase 0 payload profile: ${profile}`);
+    }
+
+    return row;
+}
+
+function eventPayloadFields(row: LoopAdEventPayloadRow): LoopAdEventPayload {
+    return {
+        project_id: row.project_id,
+        write_key: row.write_key,
+        schema_version: row.schema_version,
+        event_id: row.event_id,
+        event_name: row.event_name,
+        event_time: row.event_time,
+        source: row.source,
+        user_id: row.user_id,
+        session_id: row.session_id,
+        properties_json: row.properties_json,
+    };
+}
+
+function payloadSizeBytes(row: LoopAdEventPayloadRow): number {
+    return Buffer.byteLength(JSON.stringify(eventPayloadFields(row)), 'utf8');
+}

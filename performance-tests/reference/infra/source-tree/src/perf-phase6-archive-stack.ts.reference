@@ -1,0 +1,312 @@
+import {
+    CfnOutput,
+    Fn,
+    IgnoreMode,
+    RemovalPolicy,
+    Stack,
+    Tags,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Asset } from 'aws-cdk-lib/aws-s3-assets';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Construct } from 'constructs';
+
+export const PHASE6_REGION = 'ap-northeast-2';
+export const PHASE6_AVAILABILITY_ZONE = 'ap-northeast-2a';
+export const PHASE6_CLICKHOUSE_IMAGE =
+    'clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797';
+export const PHASE6_INSTANCE_TYPE = 'r7g.2xlarge';
+export const PHASE6_VOLUME_GIB = 500;
+export const PHASE6_VOLUME_IOPS = 3_000;
+export const PHASE6_VOLUME_THROUGHPUT_MIBPS = 500;
+export const PHASE6_CONTAINER_MEMORY_BYTES = 5 * 1024 ** 3;
+export const PHASE6_SERVER_MEMORY_BYTES = 5_261_334_937;
+export const PHASE6_QUERY_MEMORY_BYTES = 9 * 1024 ** 3 / 2;
+
+const ROOT = join(__dirname, '..');
+const WORKER_PATH = join(ROOT, 'performance-tests/phase6-archive');
+const SCHEMA_PATH = join(ROOT, 'assets/clickhouse/phase4-schema.sql');
+
+export interface LoopAdPerfPhase6ArchiveStackProps extends StackProps {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly clickHouseAmiId: string;
+}
+
+export class LoopAdPerfPhase6ArchiveStack extends Stack {
+    public readonly archiveBucket: s3.Bucket;
+    public readonly archiveRole: iam.Role;
+    public readonly clickHouseInstance: ec2.CfnInstance;
+
+    public constructor(
+        scope: Construct,
+        id: string,
+        props: LoopAdPerfPhase6ArchiveStackProps,
+    ) {
+        super(scope, id, props);
+        validateProps(this, props);
+        addTags(this, props);
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            ipAddresses: ec2.IpAddresses.cidr('10.46.0.0/24'),
+            availabilityZones: [PHASE6_AVAILABILITY_ZONE],
+            natGateways: 0,
+            restrictDefaultSecurityGroup: false,
+            subnetConfiguration: [{
+                name: 'ArchiveHost',
+                cidrMask: 28,
+                subnetType: ec2.SubnetType.PUBLIC,
+            }],
+        });
+        vpc.addGatewayEndpoint('S3Endpoint', {
+            service: ec2.GatewayVpcEndpointAwsService.S3,
+        });
+
+        this.archiveBucket = new s3.Bucket(this, 'ArchiveBucket', {
+            autoDeleteObjects: false,
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+            versioned: false,
+        });
+
+        this.archiveRole = new iam.Role(this, 'ArchiveRole', {
+            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+            description: `Single-host Phase 6 archive worker for ${props.runId}.`,
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+            ],
+        });
+        this.archiveRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:ListBucket'],
+            resources: [this.archiveBucket.bucketArn],
+            conditions: {
+                StringLike: {
+                    's3:prefix': ['attempts/v1/*', 'commits/v1/*'],
+                },
+                StringEquals: {
+                    's3:ResourceAccount': Stack.of(this).account,
+                },
+            },
+        }));
+        this.archiveRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject', 's3:PutObject'],
+            resources: [
+                this.archiveBucket.arnForObjects('attempts/v1/*'),
+                this.archiveBucket.arnForObjects('commits/v1/*'),
+            ],
+            conditions: {
+                StringEquals: {
+                    's3:ResourceAccount': Stack.of(this).account,
+                },
+            },
+        }));
+
+        const workerAsset = new Asset(this, 'WorkerAsset', {
+            path: WORKER_PATH,
+            ignoreMode: IgnoreMode.GLOB,
+            exclude: [
+                '**/__pycache__/**',
+                'tests/**',
+                'price-fixtures/**',
+                'docker-compose.yml',
+                'integration_runner.py',
+                'local_gate.py',
+                'failure_snapshot.py',
+                'finalize_local.py',
+                'static_evidence.py',
+                'synth.ts',
+                '*.md',
+            ],
+        });
+        this.archiveRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject'],
+            resources: [workerAsset.bucket.arnForObjects(workerAsset.s3ObjectKey)],
+        }));
+
+        const profile = new iam.CfnInstanceProfile(this, 'ArchiveInstanceProfile', {
+            roles: [this.archiveRole.roleName],
+        });
+        const securityGroup = new ec2.SecurityGroup(this, 'ArchiveHostSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 6 archive host has no ingress; HTTPS egress only.',
+        });
+        securityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS only.');
+
+        const schema = readFileSync(SCHEMA_PATH, 'utf8').trimEnd();
+        const userData = createUserData({
+            archiveBucketName: this.archiveBucket.bucketName,
+            assetS3Url: workerAsset.s3ObjectUrl,
+            assetHash: workerAsset.assetHash,
+            account: this.account,
+            runId: props.runId,
+            schema,
+        });
+        const subnet = vpc.publicSubnets[0];
+        if (!subnet) {
+            throw new Error('Phase 6 VPC must contain one public archive subnet.');
+        }
+        const launchTemplate = new ec2.CfnLaunchTemplate(this, 'ArchiveLaunchTemplate', {
+            launchTemplateData: {
+                imageId: props.clickHouseAmiId,
+                instanceType: PHASE6_INSTANCE_TYPE,
+                iamInstanceProfile: { arn: profile.attrArn },
+                metadataOptions: {
+                    httpEndpoint: 'enabled',
+                    httpTokens: 'required',
+                    httpPutResponseHopLimit: 2,
+                },
+                networkInterfaces: [{
+                    associatePublicIpAddress: true,
+                    deviceIndex: 0,
+                    groups: [securityGroup.securityGroupId],
+                    subnetId: subnet.subnetId,
+                }],
+                blockDeviceMappings: [{
+                    deviceName: '/dev/xvda',
+                    ebs: {
+                        deleteOnTermination: true,
+                        encrypted: true,
+                        iops: PHASE6_VOLUME_IOPS,
+                        throughput: PHASE6_VOLUME_THROUGHPUT_MIBPS,
+                        volumeSize: PHASE6_VOLUME_GIB,
+                        volumeType: 'gp3',
+                    },
+                }],
+                tagSpecifications: [
+                    { resourceType: 'instance', tags: resourceTags(props) },
+                    { resourceType: 'volume', tags: resourceTags(props) },
+                ],
+                userData: Fn.base64(userData),
+            },
+        });
+        this.clickHouseInstance = new ec2.CfnInstance(this, 'ClickHouseInstance', {
+            availabilityZone: PHASE6_AVAILABILITY_ZONE,
+            launchTemplate: {
+                launchTemplateId: launchTemplate.ref,
+                version: launchTemplate.attrLatestVersionNumber,
+            },
+        });
+
+        new CfnOutput(this, 'ArchiveBucketName', { value: this.archiveBucket.bucketName });
+        new CfnOutput(this, 'ClickHouseInstanceId', { value: this.clickHouseInstance.ref });
+        new CfnOutput(this, 'WorkerAssetHash', { value: workerAsset.assetHash });
+        new CfnOutput(this, 'FixedClickHouseImage', { value: PHASE6_CLICKHOUSE_IMAGE });
+    }
+}
+
+interface UserDataInput {
+    readonly archiveBucketName: string;
+    readonly assetS3Url: string;
+    readonly assetHash: string;
+    readonly account: string;
+    readonly runId: string;
+    readonly schema: string;
+}
+
+function createUserData(input: UserDataInput): string {
+    const config = JSON.stringify({
+        clickhouse_url: 'http://127.0.0.1:8123',
+        bucket: input.archiveBucketName,
+        run_id: input.runId,
+        region: PHASE6_REGION,
+        account: input.account,
+        expected_rows: 15_000_000,
+        rows_per_part: 5_000_000,
+        part_count: 3,
+        seed: 6_000_017,
+        generator_version: 'phase6-events-v1',
+        fingerprint_interval_seconds: 300,
+        export_bandwidth_mibps: 100,
+        clickhouse_memory_bytes: PHASE6_QUERY_MEMORY_BYTES,
+        clickhouse_image_digest: PHASE6_CLICKHOUSE_IMAGE,
+        code_sha256: input.assetHash,
+        test_mode: false,
+    }, null, 2);
+    return `#!/bin/bash
+set -euo pipefail
+umask 077
+dnf install -y awscli docker python3 python3-pip unzip util-linux
+systemctl enable --now docker
+id loopad-archive >/dev/null 2>&1 || useradd --system --home-dir /opt/loopad/phase6 --shell /sbin/nologin loopad-archive
+install -d -o root -g root -m 0711 /opt/loopad /etc/loopad
+install -d -o loopad-archive -g loopad-archive -m 0700 /opt/loopad/phase6 /etc/loopad/phase6
+install -d -o root -g root -m 0755 /var/lib/clickhouse
+aws s3 cp '${input.assetS3Url}' /tmp/phase6-worker.zip --only-show-errors
+unzip -q /tmp/phase6-worker.zip -d /opt/loopad/phase6
+python3 -m venv /opt/loopad/phase6/venv
+/opt/loopad/phase6/venv/bin/pip install --disable-pip-version-check -r /opt/loopad/phase6/requirements.txt
+cat > /opt/loopad/phase6/phase4-schema.sql <<'PHASE6_SCHEMA_EOF'
+${input.schema}
+PHASE6_SCHEMA_EOF
+cat > /etc/loopad/phase6/archive.json <<'PHASE6_CONFIG_EOF'
+${config}
+PHASE6_CONFIG_EOF
+cat > /etc/loopad/phase6/archive.env <<'PHASE6_ENV_EOF'
+PYTHONUNBUFFERED=1
+PHASE6_ENV_EOF
+install -m 0644 /opt/loopad/phase6/systemd/loopad-phase6-archive.service /etc/systemd/system/
+install -m 0644 /opt/loopad/phase6/systemd/loopad-phase6-archive.timer /etc/systemd/system/
+install -m 0644 /opt/loopad/phase6/systemd/loopad-phase6-archive-run.timer /etc/systemd/system/
+chown -R loopad-archive:loopad-archive /opt/loopad/phase6 /etc/loopad/phase6
+test "$(stat -c '%a' /opt/loopad)" = 711
+test "$(stat -c '%a' /etc/loopad)" = 711
+runuser -u loopad-archive -- /opt/loopad/phase6/venv/bin/python --version
+runuser -u loopad-archive -- test -r /etc/loopad/phase6/archive.json
+runuser -u loopad-archive -- test -r /opt/loopad/phase6/clickhouse-config/memory.xml
+docker run -d --restart unless-stopped --name phase6-clickhouse --memory 5g -e CLICKHOUSE_SKIP_USER_SETUP=1 -p 127.0.0.1:8123:8123 -v /var/lib/clickhouse:/var/lib/clickhouse -v /opt/loopad/phase6/clickhouse-config/memory.xml:/etc/clickhouse-server/config.d/phase6-memory.xml:ro '${PHASE6_CLICKHOUSE_IMAGE}'
+test "$(docker inspect -f '{{.HostConfig.Memory}}' phase6-clickhouse)" = "${PHASE6_CONTAINER_MEMORY_BYTES}"
+clickhouse_ready=0
+for _ in {1..90}; do
+  if docker exec phase6-clickhouse clickhouse-client --query 'SELECT 1' >/dev/null 2>&1; then clickhouse_ready=1; break; fi
+  sleep 2
+done
+test "$clickhouse_ready" -eq 1
+server_memory=$(docker exec phase6-clickhouse clickhouse-client --query "SELECT value FROM system.server_settings WHERE name = 'max_server_memory_usage'")
+test "$server_memory" = "${PHASE6_SERVER_MEMORY_BYTES}"
+docker exec -i phase6-clickhouse clickhouse-client --multiquery < /opt/loopad/phase6/phase4-schema.sql
+test "$(docker inspect -f '{{.RestartCount}}' phase6-clickhouse)" = 0
+test "$(docker inspect -f '{{.State.OOMKilled}}' phase6-clickhouse)" = false
+systemctl daemon-reload
+systemctl enable --now loopad-phase6-archive.timer
+`;
+}
+
+function validateProps(stack: Stack, props: LoopAdPerfPhase6ArchiveStackProps): void {
+    if (stack.region !== PHASE6_REGION) {
+        throw new Error(`Phase 6 region must be ${PHASE6_REGION}.`);
+    }
+    if (!/^run_\d{8}_\d{6}_phase6_archive$/.test(props.runId)) {
+        throw new Error('runId must match run_YYYYMMDD_HHMMSS_phase6_archive.');
+    }
+    if (!/^phase6-archive-\d{8}T\d{6}Z$/.test(props.sessionId)) {
+        throw new Error('sessionId must match phase6-archive-YYYYMMDDTHHMMSSZ.');
+    }
+    if (!/^ami-[0-9a-f]{8,17}$/.test(props.clickHouseAmiId)) {
+        throw new Error('clickHouseAmiId must be an exact AMI ID.');
+    }
+}
+
+function resourceTags(props: LoopAdPerfPhase6ArchiveStackProps): Array<{ key: string; value: string }> {
+    return [
+        { key: 'Name', value: `loopad-${props.runId}-clickhouse` },
+        { key: 'Project', value: 'loop-ad' },
+        { key: 'Phase', value: '6-lite' },
+        { key: 'RunId', value: props.runId },
+        { key: 'SessionId', value: props.sessionId },
+        { key: 'ResourceScope', value: 'run' },
+        { key: 'ManagedBy', value: 'codex' },
+    ];
+}
+
+function addTags(stack: Stack, props: LoopAdPerfPhase6ArchiveStackProps): void {
+    for (const tag of resourceTags(props)) {
+        Tags.of(stack).add(tag.key, tag.value);
+    }
+}

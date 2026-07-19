@@ -1,0 +1,697 @@
+import * as cdk from 'aws-cdk-lib';
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { brotliDecompressSync } from 'node:zlib';
+import {
+    PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB,
+    PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES,
+    PHASE7_COLLECTOR_MAX_INFLIGHT_REQUESTS,
+    LoopAdPerfPhase7IntegrationImageStack,
+    LoopAdPerfPhase7IntegrationStack,
+} from '../src/perf-phase7-integration-stack';
+import {
+    PHASE7_CLICKHOUSE_IMAGE,
+    PHASE7_COLLECTOR_COUNT,
+    PHASE7_HAPROXY_IMAGE,
+    PHASE7_OHA_IMAGE,
+    PHASE7_REGION,
+} from '../src/perf-phase7-integration-config';
+
+const CONTEXT = {
+    phase7RunId: 'run_20260717_180000_phase7_integration',
+    phase7SessionId: 'phase7-integration-20260717T180000Z',
+    phase7CollectorImageDigest: `sha256:${'1'.repeat(64)}`,
+    phase7ConsumerImageDigest: `sha256:${'2'.repeat(64)}`,
+    phase7ArchiveImageDigest: `sha256:${'3'.repeat(64)}`,
+    phase7X86EcsAmiId: 'ami-0123456789abcdef0',
+    phase7ArmEcsAmiId: 'ami-0fedcba9876543210',
+    phase7ProtocolCertificateArn:
+        'arn:aws:acm:ap-northeast-2:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+    phase7ProtocolDnsName: 'phase7.example.com',
+};
+
+function app(): cdk.App {
+    return new cdk.App({ context: CONTEXT });
+}
+
+function imageStack(): LoopAdPerfPhase7IntegrationImageStack {
+    return new LoopAdPerfPhase7IntegrationImageStack(app(), 'LoopAdPerfPhase7IntegrationImageStack', {
+        env: { account: '123456789012', region: PHASE7_REGION },
+    });
+}
+
+function runtimeStack(): LoopAdPerfPhase7IntegrationStack {
+    const scope = app();
+    const images = new LoopAdPerfPhase7IntegrationImageStack(scope, 'Images', {
+        env: { account: '123456789012', region: PHASE7_REGION },
+    });
+    return new LoopAdPerfPhase7IntegrationStack(scope, 'Runtime', {
+        env: { account: '123456789012', region: PHASE7_REGION },
+        collectorRepository: images.collectorRepository,
+        consumerRepository: images.consumerRepository,
+        archiveRepository: images.archiveRepository,
+    });
+}
+
+function launchTemplateRuntimeStack(): LoopAdPerfPhase7IntegrationStack {
+    const scope = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...CONTEXT,
+        },
+    });
+    const images = new LoopAdPerfPhase7IntegrationImageStack(scope, 'Images', {
+        env: { account: '123456789012', region: PHASE7_REGION },
+    });
+    return new LoopAdPerfPhase7IntegrationStack(scope, 'Runtime', {
+        env: { account: '123456789012', region: PHASE7_REGION },
+        collectorRepository: images.collectorRepository,
+        consumerRepository: images.consumerRepository,
+        archiveRepository: images.archiveRepository,
+    });
+}
+
+function decodedUserDataByteUpperBound(userData: any): { decoded: string; byteUpperBound: number } {
+    const encoded = userData?.['Fn::Base64'];
+    if (typeof encoded === 'string') {
+        return { decoded: encoded, byteUpperBound: Buffer.byteLength(encoded, 'utf8') };
+    }
+    const join = encoded?.['Fn::Join'];
+    if (!Array.isArray(join) || typeof join[0] !== 'string' || !Array.isArray(join[1])) {
+        throw new Error(`Unsupported synthesized LaunchTemplate UserData: ${JSON.stringify(userData)}`);
+    }
+    const separator = join[0];
+    const intrinsicUpperBoundBytes = 1_024;
+    let byteUpperBound = Math.max(0, join[1].length - 1) * Buffer.byteLength(separator, 'utf8');
+    const decoded = join[1].map((part: any) => {
+        if (typeof part === 'string') {
+            byteUpperBound += Buffer.byteLength(part, 'utf8');
+            return part;
+        }
+        byteUpperBound += intrinsicUpperBoundBytes;
+        return 'INTRINSIC_TOKEN';
+    }).join(separator);
+    return { decoded, byteUpperBound };
+}
+
+describe('Phase 7 dedicated end-to-end integration stack', () => {
+    it('owns three removable immutable image repositories that require explicit image cleanup', () => {
+        const stack = imageStack();
+        const template = Template.fromStack(stack);
+        expect(stack.tags.tagValues()).toMatchObject({
+            Project: 'loop-ad',
+            Phase: '7',
+            RunId: CONTEXT.phase7RunId,
+            SessionId: CONTEXT.phase7SessionId,
+            ResourceScope: 'run',
+            ManagedBy: 'codex',
+        });
+        template.resourceCountIs('AWS::ECR::Repository', 3);
+        template.hasResourceProperties('AWS::ECR::Repository', {
+            ImageScanningConfiguration: { ScanOnPush: true },
+            ImageTagMutability: 'IMMUTABLE',
+            EmptyOnDelete: false,
+        });
+        const text = JSON.stringify(template.toJSON());
+        const repositories = Object.values(template.toJSON().Resources as Record<string, any>);
+        expect(repositories.every((resource) => resource.DeletionPolicy === 'Delete')).toBe(true);
+        expect(text).toContain(`${CONTEXT.phase7RunId}/collector`);
+        expect(text).toContain(`${CONTEXT.phase7RunId}/consumer`);
+        expect(text).toContain(`${CONTEXT.phase7RunId}/archive`);
+    });
+
+    it('creates one shared VPC, one stream, eight generators, and no hidden compute', () => {
+        const stack = runtimeStack();
+        const template = Template.fromStack(stack);
+        expect(stack.tags.tagValues()).toMatchObject({
+            Project: 'loop-ad',
+            Phase: '7',
+            RunId: CONTEXT.phase7RunId,
+            SessionId: CONTEXT.phase7SessionId,
+            ResourceScope: 'run',
+            ManagedBy: 'codex',
+        });
+        template.resourceCountIs('AWS::EC2::VPC', 1);
+        template.resourceCountIs('AWS::EC2::NatGateway', 1);
+        template.resourceCountIs('AWS::Kinesis::Stream', 1);
+        template.resourceCountIs('AWS::ECS::Cluster', 4);
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 5);
+        template.resourceCountIs('AWS::ECS::Service', 4);
+        template.resourceCountIs('AWS::ECS::TaskDefinition', 5);
+        template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 3);
+        template.resourceCountIs('AWS::DynamoDB::Table', 3);
+        template.resourceCountIs('AWS::S3::Bucket', 2);
+        template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+        template.resourceCountIs('AWS::Lambda::Function', 0);
+        template.resourceCountIs('AWS::Lambda::EventSourceMapping', 0);
+        template.hasResourceProperties('AWS::Kinesis::Stream', {
+            ShardCount: 120,
+            RetentionPeriodHours: 24,
+            StreamModeDetails: { StreamMode: 'PROVISIONED' },
+            StreamEncryption: { EncryptionType: 'KMS', KeyId: 'alias/aws/kinesis' },
+        });
+        template.hasOutput('LoadGeneratorCount', { Value: '8' });
+    });
+
+    it('keeps every launch-template user data below the decoded EC2 limit with Phase 7 margin', () => {
+        const template = Template.fromStack(launchTemplateRuntimeStack()).toJSON();
+        const launchTemplates = Object.entries(template.Resources as Record<string, any>)
+            .filter(([, resource]) => resource.Type === 'AWS::EC2::LaunchTemplate');
+
+        expect(launchTemplates).toHaveLength(5);
+        for (const [logicalId, resource] of launchTemplates) {
+            const measurement = decodedUserDataByteUpperBound(
+                resource.Properties?.LaunchTemplateData?.UserData,
+            );
+            if (measurement.byteUpperBound > 16_384) {
+                throw new Error(
+                    `${logicalId} decoded UserData upper bound is ${measurement.byteUpperBound} bytes; EC2 allows 16384`,
+                );
+            }
+        }
+
+        const loadGeneratorEntry = launchTemplates.find(([, resource]) =>
+            resource.Properties?.LaunchTemplateData?.InstanceType === 'c6in.large');
+        expect(loadGeneratorEntry).toBeDefined();
+        const [loadGeneratorLogicalId, loadGenerator] = loadGeneratorEntry!;
+        const loadGeneratorUserData = decodedUserDataByteUpperBound(
+            loadGenerator.Properties.LaunchTemplateData.UserData,
+        );
+        if (loadGeneratorUserData.byteUpperBound > 15_360) {
+            throw new Error(
+                `${loadGeneratorLogicalId} decoded UserData is ${loadGeneratorUserData.byteUpperBound} bytes; Phase 7 allows 15360`,
+            );
+        }
+        expect(loadGeneratorUserData.decoded).toContain('dnf install -y brotli jq awscli-2');
+        const compressed = loadGeneratorUserData.decoded
+            .match(/printf '%s' '([^']+)'\|base64 -d\|brotli -d\|bash/)?.[1];
+        expect(compressed).toBeDefined();
+        const secondStage = brotliDecompressSync(Buffer.from(compressed!, 'base64')).toString('utf8');
+        const worker = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase1-kinesis/run-ec2-oha-worker.sh'),
+            'utf8',
+        );
+        expect(worker.endsWith('\n')).toBe(true);
+        const workerHeader = "cat > /opt/loop-ad-phase1/run-ec2-oha-worker.sh <<'LOOPAD_OHA_WORKER'\n";
+        const workerBodyStart = secondStage.indexOf(workerHeader) + workerHeader.length;
+        const workerTerminatorStart = secondStage.indexOf('LOOPAD_OHA_WORKER\n', workerBodyStart);
+        expect(workerBodyStart).toBeGreaterThanOrEqual(workerHeader.length);
+        expect(workerTerminatorStart).toBeGreaterThan(workerBodyStart);
+        expect(secondStage.slice(workerBodyStart, workerTerminatorStart)).toBe(worker);
+        expect(secondStage).toContain(`docker pull ${PHASE7_OHA_IMAGE}`);
+
+        const capacityLaunchTemplates = launchTemplates.filter(([, resource]) =>
+            resource.Properties?.LaunchTemplateData?.InstanceType !== 'c6in.large');
+        expect(capacityLaunchTemplates).toHaveLength(4);
+        for (const [, resource] of capacityLaunchTemplates) {
+            const userData = decodedUserDataByteUpperBound(
+                resource.Properties.LaunchTemplateData.UserData,
+            ).decoded;
+            const syntaxCheck = spawnSync('/bin/bash', ['-n'], {
+                input: userData,
+                encoding: 'utf8',
+            });
+            expect(syntaxCheck.stderr).toBe('');
+            expect(syntaxCheck.status).toBe(0);
+            const awsCliBootstrap = userData.indexOf('yum install -y awscli');
+            const readinessSignal = userData.indexOf('aws cloudformation signal-resource');
+            const registrationCheck = userData.indexOf('aws ecs describe-container-instances');
+            expect(awsCliBootstrap).toBeGreaterThanOrEqual(0);
+            expect(readinessSignal).toBeGreaterThan(awsCliBootstrap);
+            expect(registrationCheck).toBeGreaterThan(awsCliBootstrap);
+            expect(userData).toContain('command -v aws >/dev/null 2>&1');
+            expect(userData).toContain('aws cloudformation signal-resource');
+            expect(userData).toContain('http://127.0.0.1:51678/v1/metadata');
+            expect(userData).toContain('ecs describe-container-instances');
+            expect(userData).toContain('agentConnected,status,capacityProviderName');
+            expect(userData).toContain('signal_wait_condition SUCCESS');
+        }
+    });
+
+    it('writes HAProxy config bytes that exactly match the published runtime fingerprint', () => {
+        const template = Template.fromStack(launchTemplateRuntimeStack()).toJSON();
+        const haproxyLaunchTemplate = Object.values(template.Resources as Record<string, any>)
+            .find((resource) => resource.Type === 'AWS::EC2::LaunchTemplate'
+                && resource.Properties?.LaunchTemplateData?.InstanceType === 'c6in.xlarge');
+        expect(haproxyLaunchTemplate).toBeDefined();
+        const userData = decodedUserDataByteUpperBound(
+            haproxyLaunchTemplate!.Properties.LaunchTemplateData.UserData,
+        ).decoded;
+        const encodedConfig = userData.match(
+            /printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d > \/opt\/loopad\/haproxy\.cfg/,
+        )?.[1];
+        expect(encodedConfig).toBeDefined();
+        expect(userData).not.toContain('PHASE7_HAPROXY_EOF');
+
+        const deployedConfig = Buffer.from(encodedConfig!, 'base64');
+        const publishedFingerprint = template.Outputs.HaproxyConfigSha256.Value;
+        expect(deployedConfig.toString('base64')).toBe(encodedConfig);
+        expect(createHash('sha256').update(deployedConfig).digest('hex')).toBe(publishedFingerprint);
+        expect(deployedConfig[deployedConfig.length - 1]).toBe(0x0a);
+        expect(deployedConfig[deployedConfig.length - 2]).not.toBe(0x0a);
+        expect(deployedConfig.toString('utf8')).toContain('server-template collector 1-6');
+    });
+
+    it('waits for every expected ECS host and exact capacity-provider registration before creating services', () => {
+        const resources = Template.fromStack(runtimeStack()).toJSON().Resources as Record<string, any>;
+        const entries = Object.entries(resources);
+        const services = entries.filter(([, resource]) => resource.Type === 'AWS::ECS::Service');
+        const associations = entries.filter(
+            ([, resource]) => resource.Type === 'AWS::ECS::ClusterCapacityProviderAssociations',
+        );
+        const registrationConditions = entries.filter(
+            ([, resource]) => resource.Type === 'AWS::CloudFormation::WaitCondition',
+        );
+        const registrationHandles = entries.filter(
+            ([, resource]) => resource.Type === 'AWS::CloudFormation::WaitConditionHandle',
+        );
+
+        expect(services).toHaveLength(4);
+        expect(associations).toHaveLength(4);
+        expect(registrationConditions).toHaveLength(4);
+        expect(registrationHandles).toHaveLength(4);
+        for (const [serviceLogicalId, service] of services) {
+            const clusterLogicalId = service.Properties.Cluster.Ref;
+            const providerLogicalId = service.Properties.CapacityProviderStrategy[0].CapacityProvider.Ref;
+            const association = associations.find(([, candidate]) =>
+                candidate.Properties.Cluster.Ref === clusterLogicalId
+                && candidate.Properties.CapacityProviders.some(
+                    (provider: any) => provider.Ref === providerLogicalId,
+                ));
+            expect(association).toBeDefined();
+
+            const provider = resources[providerLogicalId];
+            expect(provider.Type).toBe('AWS::ECS::CapacityProvider');
+            const asgArn = provider.Properties.AutoScalingGroupProvider.AutoScalingGroupArn;
+            const asgLogicalId = asgArn.Ref ?? asgArn['Fn::GetAtt']?.[0];
+            const asg = resources[asgLogicalId];
+            expect(asg.Type).toBe('AWS::AutoScaling::AutoScalingGroup');
+            expect(asg.CreationPolicy).toEqual({
+                ResourceSignal: {
+                    Count: Number(asg.Properties.MinSize),
+                    Timeout: 'PT10M',
+                },
+            });
+
+            const registrationCondition = registrationConditions.find(([, condition]) => {
+                const conditionDependencies = Array.isArray(condition.DependsOn)
+                    ? condition.DependsOn
+                    : [condition.DependsOn].filter(Boolean);
+                return conditionDependencies.includes(association![0]);
+            });
+            expect(registrationCondition).toBeDefined();
+            expect(registrationCondition![1].Properties).toMatchObject({
+                Count: Number(asg.Properties.MinSize),
+                Timeout: '600',
+            });
+
+            const dependencies = Array.isArray(service.DependsOn)
+                ? service.DependsOn
+                : [service.DependsOn].filter(Boolean);
+            expect(dependencies).toEqual(expect.arrayContaining([
+                association![0],
+                asgLogicalId,
+                registrationCondition![0],
+            ]));
+            expect(dependencies).not.toContain(serviceLogicalId);
+        }
+
+        const providerNames = entries
+            .filter(([, resource]) => resource.Type === 'AWS::ECS::CapacityProvider')
+            .map(([, resource]) => resource.Properties.Name);
+        expect(new Set(providerNames).size).toBe(4);
+        expect(providerNames.every((name) =>
+            typeof name === 'string'
+            && name.startsWith(`loopad-${CONTEXT.phase7RunId}-`))).toBe(true);
+
+        const readinessStatements = entries
+            .filter(([, resource]) => resource.Type === 'AWS::IAM::Policy')
+            .flatMap(([, resource]) => resource.Properties.PolicyDocument.Statement)
+            .filter((statement) => statement.Action === 'ecs:DescribeContainerInstances');
+        expect(readinessStatements).toHaveLength(4);
+        for (const statement of readinessStatements) {
+            expect(statement.Resource).not.toBe('*');
+            expect(JSON.stringify(statement.Resource)).toContain('container-instance/');
+        }
+
+        const signalStatements = entries
+            .filter(([, resource]) => resource.Type === 'AWS::IAM::Policy')
+            .flatMap(([, resource]) => resource.Properties.PolicyDocument.Statement)
+            .filter((statement) => statement.Action === 'cloudformation:SignalResource');
+        expect(signalStatements).toHaveLength(4);
+        for (const statement of signalStatements) {
+            expect(statement.Resource).not.toBe('*');
+            expect(statement.Resource).toEqual({ Ref: 'AWS::StackId' });
+        }
+    });
+
+    it('locks HAProxy, collector, consumer, and ClickHouse host counts and sizes', () => {
+        const template = Template.fromStack(runtimeStack());
+        for (const [count, instanceType, imageId] of [
+            ['6', 'c6i.xlarge', CONTEXT.phase7X86EcsAmiId],
+            ['2', 'c6in.xlarge', CONTEXT.phase7X86EcsAmiId],
+            ['2', 'c7g.large', CONTEXT.phase7ArmEcsAmiId],
+            ['1', 'r7g.2xlarge', CONTEXT.phase7ArmEcsAmiId],
+            ['8', 'c6in.large', CONTEXT.phase7X86EcsAmiId],
+        ]) {
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                MinSize: count,
+                MaxSize: count,
+                LaunchConfigurationName: Match.anyValue(),
+            });
+            template.hasResourceProperties('AWS::AutoScaling::LaunchConfiguration', {
+                ImageId: imageId,
+                InstanceType: instanceType,
+                MetadataOptions: { HttpTokens: 'required' },
+            });
+        }
+        const services = Object.values(template.toJSON().Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ECS::Service');
+        expect(services.map((resource) => resource.Properties.DesiredCount).sort()).toEqual([1, 2, 2, 6]);
+    });
+
+    it('keeps Phase 7 collector admission headroom above the 50k connection envelope', () => {
+        const template = Template.fromStack(launchTemplateRuntimeStack()).toJSON();
+        const collector = Object.values(template.Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ECS::TaskDefinition')
+            .flatMap((resource) => resource.Properties.ContainerDefinitions)
+            .find((container: any) => container.Name === 'collector');
+        expect(collector).toBeDefined();
+        const environment = Object.fromEntries(
+            collector.Environment.map((entry: { Name: string; Value: string }) => [entry.Name, entry.Value]),
+        );
+        expect(PHASE7_COLLECTOR_MAX_INFLIGHT_REQUESTS).toBe(4_096);
+        expect(PHASE7_COLLECTOR_MAX_INFLIGHT_REQUESTS * PHASE7_COLLECTOR_COUNT)
+            .toBeGreaterThanOrEqual(2 * 12_000);
+        expect(environment.LOOPAD_MAX_INFLIGHT_REQUESTS).toBe('4096');
+        expect(environment.LOOPAD_KINESIS_INPUT_QUEUE).toBe('2048');
+
+        const compose = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase7-integration/docker-compose.yml'),
+            'utf8',
+        );
+        expect(compose).toContain('LOOPAD_MAX_INFLIGHT_REQUESTS: "4096"');
+    });
+
+    it('places HAProxy in the internal HTTP/2 TLS path and keeps all data paths internal', () => {
+        const template = Template.fromStack(launchTemplateRuntimeStack());
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 443,
+            Protocol: 'TLS',
+            Certificates: [{ CertificateArn: CONTEXT.phase7ProtocolCertificateArn }],
+            AlpnPolicy: ['HTTP2Preferred'],
+        });
+        const loadBalancers = Object.values(template.toJSON().Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ElasticLoadBalancingV2::LoadBalancer');
+        expect(loadBalancers.filter((resource) => resource.Properties.Scheme === 'internet-facing')).toHaveLength(0);
+        expect(loadBalancers.filter((resource) => resource.Properties.Scheme === 'internal')).toHaveLength(3);
+        expect(loadBalancers.every((resource) => resource.Properties.SecurityGroups?.length === 1)).toBe(true);
+        const ingressDescriptions = Object.values(template.toJSON().Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::EC2::SecurityGroupIngress')
+            .map((resource) => resource.Properties.Description);
+        for (const description of [
+            'Run-owned TLS/H2 generators only.',
+            'Protocol NLB only.',
+            'Collector NLB only.',
+            'ClickHouse NLB only.',
+        ]) expect(ingressDescriptions).toContain(description);
+        const text = JSON.stringify(template.toJSON());
+        const haproxyLaunchTemplate = Object.values(template.toJSON().Resources as Record<string, any>)
+            .find((resource) => resource.Type === 'AWS::EC2::LaunchTemplate'
+                && resource.Properties?.LaunchTemplateData?.InstanceType === 'c6in.xlarge');
+        expect(haproxyLaunchTemplate).toBeDefined();
+        const haproxyUserData = decodedUserDataByteUpperBound(
+            haproxyLaunchTemplate!.Properties.LaunchTemplateData.UserData,
+        ).decoded;
+        const encodedConfig = haproxyUserData.match(
+            /printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d > \/opt\/loopad\/haproxy\.cfg/,
+        )?.[1];
+        expect(encodedConfig).toBeDefined();
+        const haproxyConfigText = Buffer.from(encodedConfig!, 'base64').toString('utf8');
+        expect(text).toContain(PHASE7_HAPROXY_IMAGE);
+        expect(haproxyConfigText).toContain('default_backend collectors');
+        expect(haproxyConfigText).toContain('proto h2');
+        expect(haproxyConfigText).toContain('GET /health');
+        expect(haproxyConfigText).toContain('balance leastconn');
+        expect(haproxyConfigText).toContain('server-template collector 1-6 _collector._tcp.phase7.internal');
+        expect(haproxyConfigText).toContain('log stdout format raw sample 1:1000 local0');
+        expect(haproxyConfigText).toContain('log stdout format raw local1 err');
+        expect(haproxyConfigText).toContain('http-after-response set-log-level err if error_status');
+        expect(haproxyConfigText).toContain('prometheus-exporter');
+        expect(text).toContain('"mode":"non-blocking"');
+        expect(text).toContain('non-blocking');
+        expect(text).toContain('"max-buffer-size":"26214400b"');
+        const haproxyTasks = Object.values(template.toJSON().Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ECS::TaskDefinition')
+            .filter((resource) => resource.Properties.ContainerDefinitions
+                .some((container: any) => container.Name === 'haproxy'));
+        expect(haproxyTasks).toHaveLength(1);
+        const haproxyContainer = haproxyTasks[0].Properties.ContainerDefinitions
+            .find((container: any) => container.Name === 'haproxy');
+        expect(haproxyContainer.Ulimits).toEqual([{
+            Name: 'nofile',
+            SoftLimit: 200_000,
+            HardLimit: 200_000,
+        }]);
+        template.hasOutput('HaproxyStatsPort', { Value: '8404' });
+        template.hasOutput('HaproxyConfigSha256', { Value: Match.stringLikeRegexp('^[0-9a-f]{64}$') });
+        template.resourceCountIs('AWS::ServiceDiscovery::PrivateDnsNamespace', 1);
+        template.resourceCountIs('AWS::ServiceDiscovery::Service', 1);
+        expect(text).toContain(PHASE7_OHA_IMAGE);
+        template.hasOutput('ProtocolEndpoint', { Value: `https://${CONTEXT.phase7ProtocolDnsName}` });
+        const worker = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase1-kinesis/run-ec2-oha-worker.sh'),
+            'utf8',
+        );
+        expect(worker).toContain('(internal-)?perf-p1-conn-(direct|proxy)');
+    });
+
+    it('pins all workload images by digest and keeps production endpoint overrides absent', () => {
+        const template = Template.fromStack(runtimeStack());
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain(`@${CONTEXT.phase7CollectorImageDigest}`);
+        expect(text).toContain(`@${CONTEXT.phase7ConsumerImageDigest}`);
+        expect(text).toContain(`@${CONTEXT.phase7ArchiveImageDigest}`);
+        expect(text).toContain(PHASE7_CLICKHOUSE_IMAGE);
+        expect(text).toContain('PHASE7_LOCAL_MODE');
+        expect(text).toContain('false');
+        expect(text).not.toContain('PHASE7_KINESIS_ENDPOINT_URL');
+        expect(text).not.toContain('AWS_ENDPOINT_URL_KINESIS');
+    });
+
+    it('injects ClickHouse credentials dynamically and never stores plaintext values', () => {
+        const template = Template.fromStack(runtimeStack());
+        template.hasResourceProperties('AWS::SecretsManager::Secret', {
+            GenerateSecretString: Match.objectLike({
+                GenerateStringKey: 'password',
+                PasswordLength: 32,
+                SecretStringTemplate: '{"username":"loopad_ingest"}',
+            }),
+        });
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain('CLICKHOUSE_PASSWORD');
+        expect(text).toContain('ValueFrom');
+        expect(text).not.toContain('local-only-not-a-secret');
+        expect(text).not.toContain('get-secret-value');
+        expect(text).not.toContain('AWS_SECRET_ACCESS_KEY');
+    });
+
+    it('keeps every synthesized ECS container health check within AWS API bounds', () => {
+        const template = Template.fromStack(runtimeStack()).toJSON();
+        const taskDefinitions = Object.values(template.Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ECS::TaskDefinition');
+        const containers = taskDefinitions.flatMap((resource) => resource.Properties.ContainerDefinitions);
+        const containersWithHealthChecks = containers.filter((container) => container.HealthCheck !== undefined);
+
+        expect(containersWithHealthChecks.length).toBeGreaterThan(0);
+        // CDK synthesis does not enforce ECS API numeric bounds, so validate the
+        // synthesized CloudFormation values before any deployment reaches ECS.
+        const bounds: Record<string, readonly [number, number]> = {
+            Interval: [5, 300],
+            Retries: [1, 10],
+            StartPeriod: [0, 300],
+            Timeout: [2, 60],
+        };
+        for (const container of containersWithHealthChecks) {
+            for (const [property, [minimum, maximum]] of Object.entries(bounds)) {
+                const value = container.HealthCheck[property];
+                if (value === undefined) continue;
+                expect(Number.isInteger(value)).toBe(true);
+                expect(value).toBeGreaterThanOrEqual(minimum);
+                expect(value).toBeLessThanOrEqual(maximum);
+            }
+            expect(container.HealthCheck.Retries).toBeDefined();
+        }
+
+        const schemaGuard = containers.find((container) => container.Name === 'schema-guard');
+        expect(schemaGuard).toBeDefined();
+        expect(schemaGuard.HealthCheck.Retries).toBe(10);
+        expect(schemaGuard.HealthCheck.Interval).toBe(10);
+        expect(schemaGuard.HealthCheck.StartPeriod).toBe(80);
+        expect(
+            schemaGuard.HealthCheck.StartPeriod
+            + schemaGuard.HealthCheck.Interval * schemaGuard.HealthCheck.Retries,
+        ).toBe(180);
+    });
+
+    it('gives the ClickHouse task role only archive-attempt read access', () => {
+        const template = Template.fromStack(runtimeStack()).toJSON();
+        const resources = template.Resources as Record<string, any>;
+        const clickHouseTask = Object.values(resources).find((resource) =>
+            resource.Type === 'AWS::ECS::TaskDefinition'
+            && resource.Properties.ContainerDefinitions.some((container: any) => container.Name === 'clickhouse'));
+        expect(clickHouseTask).toBeDefined();
+
+        const clickHouseRoleLogicalId = clickHouseTask.Properties.TaskRoleArn['Fn::GetAtt'][0];
+        const clickHousePolicies = Object.values(resources).filter((resource) =>
+            resource.Type === 'AWS::IAM::Policy'
+            && resource.Properties.Roles?.some((role: any) => role.Ref === clickHouseRoleLogicalId));
+        expect(clickHousePolicies).toHaveLength(1);
+
+        const statements = clickHousePolicies.flatMap((policy) =>
+            policy.Properties.PolicyDocument.Statement);
+        const s3Statements = statements.filter((statement) => {
+            const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+            return actions.some((action: string) => action.startsWith('s3:'));
+        });
+        expect(s3Statements).toHaveLength(1);
+        expect(s3Statements[0].Action).toBe('s3:GetObject');
+
+        const archiveBucketLogicalId = template.Outputs.ArchiveBucketName.Value.Ref;
+        expect(s3Statements[0].Resource).toEqual({
+            'Fn::Join': [
+                '',
+                [
+                    { 'Fn::GetAtt': [archiveBucketLogicalId, 'Arn'] },
+                    '/attempts/v1/*',
+                ],
+            ],
+        });
+        expect(s3Statements[0].Condition).toEqual({
+            StringEquals: { 's3:ResourceAccount': '123456789012' },
+        });
+
+        const actions = statements.flatMap((statement) =>
+            Array.isArray(statement.Action) ? statement.Action : [statement.Action]);
+        expect(actions).not.toContain('s3:ListBucket');
+        expect(actions).not.toContain('s3:PutObject');
+        expect(actions).not.toContain('s3:DeleteObject');
+    });
+
+    it('precreates KCL 3.x schemas and gives archive no delete permission', () => {
+        const template = Template.fromStack(runtimeStack());
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'leaseKey', KeyType: 'HASH' }],
+            GlobalSecondaryIndexes: [{
+                IndexName: 'LeaseOwnerToLeaseKeyIndex',
+                KeySchema: [
+                    { AttributeName: 'leaseOwner', KeyType: 'HASH' },
+                    { AttributeName: 'leaseKey', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'KEYS_ONLY' },
+            }],
+        });
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain('s3:GetObject');
+        expect(text).toContain('s3:PutObject');
+        expect(text).toContain('s3:ListBucket');
+        expect(text).not.toContain('s3:DeleteObject');
+    });
+
+    it('defines the one-shot 15M archive task and observability gates', () => {
+        const template = Template.fromStack(runtimeStack());
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain('ARCHIVE_EXPECTED_ROWS');
+        expect(text).toContain('15000000');
+        expect(text).toContain('ARCHIVE_ROWS_PER_PART');
+        expect(text).toContain('5000000');
+        expect(text).toContain('OVERRIDE_REQUIRED');
+        expect(text).toContain('/etc/clickhouse-server/config.d/phase7-memory.xml');
+        template.hasOutput('ArchiveCapacityProviderName', { Value: Match.anyValue() });
+        template.resourceCountIs('AWS::CloudWatch::Alarm', 2);
+        expect(text).toContain('GetRecords.IteratorAgeMilliseconds');
+        expect(text).toContain('HealthyHostCount');
+    });
+
+    it('keeps generous Phase 7 archive query headroom inside safety envelopes', () => {
+        const template = Template.fromStack(launchTemplateRuntimeStack()).toJSON();
+        const taskDefinitions = Object.values(template.Resources as Record<string, any>)
+            .filter((resource) => resource.Type === 'AWS::ECS::TaskDefinition');
+        const clickHouseContainer = taskDefinitions
+            .flatMap((resource) => resource.Properties.ContainerDefinitions)
+            .find((container: any) => container.Name === 'clickhouse');
+        expect(clickHouseContainer).toBeDefined();
+        expect(clickHouseContainer.Memory).toBe(PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB);
+
+        const clickHouseLaunchTemplate = Object.values(template.Resources as Record<string, any>)
+            .find((resource) => resource.Type === 'AWS::EC2::LaunchTemplate'
+                && resource.Properties?.LaunchTemplateData?.InstanceType === 'r7g.2xlarge');
+        expect(clickHouseLaunchTemplate).toBeDefined();
+        const clickHouseUserData = decodedUserDataByteUpperBound(
+            clickHouseLaunchTemplate!.Properties.LaunchTemplateData.UserData,
+        ).decoded;
+        const synthesizedServerMemory = Number(clickHouseUserData.match(
+            /<max_server_memory_usage>(\d+)<\/max_server_memory_usage>/,
+        )?.[1]);
+        expect(synthesizedServerMemory).toBe(PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES);
+        expect(clickHouseUserData).toContain(
+            '<max_server_memory_usage_to_ram_ratio>0.875</max_server_memory_usage_to_ram_ratio>',
+        );
+
+        const archiveEntrypoint = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase7-integration/archive/entrypoint.py'),
+            'utf8',
+        );
+        const archiveQueryGiB = Number(archiveEntrypoint.match(
+            /PHASE7_ARCHIVE_QUERY_MEMORY_BYTES = ([0-9]+) \* 1024\*\*3/,
+        )?.[1]);
+        const archiveQueryMemoryBytes = archiveQueryGiB * 1024 ** 3;
+        expect(archiveQueryMemoryBytes).toBeGreaterThanOrEqual(6 * 1024 ** 3);
+        expect(PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES - archiveQueryMemoryBytes)
+            .toBeGreaterThanOrEqual(512 * 1024 ** 2);
+        expect(PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB * 1024 ** 2
+            - PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES).toBeGreaterThanOrEqual(1024 ** 3);
+
+        const compose = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase7-integration/docker-compose.yml'),
+            'utf8',
+        );
+        expect(compose).toContain('mem_limit: 8g');
+        expect(compose).toContain(
+            './clickhouse-config/memory.xml:/etc/clickhouse-server/config.d/phase7-memory.xml:ro',
+        );
+        expect(compose).not.toContain('../phase6-archive/clickhouse-config/memory.xml');
+        const localMemoryConfig = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase7-integration/clickhouse-config/memory.xml'),
+            'utf8',
+        );
+        expect(localMemoryConfig).toContain(
+            `<max_server_memory_usage>${PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES}</max_server_memory_usage>`,
+        );
+        expect(archiveEntrypoint).toContain(
+            '"clickhouse_memory_bytes": PHASE7_ARCHIVE_QUERY_MEMORY_BYTES',
+        );
+    });
+
+    it('looks up NAT Gateway and its public IPv4 prices from the correct catalogs', () => {
+        const lookup = readFileSync(
+            join(__dirname, '..', 'performance-tests/phase7-integration/aws/lookup-prices.mjs'),
+            'utf8',
+        );
+        expect(lookup).toContain(
+            "natGatewayHour: selectQuery('AmazonEC2', { usagetype: 'APN2-NatGateway-Hours'",
+        );
+        expect(lookup).toContain(
+            "natGatewayDataGb: selectQuery('AmazonEC2', { usagetype: 'APN2-NatGateway-Bytes'",
+        );
+        expect(lookup).not.toContain("natGatewayHour: selectQuery('AmazonVPC'");
+        expect(lookup).not.toContain("natGatewayDataGb: selectQuery('AmazonVPC'");
+        expect(lookup).toContain(
+            "publicIpv4Hour: selectQuery('AmazonVPC', { usagetype: 'APN2-PublicIPv4:InUseAddress'",
+        );
+    });
+});

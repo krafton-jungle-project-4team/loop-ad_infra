@@ -1,0 +1,465 @@
+import * as cdk from 'aws-cdk-lib';
+import {
+    LOOP_AD_REGION,
+    LoopAdDevCertificateStack,
+    LoopAdDevDataStack,
+    LoopAdDevNetworkStack,
+    LoopAdDevRepositoryStack,
+    LoopAdDevRuntimeStack,
+    LoopAdDevSecretsStack,
+    type DeveloperAllowlistConfig,
+} from '../src/loop-ad-stack';
+import { LoopAdPerfPhase0Stack } from '../src/perf-phase0-stack';
+import { LoopAdPerfPhase1GeneratorControlStack } from '../src/perf-phase1-generator-control-stack';
+import {
+    LoopAdPerfPhase1KinesisStack,
+    LoopAdPerfPhase1KinesisStreamStack,
+} from '../src/perf-phase1-kinesis-stack';
+import { LoopAdPerfPhase4ClickHouseStack } from '../src/perf-phase4-clickhouse-stack';
+import {
+    LoopAdPerfPhase4ClickHouseEcsImageStack,
+    LoopAdPerfPhase4ClickHouseEcsStack,
+} from '../src/perf-phase4-clickhouse-ecs-stack';
+
+export const ROOT = `${__dirname}/..`;
+export const EXPECTED_APP_INTERNAL_PORT = 8080;
+export const testEnv = {
+    account: '123456789012',
+    region: LOOP_AD_REGION,
+};
+export const testPublicHostedZone = {
+    hostedZoneId: 'ZTESTHOSTEDZONEID',
+    domainName: 'example.test',
+};
+export const testCertificateArns = {
+    frontendSitesCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/frontend-sites',
+    genAiGeneratedAssetsCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/gen-ai-assets',
+};
+export const testSecretNames = {
+    auroraCredentialsSecretName: '/loop-ad/dev/aurora/credentials',
+    clickHouseCredentialsSecretName: '/loop-ad/dev/clickhouse/credentials',
+    kafkaAppUserSecretName: '/loop-ad/dev/kafka/app-user',
+    kafkaBrokerUserSecretName: '/loop-ad/dev/kafka/broker-user',
+    openAiApiKeySecretName: '/loop-ad/dev/openai/api-key',
+    geminiApiKeySecretName: '/loop-ad/dev/gemini/api-key',
+    internalApiKeySecretName: '/loop-ad/dev/internal/api-key',
+    demoDispatchRecipientsSecretName: '/loop-ad/dev/dashboard-api/demo-dispatch-recipients',
+};
+export const emptyDeveloperAllowlist = {
+    ipv4Cidrs: [],
+    ipv6Cidrs: [],
+};
+
+export function synthNetwork(developerAllowlist: DeveloperAllowlistConfig): LoopAdDevNetworkStack {
+    const app = new cdk.App();
+    return new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+        developerAllowlist,
+    });
+}
+
+export function synthData(): LoopAdDevDataStack {
+    const app = new cdk.App();
+    const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+        developerAllowlist: emptyDeveloperAllowlist,
+    });
+    return new LoopAdDevDataStack(app, 'LoopAdDevDataStack', {
+        env: testEnv,
+        publicHostedZone: testPublicHostedZone,
+        network,
+        genAiGeneratedAssetsCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
+        secretNames: testSecretNames,
+    });
+}
+
+export function synthRuntime(): LoopAdDevRuntimeStack {
+    const app = new cdk.App();
+    const network = new LoopAdDevNetworkStack(app, 'LoopAdDevNetworkStack', {
+        env: testEnv,
+        developerAllowlist: emptyDeveloperAllowlist,
+    });
+    const data = new LoopAdDevDataStack(app, 'LoopAdDevDataStack', {
+        env: testEnv,
+        publicHostedZone: testPublicHostedZone,
+        network,
+        genAiGeneratedAssetsCertificateArn: testCertificateArns.genAiGeneratedAssetsCertificateArn,
+        secretNames: testSecretNames,
+    });
+    return new LoopAdDevRuntimeStack(app, 'LoopAdDevRuntimeStack', {
+        env: testEnv,
+        publicHostedZone: testPublicHostedZone,
+        certificateArns: testCertificateArns,
+        network,
+        data,
+        runtimeSecretNames: testSecretNames,
+    });
+}
+
+export function synthSecrets(): LoopAdDevSecretsStack {
+    const app = new cdk.App();
+    return new LoopAdDevSecretsStack(app, 'LoopAdDevSecretsStack', {
+        env: testEnv,
+        secretNames: testSecretNames,
+    });
+}
+
+export function synthRepositories(): LoopAdDevRepositoryStack {
+    const app = new cdk.App();
+    return new LoopAdDevRepositoryStack(app, 'LoopAdDevRepositoryStack', {
+        env: testEnv,
+    });
+}
+
+export function synthCertificate(): LoopAdDevCertificateStack {
+    const app = new cdk.App();
+    return new LoopAdDevCertificateStack(app, 'LoopAdDevCertificateStack', {
+        env: {
+            account: testEnv.account,
+            region: 'us-east-1',
+        },
+        publicHostedZone: testPublicHostedZone,
+    });
+}
+
+export function synthPerfPhase0(context: Record<string, unknown> = {}): LoopAdPerfPhase0Stack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase0Stack(app, 'LoopAdPerfPhase0Stack', {
+        env: testEnv,
+    });
+}
+
+export const testPhase4Context = {
+    phase4RunId: 'run_20260716_120000_phase4_clickhouse_lambda',
+    phase4SessionId: 'phase4-clickhouse-20260716T120000Z',
+};
+
+export function synthPerfPhase4ClickHouse(
+    context: Record<string, unknown> = {},
+): LoopAdPerfPhase4ClickHouseStack {
+    const app = new cdk.App({
+        context: {
+            ...testPhase4Context,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase4ClickHouseStack(app, 'LoopAdPerfPhase4ClickHouseStack', {
+        env: testEnv,
+    });
+}
+
+export const testPhase4EcsContext = {
+    phase4RunId: 'run_20260716_120000_phase4_clickhouse_ecs',
+    phase4SessionId: 'phase4-clickhouse-ecs-20260716T120000Z',
+    phase4ConsumerImageDigest: `sha256:${'01234567'.repeat(8)}`,
+    phase4EcsAmiId: 'ami-0123456789abcdef0',
+    phase4ClickHouseAmiId: 'ami-0fedcba9876543210',
+};
+
+export function synthPerfPhase4ClickHouseEcs(
+    context: Record<string, unknown> = {},
+): LoopAdPerfPhase4ClickHouseEcsStack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...testPhase4EcsContext,
+            ...context,
+        },
+    });
+    const imageStack = new LoopAdPerfPhase4ClickHouseEcsImageStack(
+        app,
+        'LoopAdPerfPhase4ClickHouseEcsImageStack',
+        { env: testEnv },
+    );
+    const stack = new LoopAdPerfPhase4ClickHouseEcsStack(
+        app,
+        'LoopAdPerfPhase4ClickHouseEcsStack',
+        {
+            env: testEnv,
+            consumerRepository: imageStack.repository,
+        },
+    );
+    stack.addDependency(imageStack);
+    return stack;
+}
+
+export function synthPerfPhase4ClickHouseEcsImage(
+    context: Record<string, unknown> = {},
+): LoopAdPerfPhase4ClickHouseEcsImageStack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...testPhase4EcsContext,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase4ClickHouseEcsImageStack(
+        app,
+        'LoopAdPerfPhase4ClickHouseEcsImageStack',
+        { env: testEnv },
+    );
+}
+
+export const testPhase1Context = {
+    phase1ExperimentMode: 'comparison',
+    phase1CollectorCount: 1,
+    phase1LoadGeneratorCount: 1,
+    phase1CollectorSha: '0123456789abcdef0123456789abcdef01234567',
+    phase1CollectorImageDigest: `sha256:${'89abcdef'.repeat(8)}`,
+    phase1KinesisMaxConnections: 1024,
+    phase1ApplicationMaxInFlight: 1024,
+    phase1RunId: 'run_20260710_210000_unit',
+    phase1SessionId: 'phase1-compare-20260712-035928z',
+    phase1Candidate: 'go-sync',
+};
+
+export const testPhase1CapacityContext = {
+    ...testPhase1Context,
+    phase1ExperimentMode: 'capacity',
+    phase1CollectorCount: 4,
+    phase1RunId: 'run_20260712_081500_capacity_go_sync',
+    phase1SessionId: 'phase1-capacity-20260712T081500Z',
+};
+
+export const testPhase1ScoutContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'scout',
+    phase1RunId: 'run_20260712_120000_scout_go_sync',
+    phase1SessionId: 'phase1-capacity-scout-20260712T120000Z',
+};
+
+export const testPhase1Oha12kContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'capacity-oha12k',
+    phase1LoadGeneratorCount: 2,
+    phase1RunId: 'run_20260712_130000_oha12k_go_batch',
+    phase1SessionId: 'phase1-capacity-oha12k-20260712T130000Z',
+};
+
+export const testGeneratorDiagnosisContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'generator-diagnosis',
+    phase1LoadGeneratorCount: 1,
+    phase1RunId: 'run_20260712_150000_fastctl_1n1p',
+    phase1SessionId: 'phase1-kinesis-generator-diagnosis-20260712T150000Z',
+};
+
+export const testAlbWarmupContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'alb-warmup',
+    phase1LoadGeneratorCount: 2,
+    phase1RunId: 'run_20260712_180000_go_batch_warmup',
+    phase1SessionId: 'phase1-kinesis-alb-warmup-20260712T180000Z',
+    phase1Candidate: 'go-batch',
+};
+
+export const testTcpAlbDiagnosisContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'tcp-alb-path-diagnosis',
+    phase1LoadGeneratorCount: 4,
+    phase1RunId: 'run_20260713_140507_tcp_alb_path',
+    phase1SessionId: 'phase1-kinesis-tcp-alb-path-diagnosis-20260713T050507Z',
+    phase1Candidate: 'go-batch',
+	phase1ApplicationMaxInFlight: 2048,
+	phase1KinesisMaxConnections: 1024,
+};
+
+export const testAdmissionScaleoutProfileAContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'admission-scaleout-capacity',
+    phase1CapacityProfile: 'A',
+    phase1CollectorCount: 4,
+    phase1LoadGeneratorCount: 4,
+    phase1ApplicationMaxInFlight: 2048,
+    phase1KinesisMaxConnections: 1024,
+    phase1RunId: 'run_20260713_163000_admission_scaleout',
+    phase1SessionId: 'phase1-kinesis-admission-scaleout-20260713T073000Z',
+    phase1Candidate: 'go-batch',
+};
+
+export const testAdmissionScaleoutProfileBContext = {
+    ...testAdmissionScaleoutProfileAContext,
+    phase1CapacityProfile: 'B',
+    phase1CollectorCount: 8,
+};
+
+export const testProtocolCrossoverContext = {
+    ...testPhase1CapacityContext,
+    phase1ExperimentMode: 'protocol-crossover',
+    phase1CollectorCount: 4,
+    phase1LoadGeneratorCount: 4,
+    phase1ApplicationMaxInFlight: 2048,
+    phase1KinesisMaxConnections: 1024,
+    phase1RunId: 'run_20260714_110500_protocol_crossover',
+    phase1SessionId: 'phase1-kinesis-protocol-crossover-20260714T020500Z',
+    phase1Candidate: 'go-batch',
+    phase1CertificateArn: 'arn:aws:acm:ap-northeast-2:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+    phase1ProtocolTlsSecretArn: 'arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:/loopad/perf-phase1/protocol/test/tls-AbCdEf',
+    phase1LoadBalancerKind: 'alb',
+    phase1NlbListenerProtocol: 'tcp',
+    phase1AlbTargetProtocolVersion: 'HTTP1',
+};
+
+const {
+    phase1CollectorCount: _protocolCollectorCount,
+    phase1LoadGeneratorCount: _protocolLoadGeneratorCount,
+    ...testConnectionPathBaseContext
+} = testProtocolCrossoverContext;
+
+export const testConnectionPathCrossoverContext = {
+    ...testConnectionPathBaseContext,
+    phase1ExperimentMode: 'connection-path-crossover',
+    phase1RunId: 'run_20260715_070000_connection_path',
+    phase1SessionId: 'phase1-kinesis-connection-path-20260714T220000Z',
+};
+
+export function synthPerfPhase1Kinesis(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...testPhase1Context,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisStack', {
+        env: testEnv,
+    });
+}
+
+export function synthPerfPhase1KinesisStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({
+        context: {
+            ...testPhase1Context,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisStreamStack', {
+        env: testEnv,
+    });
+}
+
+export function synthPerfPhase1KinesisCapacity(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({
+        context: {
+            '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+            ...testPhase1CapacityContext,
+            ...context,
+        },
+    });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisCapacityStack', { env: testEnv });
+}
+
+export function synthPerfPhase1KinesisCapacityStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testPhase1CapacityContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisCapacityStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1KinesisScout(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testPhase1ScoutContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisCapacityScoutStack', { env: testEnv });
+}
+
+export function synthPerfPhase1KinesisScoutStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testPhase1ScoutContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisCapacityScoutStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1KinesisOha12k(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testPhase1Oha12kContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisCapacityOha12kStack', { env: testEnv });
+}
+
+export function synthPerfPhase1KinesisOha12kStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testPhase1Oha12kContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisCapacityOha12kStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1GeneratorControl(context: Record<string, unknown> = {}): LoopAdPerfPhase1GeneratorControlStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testGeneratorDiagnosisContext, phase1TargetKind: 'fast-control', ...context } });
+    return new LoopAdPerfPhase1GeneratorControlStack(app, 'LoopAdPerfPhase1KinesisGeneratorControlStack', { env: testEnv });
+}
+
+export function synthPerfPhase1GeneratorDiagnosis(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testGeneratorDiagnosisContext, phase1TargetKind: 'collector', ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStack', { env: testEnv });
+}
+
+export function synthPerfPhase1GeneratorDiagnosisStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testGeneratorDiagnosisContext, phase1TargetKind: 'collector', ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1AlbWarmup(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testAlbWarmupContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisAlbWarmupStack', { env: testEnv });
+}
+
+export function synthPerfPhase1AlbWarmupStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testAlbWarmupContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisAlbWarmupStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1TcpAlbDiagnosis(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testTcpAlbDiagnosisContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack', { env: testEnv });
+}
+
+export function synthPerfPhase1TcpAlbDiagnosisStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testTcpAlbDiagnosisContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1AdmissionScaleoutProfileA(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testAdmissionScaleoutProfileAContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack', { env: testEnv });
+}
+
+export function synthPerfPhase1AdmissionScaleoutProfileB(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testAdmissionScaleoutProfileBContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack', { env: testEnv });
+}
+
+export function synthPerfPhase1AdmissionScaleoutStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testAdmissionScaleoutProfileAContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisAdmissionScaleoutStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1ProtocolCrossover(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testProtocolCrossoverContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisProtocolCrossoverStack', { env: testEnv });
+}
+
+export function synthPerfPhase1ProtocolCrossoverStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testProtocolCrossoverContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisProtocolCrossoverStreamStack', { env: testEnv });
+}
+
+export function synthPerfPhase1ConnectionPathCrossover(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStack {
+    const app = new cdk.App({ context: { '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true, ...testConnectionPathCrossoverContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStack(app, 'LoopAdPerfPhase1KinesisConnectionPathStack', { env: testEnv });
+}
+
+export function synthPerfPhase1ConnectionPathCrossoverStream(context: Record<string, unknown> = {}): LoopAdPerfPhase1KinesisStreamStack {
+    const app = new cdk.App({ context: { ...testConnectionPathCrossoverContext, ...context } });
+    return new LoopAdPerfPhase1KinesisStreamStack(app, 'LoopAdPerfPhase1KinesisConnectionPathStreamStack', { env: testEnv });
+}
+
+export function resourcesOf(template: { toJSON(): { Resources?: Record<string, unknown> } }): Record<string, { Type: string; Properties?: Record<string, unknown>; CreationPolicy?: Record<string, unknown>; DeletionPolicy?: string; DependsOn?: string[]; UpdateReplacePolicy?: string; UpdatePolicy?: Record<string, unknown> }> {
+    return (template.toJSON().Resources ?? {}) as Record<string, { Type: string; Properties?: Record<string, unknown>; CreationPolicy?: Record<string, unknown>; DeletionPolicy?: string; DependsOn?: string[]; UpdateReplacePolicy?: string; UpdatePolicy?: Record<string, unknown> }>;
+}
+
+export function logicalIdBySecurityGroupDescription(resources: ReturnType<typeof resourcesOf>, description: string): string {
+    const entry = Object.entries(resources).find(([, resource]) => (
+        resource.Type === 'AWS::EC2::SecurityGroup' && resource.Properties?.GroupDescription === description
+    ));
+    if (!entry) {
+        throw new Error(`Unable to find security group: ${description}`);
+    }
+
+    return entry[0];
+}

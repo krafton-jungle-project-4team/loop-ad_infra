@@ -1,0 +1,283 @@
+import {
+    Match,
+    Template,
+} from 'aws-cdk-lib/assertions';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+    ROOT,
+    synthData,
+    synthPerfPhase4ClickHouse,
+    testPhase4Context,
+} from './helpers';
+
+interface SynthResource {
+    readonly Type: string;
+    readonly Properties?: Record<string, unknown>;
+    readonly DeletionPolicy?: string;
+    readonly UpdateReplacePolicy?: string;
+}
+
+function resourcesOf(template: Template): Record<string, SynthResource> {
+    return template.toJSON().Resources as Record<string, SynthResource>;
+}
+
+describe('Phase 4 Kinesis to Lambda to ClickHouse infrastructure', () => {
+    it('locks the run-scoped topology and all fixed capacity/ESM values', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouse());
+
+        template.resourceCountIs('AWS::Kinesis::Stream', 1);
+        template.resourceCountIs('AWS::Lambda::EventSourceMapping', 1);
+        template.resourceCountIs('AWS::EC2::Instance', 1);
+        template.resourceCountIs('AWS::EC2::LaunchTemplate', 1);
+        template.resourceCountIs('AWS::EC2::VPC', 1);
+        template.resourceCountIs('AWS::EC2::Subnet', 1);
+        template.resourceCountIs('AWS::EC2::NatGateway', 0);
+        template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+        template.resourceCountIs('AWS::S3::Bucket', 2);
+        template.resourceCountIs('Custom::S3AutoDeleteObjects', 2);
+
+        template.hasResourceProperties('AWS::Kinesis::Stream', {
+            ShardCount: 120,
+            RetentionPeriodHours: 24,
+            StreamModeDetails: { StreamMode: 'PROVISIONED' },
+            StreamEncryption: { EncryptionType: 'KMS', KeyId: 'alias/aws/kinesis' },
+        });
+        template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+            BatchSize: 10_000,
+            MaximumBatchingWindowInSeconds: 2,
+            ParallelizationFactor: 1,
+            StartingPosition: 'TRIM_HORIZON',
+            Enabled: false,
+            FunctionResponseTypes: ['ReportBatchItemFailures'],
+            BisectBatchOnFunctionError: false,
+            MaximumRetryAttempts: 5,
+            MaximumRecordAgeInSeconds: 3_600,
+            MetricsConfig: { Metrics: ['EventCount'] },
+            DestinationConfig: { OnFailure: { Destination: Match.anyValue() } },
+        });
+        template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                InstanceType: 'r7g.2xlarge',
+                MetadataOptions: {
+                    HttpEndpoint: 'enabled',
+                    HttpPutResponseHopLimit: 2,
+                    HttpTokens: 'required',
+                },
+                BlockDeviceMappings: [{
+                    DeviceName: '/dev/xvda',
+                    Ebs: {
+                        DeleteOnTermination: true,
+                        Encrypted: true,
+                        Iops: 3_000,
+                        Throughput: 500,
+                        VolumeSize: 500,
+                        VolumeType: 'gp3',
+                    },
+                }],
+            }),
+        });
+        template.hasResourceProperties('AWS::EC2::Instance', {
+            AvailabilityZone: 'ap-northeast-2a',
+            LaunchTemplate: Match.objectLike({
+                LaunchTemplateId: Match.anyValue(),
+                Version: Match.anyValue(),
+            }),
+        });
+
+        const resources = resourcesOf(template);
+        const ingestFunctions = Object.values(resources).filter((resource) => (
+            resource.Type === 'AWS::Lambda::Function' &&
+            resource.Properties?.MemorySize === 2_048
+        ));
+        expect(ingestFunctions).toHaveLength(1);
+        expect(ingestFunctions[0]?.Properties).toMatchObject({
+            Architectures: ['arm64'],
+            Handler: 'index.handler',
+            MemorySize: 2_048,
+            ReservedConcurrentExecutions: 120,
+            Runtime: 'nodejs24.x',
+            Timeout: 30,
+            Environment: {
+                Variables: {
+                    CLICKHOUSE_DATABASE: 'loopad',
+                    METRIC_NAMESPACE: 'LoopAd/Phase4',
+                    RUN_ID: testPhase4Context.phase4RunId,
+                },
+            },
+        });
+    });
+
+    it('keeps ClickHouse private, avoids NAT, and uses scoped VPC endpoints', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouse());
+        const resources = resourcesOf(template);
+        const text = JSON.stringify(template.toJSON());
+
+        const port8123Ingress = Object.values(resources).filter((resource) => (
+            resource.Type === 'AWS::EC2::SecurityGroupIngress' &&
+            resource.Properties?.FromPort === 8123 &&
+            resource.Properties?.ToPort === 8123
+        ));
+        expect(port8123Ingress).toHaveLength(1);
+        expect(port8123Ingress[0]?.Properties).toEqual(expect.objectContaining({
+            IpProtocol: 'tcp',
+            SourceSecurityGroupId: expect.any(Object),
+        }));
+        expect(port8123Ingress[0]?.Properties).not.toHaveProperty('CidrIp');
+        expect(port8123Ingress[0]?.Properties).not.toHaveProperty('CidrIpv6');
+
+        const endpointIngress = Object.values(resources).filter((resource) => (
+            resource.Type === 'AWS::EC2::SecurityGroupIngress' &&
+            resource.Properties?.ToPort === 443
+        ));
+        expect(endpointIngress).toHaveLength(2);
+        for (const ingress of endpointIngress) {
+            expect(ingress.Properties).toHaveProperty('SourceSecurityGroupId');
+            expect(ingress.Properties).not.toHaveProperty('CidrIp');
+        }
+
+        template.hasResourceProperties('AWS::EC2::VPCEndpoint', {
+            VpcEndpointType: 'Interface',
+            PrivateDnsEnabled: true,
+            ServiceName: 'com.amazonaws.ap-northeast-2.secretsmanager',
+            PolicyDocument: {
+                Statement: [Match.objectLike({
+                    Action: 'secretsmanager:GetSecretValue',
+                    Resource: Match.anyValue(),
+                })],
+                Version: '2012-10-17',
+            },
+        });
+        template.hasResourceProperties('AWS::EC2::VPCEndpoint', {
+            VpcEndpointType: 'Gateway',
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith([
+                            's3:GetBucketLocation',
+                            's3:ListBucket',
+                            's3:ListBucketMultipartUploads',
+                        ]),
+                    }),
+                    Match.objectLike({
+                        Action: Match.arrayWith([
+                            's3:AbortMultipartUpload',
+                            's3:GetObject',
+                            's3:ListMultipartUploadParts',
+                            's3:PutObject',
+                        ]),
+                    }),
+                ]),
+            }),
+        });
+        expect(text).toContain('clickhouse/clickhouse-server:26.3.13.31');
+        expect(text).toContain('-p \\"${CLICKHOUSE_BIND_ADDRESS}:${CLICKHOUSE_HTTP_PORT}:8123\\"');
+        expect(text).not.toContain('AWS::EC2::NatGateway');
+    });
+
+    it('uses generated credentials and least-privilege run resource policies', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouse());
+        const resources = resourcesOf(template);
+
+        template.hasResourceProperties('AWS::SecretsManager::Secret', {
+            GenerateSecretString: {
+                ExcludePunctuation: true,
+                GenerateStringKey: 'password',
+                PasswordLength: 40,
+                SecretStringTemplate: '{"username":"loopad_ingest"}',
+            },
+        });
+        const secretResources = Object.values(resources).filter((resource) => (
+            resource.Type === 'AWS::SecretsManager::Secret'
+        ));
+        expect(secretResources[0]?.Properties).not.toHaveProperty('SecretString');
+
+        const policies = Object.values(resources).filter((resource) => resource.Type === 'AWS::IAM::Policy');
+        const policyText = JSON.stringify(policies);
+        expect(policyText).toContain('secretsmanager:GetSecretValue');
+        expect(policyText).not.toContain('secretsmanager:ListSecrets');
+        expect(policyText).not.toContain('kinesis:ListStreams');
+        expect(policyText).not.toContain('kinesis:PutRecord');
+        expect(policyText).not.toContain('s3:DeleteObject');
+        expect(policyText).toContain('s3:ResourceAccount');
+        expect(policyText).toContain('loopad/events/*');
+
+        const lambdaPolicy = policies.find((resource) => (
+            JSON.stringify(resource.Properties).includes('kinesis:GetRecords')
+        ));
+        expect(lambdaPolicy).toBeDefined();
+        expect(JSON.stringify(lambdaPolicy)).toContain('s3:PutObject');
+        expect(JSON.stringify(lambdaPolicy)).not.toContain('s3:GetObject');
+
+        const ingestFunction = Object.values(resources).find((resource) => (
+            resource.Type === 'AWS::Lambda::Function' &&
+            resource.Properties?.MemorySize === 2_048
+        ));
+        const environment = ingestFunction?.Properties?.Environment as {
+            Variables?: Record<string, unknown>;
+        } | undefined;
+        expect(Object.keys(environment?.Variables ?? {})).toEqual([
+            'CLICKHOUSE_DATABASE',
+            'CLICKHOUSE_HTTP_URL',
+            'CLICKHOUSE_SECRET_ARN',
+            'METRIC_NAMESPACE',
+            'RUN_ID',
+        ]);
+        expect(JSON.stringify(template.toJSON())).not.toContain('0.0.0.0:8123');
+    });
+
+    it('creates the required alarms with service-correct metric dimensions', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouse());
+        const resources = resourcesOf(template);
+        const alarms = Object.values(resources).filter((resource) => resource.Type === 'AWS::CloudWatch::Alarm');
+        expect(alarms).toHaveLength(8);
+
+        const byMetricName = new Map(alarms.map((alarm) => [alarm.Properties?.MetricName, alarm.Properties]));
+        for (const name of ['Errors', 'Throttles', 'Duration', 'GetRecords.IteratorAgeMilliseconds']) {
+            expect(byMetricName.has(name)).toBe(true);
+        }
+        for (const name of ['DroppedEventCount', 'OnFailureDestinationDeliveredEventCount']) {
+            expect(byMetricName.get(name)?.Dimensions).toEqual([
+                { Name: 'EventSourceMappingUUID', Value: expect.any(Object) },
+            ]);
+        }
+        expect(byMetricName.get('DestinationDeliveryFailures')?.Dimensions).toEqual([
+            { Name: 'FunctionName', Value: expect.any(Object) },
+        ]);
+        expect(byMetricName.get('LateEventDropped')).toMatchObject({
+            Namespace: 'LoopAd/Phase4',
+            Dimensions: [{ Name: 'RunId', Value: testPhase4Context.phase4RunId }],
+            Threshold: 1,
+        });
+    });
+
+    it('embeds the immutable schema and does not import or mutate shared dev resources', () => {
+        const phase4Stack = synthPerfPhase4ClickHouse();
+        const phase4Template = Template.fromStack(phase4Stack);
+        const phase4Text = JSON.stringify(phase4Template.toJSON());
+        const schema = readFileSync(join(ROOT, 'assets/clickhouse/phase4-schema.sql'), 'utf8');
+        const devLogicalIdsBefore = Object.keys(resourcesOf(Template.fromStack(synthData()))).sort();
+        const devLogicalIdsAfter = Object.keys(resourcesOf(Template.fromStack(synthData()))).sort();
+
+        expect(schema).toContain('ENGINE = ReplacingMergeTree(ingested_at)');
+        expect(schema).toContain('PARTITION BY event_date');
+        expect(schema).toContain('ORDER BY (project_id, event_id)');
+        expect(schema).toContain('properties_json String');
+        expect(schema).toContain('kinesis_sequence_number UInt256');
+        expect(schema).toContain('ENGINE = MergeTree');
+        expect(phase4Text).toContain('ReplacingMergeTree(ingested_at)');
+        expect(phase4Text).not.toContain('Fn::ImportValue');
+        expect(phase4Text).not.toContain('LoopAdDevDataStack');
+        expect(phase4Stack.dependencies).toHaveLength(0);
+        expect(devLogicalIdsAfter).toEqual(devLogicalIdsBefore);
+    });
+
+    it('rejects missing or malformed run ownership context before synthesis', () => {
+        expect(() => synthPerfPhase4ClickHouse({ phase4RunId: undefined }))
+            .toThrow('Missing or invalid CDK context "phase4RunId"');
+        expect(() => synthPerfPhase4ClickHouse({ phase4RunId: 'run_bad' }))
+            .toThrow('phase4RunId must match');
+        expect(() => synthPerfPhase4ClickHouse({ phase4SessionId: 'phase4-bad' }))
+            .toThrow('phase4SessionId must match');
+    });
+});

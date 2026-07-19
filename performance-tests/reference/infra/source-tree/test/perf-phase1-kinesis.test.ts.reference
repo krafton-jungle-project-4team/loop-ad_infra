@@ -1,0 +1,1060 @@
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
+import { applyConnectionPathHAProxyProfile, DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE } from '../src/perf-phase1-kinesis-stack';
+import {
+    ROOT,
+    resourcesOf,
+    synthPerfPhase1Kinesis,
+    synthPerfPhase1KinesisCapacity,
+    synthPerfPhase1KinesisCapacityStream,
+    synthPerfPhase1KinesisScout,
+    synthPerfPhase1KinesisScoutStream,
+    synthPerfPhase1KinesisOha12k,
+    synthPerfPhase1KinesisOha12kStream,
+    synthPerfPhase1GeneratorControl,
+    synthPerfPhase1GeneratorDiagnosis,
+    synthPerfPhase1GeneratorDiagnosisStream,
+    synthPerfPhase1AlbWarmup,
+    synthPerfPhase1AlbWarmupStream,
+    synthPerfPhase1TcpAlbDiagnosis,
+    synthPerfPhase1TcpAlbDiagnosisStream,
+    synthPerfPhase1AdmissionScaleoutProfileA,
+    synthPerfPhase1AdmissionScaleoutProfileB,
+    synthPerfPhase1AdmissionScaleoutStream,
+    synthPerfPhase1ProtocolCrossover,
+    synthPerfPhase1ProtocolCrossoverStream,
+    synthPerfPhase1ConnectionPathCrossover,
+    synthPerfPhase1ConnectionPathCrossoverStream,
+    synthPerfPhase1KinesisStream,
+    testPhase1Context,
+} from './helpers';
+
+describe('performance test phase 1 Kinesis infrastructure', () => {
+    it('deploys T0/T1, T2, and dedicated two-AZ T3 in one immutable connection-path stack', () => {
+        const stack = synthPerfPhase1ConnectionPathCrossover();
+        const stream = synthPerfPhase1ConnectionPathCrossoverStream();
+        const template = Template.fromStack(stack);
+        const text = JSON.stringify(template.toJSON());
+        const proxyConfig = readFileSync(join(ROOT, 'performance-tests', 'phase1-kinesis', 'haproxy-connection-path.cfg'), 'utf8');
+
+        expect(stack.stackName).toBe('LoopAdPerfPhase1KinesisConnectionPathStack');
+        expect(stream.stackName).toBe('LoopAdPerfPhase1KinesisConnectionPathStreamStack');
+        template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 3);
+        template.resourceCountIs('AWS::ElasticLoadBalancingV2::TargetGroup', 3);
+        template.resourceCountIs('Custom::S3AutoDeleteObjects', 1);
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', { Name: 'perf-p1-conn-alb', Type: 'application' });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', { Name: 'perf-p1-conn-direct', Type: 'network' });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', { Name: 'perf-p1-conn-proxy', Type: 'network' });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            Name: 'perf-p1-conn-alb-h2', Protocol: 'HTTP', ProtocolVersion: 'HTTP2', TargetType: 'instance',
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            Name: 'perf-p1-conn-direct', Port: 8443, Protocol: 'TCP', TargetType: 'instance',
+			HealthCheckPort: '8443', HealthCheckProtocol: 'TCP',
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            Name: 'perf-p1-conn-proxy', Port: 8443, Protocol: 'TCP', TargetType: 'instance',
+        });
+		expect(connectionPathCollectorTlsIngressCount(template)).toBe(2);
+		expect(connectionPathGeneratorTlsEgressCount(template)).toBe(1);
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+            Priority: 5,
+            Actions: [Match.objectLike({ Type: 'fixed-response', FixedResponseConfig: Match.objectLike({ StatusCode: '202' }) })],
+        });
+        for (const suffix of ['2a', '2c']) {
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: `perf-p1-conn-proxy-${suffix}`, MinSize: '1', MaxSize: '1',
+            });
+            template.hasResourceProperties('AWS::ECS::Service', {
+                ServiceName: `perf-p1-conn-proxy-${suffix}`, DesiredCount: 1,
+            });
+        }
+        const connectionPathResources = resourcesOf(template);
+        const capacityProviderAssociationEntry = Object.entries(connectionPathResources).find(([, resource]) => (
+            resource.Type === 'AWS::ECS::ClusterCapacityProviderAssociations'
+        ));
+        expect(capacityProviderAssociationEntry).toBeDefined();
+        const capacityProviderRegistrationConditions = Object.entries(connectionPathResources).filter(([, resource]) => (
+            resource.Type === 'AWS::CloudFormation::WaitCondition'
+        ));
+        expect(capacityProviderRegistrationConditions).toHaveLength(2);
+        template.resourceCountIs('AWS::CloudFormation::WaitConditionHandle', 2);
+        for (const [, condition] of capacityProviderRegistrationConditions) {
+            expect(condition.DependsOn).toContain(capacityProviderAssociationEntry?.[0]);
+            expect(condition.Properties).toMatchObject({ Count: 1, Timeout: '600' });
+        }
+        const proxyServices = Object.values(connectionPathResources).filter((resource) => (
+            resource.Type === 'AWS::ECS::Service' &&
+            String(resource.Properties?.ServiceName).startsWith('perf-p1-conn-proxy-')
+        ));
+        expect(proxyServices).toHaveLength(2);
+        for (const proxyService of proxyServices) {
+            expect(proxyService.DependsOn).toContain(capacityProviderAssociationEntry?.[0]);
+            expect(capacityProviderRegistrationConditions.some(([logicalId]) => proxyService.DependsOn?.includes(logicalId))).toBe(true);
+        }
+        const proxyAutoScalingGroups = Object.values(connectionPathResources).filter((resource) => (
+            resource.Type === 'AWS::AutoScaling::AutoScalingGroup' &&
+            String(resource.Properties?.AutoScalingGroupName).startsWith('perf-p1-conn-proxy-')
+        ));
+        expect(proxyAutoScalingGroups).toHaveLength(2);
+        for (const proxyAutoScalingGroup of proxyAutoScalingGroups) {
+            expect(proxyAutoScalingGroup.CreationPolicy).toEqual({ ResourceSignal: { Count: 1, Timeout: 'PT10M' } });
+        }
+        const proxyLaunchTemplates = Object.values(connectionPathResources).filter((resource) => (
+            resource.Type === 'AWS::EC2::LaunchTemplate' &&
+            (resource.Properties?.LaunchTemplateData as Record<string, unknown>)?.InstanceType === 'c6in.xlarge'
+        ));
+        expect(proxyLaunchTemplates).toHaveLength(2);
+        for (const proxyLaunchTemplate of proxyLaunchTemplates) {
+            const userData = JSON.stringify((proxyLaunchTemplate.Properties?.LaunchTemplateData as Record<string, unknown>)?.UserData);
+            expect(userData).toContain('connection-path-proxy-cfn-signal.service');
+            expect(userData).toContain('http://127.0.0.1:51678/v1/metadata');
+            expect(userData).toContain('describe-container-instances');
+            expect(userData).toContain('describe-capacity-providers');
+            expect(userData).toContain('describe-auto-scaling-groups');
+        }
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([Match.objectLike({
+                    Action: Match.arrayWith([
+                        'autoscaling:DescribeAutoScalingGroups',
+                        'ecs:DescribeCapacityProviders',
+                        'ecs:DescribeContainerInstances',
+                    ]),
+                    Effect: 'Allow',
+                    Resource: '*',
+                })]),
+            }),
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            Family: 'perf-p1-conn-proxy', NetworkMode: 'host',
+            ContainerDefinitions: [Match.objectLike({
+                Command: Match.arrayWith([Match.stringLikeRegexp('/tmp/haproxy-secrets/haproxy\\.pem')]),
+                Name: 'haproxy', Secrets: Match.arrayWith([
+                    Match.objectLike({ Name: 'TLS_CERTIFICATE_PEM' }),
+                    Match.objectLike({ Name: 'TLS_PRIVATE_KEY_PEM' }),
+                ]),
+            })],
+        });
+        template.hasResourceProperties('AWS::ServiceDiscovery::Service', {
+            Name: '_collector._tcp', DnsConfig: Match.objectLike({ DnsRecords: [{ TTL: 1, Type: 'SRV' }] }),
+        });
+        expect(text).toContain('connection-path.internal');
+        expect(text).toContain('haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d');
+        expect(text).not.toContain('get-secret-value');
+        expect(proxyConfig).toContain('server-template collector 1-8 _collector._tcp.connection-path.internal proto h2');
+        expect(proxyConfig).toContain('balance leastconn');
+        expect(proxyConfig).not.toContain('http-buffer-request');
+        template.hasOutput('Phase1ConnectionPathDirectNlbDnsName', {});
+        template.hasOutput('Phase1ConnectionPathProxyNlbDnsName', {});
+        template.hasOutput('Phase1ConnectionPathProxyAutoScalingGroupNames', {});
+        template.hasOutput('Phase1ConnectionPathProxyImage', {});
+        template.hasOutput('Phase1CollectorCount', { Value: '6' });
+        template.hasOutput('Phase1LoadGeneratorCount', { Value: '8' });
+        template.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '48' });
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 5);
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-collector', MinSize: '6', MaxSize: '6',
+        });
+        template.hasResourceProperties('AWS::ECS::Service', { DesiredCount: 6 });
+        template.hasOutput('Phase1ConnectionPathDefault', { Value: 'T3_NLB_HAPROXY' });
+        template.hasOutput('Phase1LoadBalancerKind', { Value: 'nlb' });
+        expect(text).toContain(Buffer.from(
+            applyConnectionPathHAProxyProfile(proxyConfig, DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE),
+        ).toString('base64'));
+        for (const name of ['perf-phase1-loop-ad-load-generator-2a', 'perf-phase1-loop-ad-load-generator-2c']) {
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: name,
+                MinSize: '4',
+                MaxSize: '4',
+            });
+        }
+        const fourByFour = Template.fromStack(synthPerfPhase1ConnectionPathCrossover({ phase1CollectorCount: 4, phase1LoadGeneratorCount: 4 }));
+        fourByFour.hasOutput('Phase1CollectorCount', { Value: '4' });
+        fourByFour.hasOutput('Phase1LoadGeneratorCount', { Value: '4' });
+        fourByFour.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '32' });
+        expect(() => synthPerfPhase1ConnectionPathCrossover({ phase1LoadGeneratorCount: 2 })).toThrow('must be 4 or 8 in connection-path-crossover mode');
+        expect(() => synthPerfPhase1ConnectionPathCrossover({ phase1CollectorCount: 5 })).toThrow('must be 4 or 6 in connection-path-crossover mode');
+    });
+
+	it('uses automatic HAProxy threads for sampled profiles while keeping capacity separate', () => {
+		const base = readFileSync(join(ROOT, 'performance-tests', 'phase1-kinesis', 'haproxy-connection-path.cfg'), 'utf8');
+		const sampled = applyConnectionPathHAProxyProfile(base, 'sampled-202');
+		const capacity = applyConnectionPathHAProxyProfile(base, 'sampled-202-capacity');
+		const defaultProfile = Template.fromStack(synthPerfPhase1ConnectionPathCrossover());
+		expect(DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE).toBe('sampled-202');
+		expect(applyConnectionPathHAProxyProfile(base, 'baseline-full')).toBe(base);
+		expect(sampled).toContain('log stdout format raw sample 1:1000 local0');
+		expect(sampled).toContain('log stdout format raw local1 err');
+		expect(sampled).toContain('option log-separate-errors');
+		expect(sampled).toContain('acl error_status status 400:599');
+		expect(sampled).toContain('http-after-response set-log-level err if error_status');
+		expect(sampled).not.toContain('nbthread');
+		expect(capacity).toBe(sampled);
+		defaultProfile.hasOutput('Phase1ConnectionPathProxyProfile', { Value: 'sampled-202' });
+		defaultProfile.hasOutput('Phase1ConnectionPathProxyInstanceType', { Value: 'c6in.xlarge' });
+		defaultProfile.hasOutput('Phase1ConnectionPathProxyThreadMode', { Value: 'automatic' });
+		defaultProfile.hasOutput('Phase1ConnectionPathProxyVcpusPerInstance', { Value: '4' });
+
+		const e2 = Template.fromStack(synthPerfPhase1ConnectionPathCrossover({ phase1HAProxyProfile: 'sampled-202' }));
+		const e3 = Template.fromStack(synthPerfPhase1ConnectionPathCrossover({ phase1HAProxyProfile: 'sampled-202-capacity' }));
+		expect(JSON.stringify(e2.toJSON())).toContain(Buffer.from(sampled).toString('base64'));
+		expect(JSON.stringify(e3.toJSON())).toContain(Buffer.from(capacity).toString('base64'));
+		e2.hasOutput('Phase1ConnectionPathProxyProfile', { Value: 'sampled-202' });
+		e2.hasOutput('Phase1ConnectionPathProxyInstanceType', { Value: 'c6in.xlarge' });
+		e2.hasOutput('Phase1ConnectionPathProxyThreadMode', { Value: 'automatic' });
+		e2.hasOutput('Phase1ConnectionPathProxyVcpusPerInstance', { Value: '4' });
+		e2.hasOutput('Phase1ConnectionPathProxyLoggingPolicy', { Value: 'normal-202-deterministic-0.1-percent' });
+		e3.hasOutput('Phase1ConnectionPathProxyProfile', { Value: 'sampled-202-capacity' });
+		e3.hasOutput('Phase1ConnectionPathProxyInstanceType', { Value: 'c6in.2xlarge' });
+		e3.hasOutput('Phase1ConnectionPathProxyThreadMode', { Value: 'automatic' });
+		e3.hasOutput('Phase1ConnectionPathProxyVcpusPerInstance', { Value: '8' });
+		e3.hasOutput('Phase1ConnectionPathProxyLoggingPolicy', { Value: 'normal-202-deterministic-0.1-percent' });
+		e3.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '56' });
+		const e3Resources = resourcesOf(e3);
+		expect(Object.values(e3Resources).filter((resource) => resource.Type === 'AWS::EC2::LaunchTemplate' &&
+			(resource.Properties?.LaunchTemplateData as Record<string, unknown>)?.InstanceType === 'c6in.2xlarge')).toHaveLength(2);
+		expect(() => synthPerfPhase1ConnectionPathCrossover({ phase1HAProxyProfile: 'other' })).toThrow('must be baseline-full, sampled-202, or sampled-202-capacity');
+		expect(() => synthPerfPhase1ProtocolCrossover({ phase1HAProxyProfile: 'sampled-202' })).toThrow('may change only in connection-path-crossover mode');
+	});
+
+    it('creates fail-closed ALB H1/H2 plus NLB TCP-H2 and QUIC-H3 passthrough variants', () => {
+        const h1 = Template.fromStack(synthPerfPhase1ProtocolCrossover());
+        const h2 = Template.fromStack(synthPerfPhase1ProtocolCrossover({ phase1AlbTargetProtocolVersion: 'HTTP2' }));
+        const nlb = Template.fromStack(synthPerfPhase1ProtocolCrossover({ phase1LoadBalancerKind: 'nlb' }));
+        const quic = Template.fromStack(synthPerfPhase1ProtocolCrossover({ phase1LoadBalancerKind: 'nlb', phase1NlbListenerProtocol: 'quic' }));
+        const stream = synthPerfPhase1ProtocolCrossoverStream();
+
+        expect(stream.stackName).toBe('LoopAdPerfPhase1KinesisProtocolCrossoverStreamStack');
+        for (const template of [h1, h2, nlb, quic]) {
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: 'perf-phase1-loop-ad-collector', MinSize: '4', MaxSize: '4',
+            });
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2a', MinSize: '2', MaxSize: '2',
+            });
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2c', MinSize: '2', MaxSize: '2',
+            });
+            template.resourceCountIs('AWS::EC2::FlowLog', 1);
+        }
+		for (const template of [h1, h2, nlb]) template.hasOutput('Phase1FrontendProtocol', { Value: 'HTTPS' });
+		quic.hasOutput('Phase1FrontendProtocol', { Value: 'QUIC' });
+        h1.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 443, Protocol: 'HTTPS', Certificates: [{ CertificateArn: 'arn:aws:acm:ap-northeast-2:123456789012:certificate/12345678-1234-1234-1234-123456789012' }],
+        });
+        h1.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            Name: 'perf-p1-protocol-http1', Protocol: 'HTTP', ProtocolVersion: 'HTTP1',
+        });
+        h1.hasOutput('Phase1LoadBalancerKind', { Value: 'alb' });
+        h2.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+            Name: 'perf-p1-protocol-http2', Protocol: 'HTTP', ProtocolVersion: 'HTTP2',
+        });
+        h2.hasOutput('Phase1TargetProtocolVersion', { Value: 'HTTP2' });
+        nlb.hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+			Type: 'network', Scheme: 'internal', SecurityGroups: Match.absent(),
+		});
+        nlb.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+			Port: 443, Protocol: 'TCP',
+        });
+		nlb.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', { Port: 8443, Protocol: 'TCP', TargetType: 'instance' });
+		expect(protocolPortMappings(nlb)).toEqual([{ ContainerPort: 8443, HostPort: 8443, Protocol: 'tcp' }]);
+		expect(nlbHealthIngressCount(nlb)).toBe(2);
+		expect(nlbDataIngressCount(nlb, 'tcp')).toBe(2);
+		expect(nlbDataIngressCount(nlb, 'udp')).toBe(2);
+        nlb.hasOutput('Phase1LoadBalancerKind', { Value: 'nlb' });
+        nlb.hasOutput('Phase1TargetProtocolVersion', { Value: 'TCP' });
+		quic.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', { Port: 443, Protocol: 'QUIC' });
+		quic.hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', { Port: 8443, Protocol: 'QUIC', TargetType: 'instance' });
+		quic.hasResourceProperties('AWS::ECS::Service', { LoadBalancers: [] });
+		expect(protocolPortMappings(quic)).toEqual([{ ContainerPort: 8443, HostPort: 8443, Protocol: 'udp' }]);
+		expect(nlbHealthIngressCount(quic)).toBe(2);
+		expect(nlbDataIngressCount(quic, 'tcp')).toBe(2);
+		expect(nlbDataIngressCount(quic, 'udp')).toBe(2);
+		expect(nlbHealthIngressCount(h1)).toBe(0);
+		expect(nlbDataIngressCount(h1, 'tcp')).toBe(0);
+		quic.hasOutput('Phase1TargetProtocolVersion', { Value: 'QUIC' });
+		const protocolTemplate = JSON.stringify(quic.toJSON());
+		expect(protocolTemplate).toContain('LOOPAD_PROTOCOL_TLS_CERTIFICATE_PEM');
+		expect(protocolTemplate).toContain('LOOPAD_PROTOCOL_TLS_PRIVATE_KEY_PEM');
+		expect(protocolTemplate).toContain('LOOPAD_QUIC_SERVER_ID');
+		for (const template of [h1, h2, nlb, quic]) {
+			const generatorLaunchTemplates = Object.values(resourcesOf(template)).filter((resource) => (
+				resource.Type === 'AWS::EC2::LaunchTemplate' &&
+				(resource.Properties?.LaunchTemplateData as Record<string, unknown>)?.InstanceType === 'c6in.large'
+			));
+			expect(generatorLaunchTemplates).toHaveLength(2);
+			for (const launchTemplate of generatorLaunchTemplates) {
+				const launchTemplateData = launchTemplate.Properties?.LaunchTemplateData as Record<string, unknown>;
+				const userData = launchTemplateData.UserData as { 'Fn::Base64': string };
+				const decodedUserData = userData['Fn::Base64'];
+				expect(Buffer.byteLength(decodedUserData, 'utf8')).toBeLessThanOrEqual(16_384);
+				const compressed = decodedUserData.match(/printf '%s' '([^']+)' \| base64 -d \| gzip -d > \/tmp\/install-loopad-load-tools\.sh/)?.[1];
+				expect(compressed).toBeDefined();
+				const installer = gunzipSync(Buffer.from(compressed!, 'base64')).toString('utf8');
+				expect(installer).toContain('run-ec2-oha-worker.sh');
+				expect(installer).not.toContain('run-ec2-reference-worker.sh');
+			}
+		}
+        expect(() => synthPerfPhase1ProtocolCrossover({ phase1CertificateArn: '' })).toThrow('phase1CertificateArn must be a valid regional ACM certificate ARN');
+        expect(() => synthPerfPhase1ProtocolCrossover({ phase1LoadGeneratorCount: 2 })).toThrow('phase1LoadGeneratorCount must be exactly 4 in protocol-crossover mode.');
+		expect(() => synthPerfPhase1ProtocolCrossover({ phase1LoadBalancerKind: 'nlb', phase1AlbTargetProtocolVersion: 'HTTP2' })).toThrow('NLB crossover must keep');
+		expect(() => synthPerfPhase1ProtocolCrossover({ phase1ProtocolTlsSecretArn: '' })).toThrow('phase1ProtocolTlsSecretArn must be a valid regional Secrets Manager ARN');
+    });
+    it('supports exact admission scale-out profiles while keeping admission and SDK connection limits independent', () => {
+        const profileA = Template.fromStack(synthPerfPhase1AdmissionScaleoutProfileA());
+        const profileB = Template.fromStack(synthPerfPhase1AdmissionScaleoutProfileB());
+        const stream = synthPerfPhase1AdmissionScaleoutStream();
+
+        expect(stream.stackName).toBe('LoopAdPerfPhase1KinesisAdmissionScaleoutStreamStack');
+        for (const [template, profile, count, instanceType] of [
+            [profileA, 'A', '4', 'c6i.xlarge'],
+            [profileB, 'B', '8', 'c6i.large'],
+        ] as const) {
+            template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+                AutoScalingGroupName: 'perf-phase1-loop-ad-collector', MinSize: count, MaxSize: count,
+            });
+            template.hasResourceProperties('AWS::ECS::Service', {
+                DesiredCount: Number(count), PlacementConstraints: [{ Type: 'distinctInstance' }],
+            });
+            template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+                LaunchTemplateData: Match.objectLike({ InstanceType: instanceType }),
+            });
+            const templateText = JSON.stringify(template.toJSON());
+            expect(templateText).toContain('"Name":"LOOPAD_MAX_INFLIGHT_REQUESTS","Value":"2048"');
+            expect(templateText).toContain('"Name":"LOOPAD_KINESIS_MAX_CONNECTIONS","Value":"1024"');
+            template.hasOutput('Phase1CapacityProfile', { Value: profile });
+            template.hasOutput('Phase1CollectorCount', { Value: count });
+            template.hasOutput('Phase1CollectorInstanceType', { Value: instanceType });
+            template.hasOutput('Phase1ApplicationMaxInFlight', { Value: '2048' });
+            template.hasOutput('Phase1KinesisMaxConnections', { Value: '1024' });
+            template.hasOutput('Phase1CollectorTotalVcpus', { Value: '16' });
+            template.hasOutput('Phase1CollectorTotalMemoryGiB', { Value: '32' });
+        }
+        profileA.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2a', MinSize: '2', MaxSize: '2',
+        });
+        profileA.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2c', MinSize: '2', MaxSize: '2',
+        });
+        profileA.resourceCountIs('AWS::EC2::FlowLog', 1);
+        profileA.resourceCountIs('AWS::S3::Bucket', 1);
+        expect(JSON.stringify(profileA.toJSON())).toContain(
+            'phase1-kinesis-admission-scaleout-20260713T073000Z/run_20260713_163000_admission_scaleout/generator-evidence/*',
+        );
+        expect(() => synthPerfPhase1AdmissionScaleoutProfileA({ phase1CollectorCount: 8 })).toThrow(
+            'phase1CollectorCount must be exactly 4 in capacity profile A.',
+        );
+        expect(() => synthPerfPhase1AdmissionScaleoutProfileB({ phase1CollectorCount: 4 })).toThrow(
+            'phase1CollectorCount must be exactly 8 in capacity profile B.',
+        );
+        expect(() => synthPerfPhase1AdmissionScaleoutProfileA({ phase1ApplicationMaxInFlight: 1024 })).toThrow(
+			'phase1ApplicationMaxInFlight must be exactly 2048 in diagnostic capacity modes.',
+        );
+        expect(() => synthPerfPhase1AdmissionScaleoutProfileA({ phase1KinesisMaxConnections: 2048 })).toThrow(
+			'phase1KinesisMaxConnections must remain exactly 1024 in diagnostic capacity modes.',
+        );
+    });
+    it('creates the run-scoped TCP/ALB path diagnosis topology and evidence controls', () => {
+        const stack = synthPerfPhase1TcpAlbDiagnosis();
+        const streamStack = synthPerfPhase1TcpAlbDiagnosisStream();
+        const template = Template.fromStack(stack);
+        const resources = Object.values(resourcesOf(template));
+        const text = JSON.stringify(template.toJSON());
+
+        expect(stack.stackName).toBe('LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack');
+        expect(streamStack.stackName).toBe('LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStreamStack');
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 3);
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2a', MinSize: '2', MaxSize: '2',
+        });
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator-2c', MinSize: '2', MaxSize: '2',
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+            Priority: 5,
+            Actions: [Match.objectLike({ Type: 'fixed-response', FixedResponseConfig: Match.objectLike({ StatusCode: '202' }) })],
+            Conditions: Match.arrayWith([
+                Match.objectLike({ Field: 'path-pattern', PathPatternConfig: { Values: ['/__generator_control'] } }),
+                Match.objectLike({ Field: 'http-request-method', HttpRequestMethodConfig: { Values: ['POST'] } }),
+            ]),
+        });
+		template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+			Priority: 11,
+			Conditions: Match.arrayWith([Match.objectLike({
+				Field: 'path-pattern',
+				PathPatternConfig: { Values: ['/__collector_control', '/__delay_control', '/__decode_control', '/__batch_control'] },
+			})]),
+		});
+        template.hasResourceProperties('AWS::EC2::FlowLog', {
+            MaxAggregationInterval: 60, TrafficType: 'ALL', LogDestinationType: 'cloud-watch-logs',
+            LogFormat: Match.stringLikeRegexp('instance-id.*interface-id.*subnet-id.*az-id.*tcp-flags.*log-status'),
+        });
+        expect(resources.filter((resource) => resource.Type === 'AWS::S3::Bucket')).toHaveLength(1);
+        expect(text).toContain('tcpdump bind-utils');
+        expect(text).toContain('tcp-alb-path-diagnosis-20260713T050507Z/run_20260713_140507_tcp_alb_path/diagnostics/*');
+        expect(text).toContain('tcp-alb-path-diagnosis-20260713T050507Z/run_20260713_140507_tcp_alb_path/collector-evidence/*');
+		expect(text).toContain('tcp-alb-path-diagnosis-20260713T050507Z/run_20260713_140507_tcp_alb_path/tooling/reference-driver*');
+        expect(text).toContain('"Action":"s3:PutObject"');
+        expect(text).not.toContain('s3:PutObjectRetention');
+        expect(text).toContain('"Key":"Phase","Value":"phase1-tcp-alb-path-diagnosis"');
+		template.hasOutput('Phase1ApplicationMaxInFlight', { Value: '2048' });
+		template.hasOutput('Phase1KinesisMaxConnections', { Value: '1024' });
+        expect(() => synthPerfPhase1TcpAlbDiagnosis({ phase1LoadGeneratorCount: 2 })).toThrow(
+            'phase1LoadGeneratorCount must be exactly 4 in tcp-alb-path-diagnosis mode.',
+        );
+    });
+    it('enables session-scoped ALB access logs only for the warm-up experiment', () => {
+        const template = Template.fromStack(synthPerfPhase1AlbWarmup());
+        const resources = resourcesOf(template);
+        const bucketEntry = Object.entries(resources).find(([, resource]) => resource.Type === 'AWS::S3::Bucket');
+        const policyEntry = Object.entries(resources).find(([, resource]) => resource.Type === 'AWS::S3::BucketPolicy');
+        const loadBalancer = Object.values(resources).find((resource) => resource.Type === 'AWS::ElasticLoadBalancingV2::LoadBalancer');
+        const templateText = JSON.stringify(template.toJSON());
+
+        expect(bucketEntry?.[1]).toMatchObject({
+            DeletionPolicy: 'Delete',
+            UpdateReplacePolicy: 'Delete',
+            Properties: {
+                BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }] },
+                PublicAccessBlockConfiguration: {
+                    BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true,
+                },
+            },
+        });
+        expect(templateText).not.toContain('VersioningConfiguration');
+        expect(policyEntry?.[1].Properties?.PolicyDocument).toEqual(expect.objectContaining({
+            Statement: expect.arrayContaining([expect.objectContaining({
+                Sid: 'AllowSessionAlbAccessLogDelivery',
+                Action: 's3:PutObject',
+                Effect: 'Allow',
+                Principal: { Service: 'logdelivery.elasticloadbalancing.amazonaws.com' },
+                Condition: {
+                    StringEquals: { 'aws:SourceAccount': '123456789012' },
+                    ArnLike: { 'aws:SourceArn': expect.anything() },
+                },
+            })]),
+        }));
+        expect(templateText).toContain('phase1-kinesis-alb-warmup-20260712T180000Z/run_20260712_180000_go_batch_warmup/AWSLogs/123456789012/*');
+        template.hasOutput('Phase1CollectorImageTag', {
+            Value: `run_20260712_180000_go_batch_warmup-go-batch-${'0123456789abcdef0123456789abcdef01234567'}`,
+        });
+        expect(loadBalancer?.Properties?.LoadBalancerAttributes).toEqual(expect.arrayContaining([
+            { Key: 'access_logs.s3.enabled', Value: 'true' },
+            { Key: 'access_logs.s3.prefix', Value: 'phase1-kinesis-alb-warmup-20260712T180000Z/run_20260712_180000_go_batch_warmup' },
+        ]));
+        expect(loadBalancer?.DependsOn).toContain(policyEntry?.[0]);
+        expect(templateText).toContain(':elasticloadbalancing:ap-northeast-2:123456789012:loadbalancer/*');
+        template.resourceCountIs('Custom::S3AutoDeleteObjects', 0);
+        template.resourceCountIs('AWS::S3::Bucket', 1);
+        template.resourceCountIs('AWS::S3::BucketPolicy', 1);
+
+        Template.fromStack(synthPerfPhase1AlbWarmupStream()).resourceCountIs('AWS::S3::Bucket', 0);
+        Template.fromStack(synthPerfPhase1GeneratorDiagnosis()).resourceCountIs('AWS::S3::Bucket', 0);
+    });
+    it('creates a shared disposable 80-shard provisioned stream with managed encryption', () => {
+        const template = Template.fromStack(synthPerfPhase1KinesisStream());
+        const resources = resourcesOf(template);
+        const stream = Object.values(resources).find((resource) => resource.Type === 'AWS::Kinesis::Stream');
+
+        expect(stream).toMatchObject({
+            Type: 'AWS::Kinesis::Stream',
+            Properties: {
+                Name: 'perf-phase1-loop-ad-events',
+                RetentionPeriodHours: 24,
+                ShardCount: 80,
+                StreamEncryption: {
+                    EncryptionType: 'KMS',
+                    KeyId: 'alias/aws/kinesis',
+                },
+                StreamModeDetails: {
+                    StreamMode: 'PROVISIONED',
+                },
+            },
+            DeletionPolicy: 'Delete',
+            UpdateReplacePolicy: 'Delete',
+        });
+        expect(JSON.stringify(stream?.Properties?.Tags)).toContain('"Key":"Project","Value":"loop-ad"');
+        expect(JSON.stringify(stream?.Properties?.Tags)).toContain('"Key":"Environment","Value":"perf-phase1-kinesis"');
+        expect(JSON.stringify(stream?.Properties?.Tags)).toContain('"Key":"ResourceScope","Value":"shared-test-session"');
+        expect(JSON.stringify(stream?.Properties?.Tags)).toContain(`"Key":"ComparisonSessionId","Value":"${testPhase1Context.phase1SessionId}"`);
+        expect(JSON.stringify(stream?.Properties?.Tags)).not.toContain('"Key":"RunId"');
+    });
+
+    it('gives connection-path runs 120 shards and per-shard write diagnostics', () => {
+        const template = Template.fromStack(synthPerfPhase1ConnectionPathCrossoverStream());
+        const resources = resourcesOf(template);
+        const stream = Object.values(resources).find((resource) => resource.Type === 'AWS::Kinesis::Stream');
+
+        expect(stream?.Properties).toMatchObject({
+            ShardCount: 120,
+            DesiredShardLevelMetrics: [
+                'IncomingBytes',
+                'IncomingRecords',
+                'WriteProvisionedThroughputExceeded',
+            ],
+        });
+        template.hasOutput('Phase1KinesisShardCount', { Value: '120' });
+    });
+
+    it('keeps the run-scoped stack independent of the shared stream lifecycle', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+
+        template.resourceCountIs('AWS::Kinesis::Stream', 0);
+        expect(JSON.stringify(template.toJSON())).toContain('perf-phase1-loop-ad-events');
+    });
+
+    it('uses a no-NAT public-subnet VPC and keeps the ALB internal', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+
+        template.resourceCountIs('AWS::EC2::NatGateway', 0);
+        template.resourceCountIs('AWS::EC2::SecurityGroup', 3);
+        template.resourcePropertiesCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+            Type: 'application',
+            Scheme: 'internal',
+        }, 1);
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            Port: 80,
+            Protocol: 'HTTP',
+            DefaultActions: [
+                Match.objectLike({
+                    Type: 'fixed-response',
+                    FixedResponseConfig: Match.objectLike({ StatusCode: '404' }),
+                }),
+            ],
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::ListenerRule', {
+            Conditions: [
+                {
+                    Field: 'path-pattern',
+                    PathPatternConfig: { Values: ['/', '/events'] },
+                },
+                {
+                    Field: 'http-request-method',
+                    HttpRequestMethodConfig: { Values: ['POST', 'OPTIONS'] },
+                },
+            ],
+        });
+        const listenerRules = Object.values(resourcesOf(template)).filter((resource) => (
+            resource.Type === 'AWS::ElasticLoadBalancingV2::ListenerRule'
+        ));
+        expect(JSON.stringify(listenerRules)).not.toContain('/debug/');
+    });
+
+    it('creates exact-size On-Demand collector and load-generator ASGs without autoscaling', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+        const templateText = JSON.stringify(template.toJSON());
+        const parameters = Object.values(template.toJSON().Parameters ?? {});
+
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 2);
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-collector',
+            InstanceMaintenancePolicy: {
+                MinHealthyPercentage: 0,
+                MaxHealthyPercentage: 100,
+            },
+            MinSize: '1',
+            MaxSize: '1',
+        });
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator',
+            MinSize: '1',
+            MaxSize: '1',
+        });
+        expect(templateText).not.toContain('"DesiredCapacity"');
+        template.resourceCountIs('AWS::AutoScaling::ScalingPolicy', 0);
+        template.resourceCountIs('AWS::AutoScaling::ScheduledAction', 0);
+        template.resourceCountIs('AWS::AutoScaling::WarmPool', 0);
+        expect(templateText).toContain('c6i.xlarge');
+        expect(templateText).toContain('c6in.large');
+        expect(templateText).toContain('"Monitoring":{"Enabled":true}');
+        expect(templateText).not.toContain('"MarketType":"spot"');
+        expect(parameters).toContainEqual(expect.objectContaining({
+            Default: '/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id',
+        }));
+        expect(templateText).not.toContain('/aws/service/ecs/optimized-ami/amazon-linux-2/');
+        template.resourcePropertiesCountIs('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                MetadataOptions: { HttpTokens: 'required' },
+            }),
+        }, 2);
+        const resources = Object.values(resourcesOf(template));
+        const autoScalingGroups = resources.filter((resource) => resource.Type === 'AWS::AutoScaling::AutoScalingGroup');
+        for (const autoScalingGroup of autoScalingGroups) {
+            expect(autoScalingGroup.UpdatePolicy).toMatchObject({
+                AutoScalingRollingUpdate: {
+                    MinInstancesInService: 0,
+                    SuspendProcesses: expect.arrayContaining(['AZRebalance', 'InstanceRefresh']),
+                },
+            });
+        }
+
+        const collectorAutoScalingGroup = autoScalingGroups.find((resource) => (
+            resource.Properties?.AutoScalingGroupName === 'perf-phase1-loop-ad-collector'
+        ));
+        expect(collectorAutoScalingGroup?.CreationPolicy).toEqual({
+            ResourceSignal: {
+                Count: 1,
+                Timeout: 'PT10M',
+            },
+        });
+        const loadGeneratorAutoScalingGroup = autoScalingGroups.find((resource) => (
+            resource.Properties?.AutoScalingGroupName === 'perf-phase1-loop-ad-load-generator'
+        ));
+        expect(loadGeneratorAutoScalingGroup?.CreationPolicy).toBeUndefined();
+    });
+
+    it('signals collector ASG readiness from a unit ordered after the ECS agent', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis({ phase1CollectorCount: 2 }));
+        const resources = resourcesOf(template);
+        const collectorAsgEntry = Object.entries(resources).find(([, resource]) => (
+            resource.Type === 'AWS::AutoScaling::AutoScalingGroup' &&
+            resource.Properties?.AutoScalingGroupName === 'perf-phase1-loop-ad-collector'
+        ));
+        const collectorLaunchTemplate = Object.values(resources).find((resource) => (
+            resource.Type === 'AWS::EC2::LaunchTemplate' &&
+            (resource.Properties?.LaunchTemplateData as Record<string, unknown>)?.InstanceType === 'c6i.xlarge'
+        ));
+        const collectorService = Object.values(resources).find((resource) => (
+            resource.Type === 'AWS::ECS::Service'
+        ));
+        const userData = JSON.stringify((collectorLaunchTemplate?.Properties?.LaunchTemplateData as Record<string, unknown>)
+            ?.UserData);
+
+        expect(collectorAsgEntry?.[1].CreationPolicy).toEqual({
+            ResourceSignal: { Count: 2, Timeout: 'PT10M' },
+        });
+        expect(userData).toContain('/etc/systemd/system/collector-cfn-signal.service');
+        expect(userData).toContain('Wants=ecs.service');
+        expect(userData).toContain('After=ecs.service');
+        expect(userData).toContain('systemctl start --no-block collector-cfn-signal.service');
+        expect(userData).not.toContain('systemctl enable --now collector-cfn-signal.service');
+        expect(userData).toContain('http://127.0.0.1:51678/v1/metadata');
+        expect(userData).toContain('ContainerInstanceArn');
+        expect(userData).toContain('X-aws-ec2-metadata-token-ttl-seconds: 60');
+        expect(userData).toContain('aws cloudformation signal-resource');
+        expect(userData).toContain('--status FAILURE');
+        expect(userData).toContain('--status SUCCESS');
+        expect(userData).toContain(`--logical-resource-id ${collectorAsgEntry?.[0]}`);
+        expect(collectorService?.DependsOn).toContain(collectorAsgEntry?.[0]);
+        expect(collectorService?.Properties).toEqual(expect.objectContaining({ LaunchType: 'EC2' }));
+        expect(Object.values(resources).some((resource) => (
+            resource.Type === 'AWS::ECS::CapacityProvider' ||
+            resource.Type === 'AWS::ECS::ClusterCapacityProviderAssociations'
+        ))).toBe(false);
+
+        const collectorInstanceRoleEntry = Object.entries(resources).find(([, resource]) => (
+            resource.Type === 'AWS::IAM::Role' &&
+            resource.Properties?.RoleName === 'loop-ad-perf-phase1-collector-instance'
+        ));
+        const collectorInstancePolicy = Object.values(resources).find((resource) => (
+            resource.Type === 'AWS::IAM::Policy' &&
+            (resource.Properties?.Roles as Array<{ Ref?: string }> | undefined)
+                ?.some((role) => role.Ref === collectorInstanceRoleEntry?.[0])
+        ));
+        expect(collectorInstancePolicy?.Properties?.PolicyDocument).toEqual(expect.objectContaining({
+            Statement: expect.arrayContaining([{
+                Action: 'cloudformation:SignalResource',
+                Effect: 'Allow',
+                Resource: { Ref: 'AWS::StackId' },
+            }]),
+        }));
+    });
+
+    it('runs one direct EC2 collector task per host with stop-first deployments and no managed scaling', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+
+        template.resourceCountIs('AWS::ECS::CapacityProvider', 0);
+        template.resourceCountIs('AWS::ECS::ClusterCapacityProviderAssociations', 0);
+        template.hasResourceProperties('AWS::ECS::Service', {
+            AvailabilityZoneRebalancing: 'DISABLED',
+            DesiredCount: 1,
+            DeploymentConfiguration: Match.objectLike({
+                MaximumPercent: 100,
+                MinimumHealthyPercent: 0,
+            }),
+            LaunchType: 'EC2',
+            PlacementConstraints: [{ Type: 'distinctInstance' }],
+            SchedulingStrategy: 'REPLICA',
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            NetworkMode: 'bridge',
+            ContainerDefinitions: [
+                Match.objectLike({
+                    Name: 'collector',
+                    MemoryReservation: 512,
+                    PortMappings: [{ ContainerPort: 8080, HostPort: 8080, Protocol: 'tcp' }],
+                    StopTimeout: 30,
+                }),
+            ],
+        });
+    });
+
+    it('uses the immutable commit tag and required collector environment', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasOutput('Phase1CollectorImageTag', {
+            Value: `phase1-compare-${testPhase1Context.phase1Candidate}-${testPhase1Context.phase1CollectorSha}`,
+        });
+        expect(templateText).toContain(`loop-ad/event-collector@${testPhase1Context.phase1CollectorImageDigest}`);
+        expect(templateText).not.toContain(':latest');
+        for (const envName of [
+            'LOOPAD_ENV',
+            'LOOPAD_SERVICE_ID',
+            'LOOPAD_KINESIS_STREAM_NAME',
+            'LOOPAD_KINESIS_PRODUCER',
+            'LOOPAD_COMPARISON_SESSION_ID',
+            'LOOPAD_COMPARISON_CANDIDATE',
+            'LOOPAD_KINESIS_REQUEST_TIMEOUT',
+            'LOOPAD_KINESIS_MAX_CONNECTIONS',
+            'LOOPAD_MAX_INFLIGHT_REQUESTS',
+        ]) {
+            expect(templateText).toContain(`"Name":"${envName}"`);
+        }
+        template.hasOutput('Phase1ComparisonSessionId', { Value: testPhase1Context.phase1SessionId });
+        template.hasOutput('Phase1Candidate', { Value: 'go-sync' });
+        template.hasOutput('Phase1KinesisMaxConnections', { Value: '1024' });
+        template.hasResourceProperties('AWS::Logs::LogGroup', {
+            LogGroupName: '/loop-ad/perf-phase1/event-collector',
+            RetentionInDays: 1,
+        });
+    });
+
+    it('embeds only the oha worker within EC2 user-data limits', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+        const launchTemplate = Object.values(resourcesOf(template)).find((resource) => (
+            resource.Type === 'AWS::EC2::LaunchTemplate' &&
+            (resource.Properties?.LaunchTemplateData as Record<string, unknown>)?.InstanceType === 'c6in.large'
+        ));
+        const launchTemplateData = launchTemplate?.Properties?.LaunchTemplateData as Record<string, unknown>;
+        const userData = launchTemplateData.UserData as { 'Fn::Base64': string };
+        const decodedUserData = userData['Fn::Base64'];
+
+        expect(Buffer.byteLength(decodedUserData, 'utf8')).toBeLessThanOrEqual(16_384);
+        expect(decodedUserData).toContain('dnf install -y jq awscli-2');
+        expect(decodedUserData).not.toContain('yum install');
+        expect(decodedUserData).not.toContain('generate-payload-pool.py');
+		expect(decodedUserData).toContain('bash /tmp/install-loopad-load-tools.sh');
+
+        const embedded = [...decodedUserData.matchAll(/printf '%s' '([^']+)' \| base64 -d \| gzip -d > (\/tmp\/install-loopad-load-tools\.sh)/g)];
+        expect(embedded).toHaveLength(1);
+        for (const match of embedded) {
+            const compressed = match[1];
+            const destination = match[2];
+            if (!compressed || !destination) {
+                throw new Error('Malformed embedded phase 1 tool command.');
+            }
+			const installer = gunzipSync(Buffer.from(compressed, 'base64')).toString('utf8');
+			for (const filename of ['run-ec2-oha-worker.sh']) {
+				const source = readFileSync(join(ROOT, 'performance-tests/phase1-kinesis', filename), 'utf8');
+				expect(installer).toContain(`/opt/loop-ad-phase1/${filename}`);
+				expect(installer).toContain(source);
+			}
+			expect(installer).not.toContain('run-ec2-reference-worker.sh');
+        }
+    });
+
+    it('limits the task role to PutRecord on the exact stream', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis());
+        const resources = resourcesOf(template);
+        const roleEntry = Object.entries(resources).find(([, resource]) => (
+            resource.Type === 'AWS::IAM::Role' && resource.Properties?.RoleName === 'loop-ad-perf-phase1-collector-task'
+        ));
+        expect(roleEntry).toBeDefined();
+        const [roleLogicalId] = roleEntry ?? [];
+        const taskPolicies = Object.values(resources).filter((resource) => {
+            if (resource.Type !== 'AWS::IAM::Policy') {
+                return false;
+            }
+            const roles = resource.Properties?.Roles as Array<{ Ref?: string }> | undefined;
+            return roles?.some((role) => role.Ref === roleLogicalId) ?? false;
+        });
+
+        expect(taskPolicies).toHaveLength(1);
+        expect(taskPolicies[0]?.Properties?.PolicyDocument).toEqual({
+            Version: '2012-10-17',
+            Statement: [
+                {
+                    Action: 'kinesis:PutRecord',
+                    Effect: 'Allow',
+                    Resource: {
+                        'Fn::Join': [
+                            '',
+                            [
+                                'arn:',
+                                { Ref: 'AWS::Partition' },
+                                ':kinesis:ap-northeast-2:123456789012:stream/perf-phase1-loop-ad-events',
+                            ],
+                        ],
+                    },
+                },
+            ],
+        });
+        const role = roleEntry?.[1];
+        expect(role?.Properties?.ManagedPolicyArns).toBeUndefined();
+        expect(role?.Properties?.AssumeRolePolicyDocument).toEqual({
+            Version: '2012-10-17',
+            Statement: [
+                {
+                    Action: 'sts:AssumeRole',
+                    Condition: {
+                        ArnLike: {
+                            'aws:SourceArn': {
+                                'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':ecs:ap-northeast-2:123456789012:*']],
+                            },
+                        },
+                        StringEquals: { 'aws:SourceAccount': '123456789012' },
+                    },
+                    Effect: 'Allow',
+                    Principal: { Service: 'ecs-tasks.amazonaws.com' },
+                },
+            ],
+        });
+        expect(JSON.stringify(taskPolicies)).not.toContain('kinesis:PutRecords');
+        expect(JSON.stringify(taskPolicies)).not.toContain('kms:');
+    });
+
+    it('limits the Go batch task role to PutRecords and uses the shared Go healthcheck', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis({ phase1Candidate: 'go-batch' }));
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: {
+                Statement: [Match.objectLike({ Action: 'kinesis:PutRecords', Effect: 'Allow' })],
+                Version: '2012-10-17',
+            },
+        });
+        expect(templateText).not.toContain('kinesis:PutRecord"');
+        expect(templateText).toContain('/usr/local/bin/loop-ad_event_collector -healthcheck');
+        expect(templateText).toContain('"Name":"LOOPAD_KINESIS_PRODUCER","Value":"go-batch"');
+    });
+
+    it('grants only documented KPL stream discovery and write actions and uses the Java healthcheck', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis({ phase1Candidate: 'java-kpl' }));
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: {
+                Statement: [Match.objectLike({
+                    Action: [
+                        'kinesis:ListShards',
+                        'kinesis:PutRecords',
+                    ],
+                    Effect: 'Allow',
+                })],
+                Version: '2012-10-17',
+            },
+        });
+        expect(templateText).toContain('curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/health');
+        expect(templateText).toContain('"Name":"LOOPAD_KINESIS_PRODUCER","Value":"java-kpl"');
+        expect(templateText).toContain('"Name":"LOOPAD_KPL_MAX_CONNECTIONS","Value":"8"');
+        expect(templateText).not.toContain('cloudwatch:PutMetricData');
+        expect(templateText).not.toContain('kms:');
+    });
+
+    it('scales only through the approved collector counts and reports exact quota demand', () => {
+        const template = Template.fromStack(synthPerfPhase1Kinesis({ phase1CollectorCount: 17 }));
+
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-collector',
+            MinSize: '17',
+            MaxSize: '17',
+        });
+        template.hasResourceProperties('AWS::ECS::Service', { DesiredCount: 17 });
+        template.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '70' });
+
+        const liveCapTemplate = Template.fromStack(synthPerfPhase1Kinesis({ phase1CollectorCount: 10 }));
+        liveCapTemplate.hasResourceProperties('AWS::ECS::Service', { DesiredCount: 10 });
+        expect(() => synthPerfPhase1Kinesis({ phase1CollectorCount: 18 })).toThrow(
+            'phase1CollectorCount must be an integer from 1 through 17',
+        );
+    });
+
+    it('fails closed when immutable run identity context is malformed', () => {
+        expect(() => synthPerfPhase1Kinesis({ phase1CollectorSha: 'deadbeef' })).toThrow(
+            'phase1CollectorSha must be a full lowercase 40-character Git SHA',
+        );
+        expect(() => synthPerfPhase1Kinesis({ phase1CollectorImageDigest: 'sha256:deadbeef' })).toThrow(
+            'phase1CollectorImageDigest must be a lowercase sha256 image digest',
+        );
+        expect(() => synthPerfPhase1Kinesis({ phase1RunId: 'manual' })).toThrow(
+            'phase1RunId must match run_YYYYMMDD_HHMMSS_<label>',
+        );
+        expect(() => synthPerfPhase1Kinesis({ phase1SessionId: 'manual' })).toThrow(
+            'phase1SessionId must match phase1-compare-YYYYMMDD-HHMMSSz',
+        );
+        expect(() => synthPerfPhase1Kinesis({ phase1Candidate: 'unknown' })).toThrow(
+            'phase1Candidate must be one of go-sync, go-batch, or java-kpl',
+        );
+    });
+
+    it('keeps capacity mode separate and fixes four hosts, tasks, tags, and image identity', () => {
+        const runStack = synthPerfPhase1KinesisCapacity();
+        const template = Template.fromStack(runStack);
+        const templateText = JSON.stringify(template.toJSON());
+
+        expect(runStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityStack');
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-collector',
+            MinSize: '4', MaxSize: '4',
+        });
+        template.hasResourceProperties('AWS::ECS::Service', {
+            DesiredCount: 4,
+            PlacementConstraints: [{ Type: 'distinctInstance' }],
+            EnableECSManagedTags: true,
+            PropagateTags: 'SERVICE',
+        });
+        template.hasOutput('Phase1ExperimentMode', { Value: 'capacity' });
+        template.hasOutput('Phase1CollectorCount', { Value: '4' });
+        template.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '18' });
+        template.hasOutput('Phase1CollectorImageTag', {
+            Value: `phase1-capacity-20260712T081500Z-go-sync-${testPhase1Context.phase1CollectorSha}`,
+        });
+        for (const [key, value] of Object.entries({
+            SessionId: 'phase1-capacity-20260712T081500Z',
+            RunId: 'run_20260712_081500_capacity_go_sync',
+            Phase: 'phase1-capacity', ManagedBy: 'codex', Owner: 'loop-ad',
+        })) {
+            expect(templateText).toContain(`\"Key\":\"${key}\",\"Value\":\"${value}\"`);
+        }
+        expect(() => synthPerfPhase1KinesisCapacity({ phase1CollectorCount: 3 })).toThrow(
+            'phase1CollectorCount must be exactly 4 in capacity or scout mode',
+        );
+        expect(() => synthPerfPhase1KinesisCapacity({ phase1SessionId: testPhase1Context.phase1SessionId })).toThrow(
+            'phase1SessionId must match phase1-capacity-YYYYMMDDTHHMMSSZ in capacity mode',
+        );
+    });
+
+    it('uses a new capacity stream stack identity and ownership tags', () => {
+        const streamStack = synthPerfPhase1KinesisCapacityStream();
+        const template = Template.fromStack(streamStack);
+        const templateText = JSON.stringify(template.toJSON());
+
+        expect(streamStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityStreamStack');
+        for (const [key, value] of Object.entries({
+            SessionId: 'phase1-capacity-20260712T081500Z',
+            RunId: 'phase1-capacity-20260712T081500Z',
+            Phase: 'phase1-capacity', ManagedBy: 'codex', Owner: 'loop-ad',
+        })) {
+            expect(templateText).toContain(`\"Key\":\"${key}\",\"Value\":\"${value}\"`);
+        }
+    });
+
+    it('keeps scout resources and ownership distinct from final capacity', () => {
+        const runStack = synthPerfPhase1KinesisScout();
+        const streamStack = synthPerfPhase1KinesisScoutStream();
+        const template = Template.fromStack(runStack);
+        const text = JSON.stringify(template.toJSON());
+
+        expect(runStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityScoutStack');
+        expect(streamStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityScoutStreamStack');
+        template.hasResourceProperties('AWS::ECS::Service', { DesiredCount: 4 });
+        template.hasOutput('Phase1ExperimentMode', { Value: 'scout' });
+        expect(text).toContain('phase1-capacity-scout-20260712T120000Z-go-sync');
+        expect(text).toContain('\"Key\":\"Phase\",\"Value\":\"phase1-capacity-scout\"');
+        expect(() => synthPerfPhase1KinesisScout({ phase1SessionId: 'phase1-capacity-20260712T120000Z' })).toThrow(
+            'phase1SessionId must match phase1-capacity-scout-YYYYMMDDTHHMMSSZ in scout mode',
+        );
+    });
+
+    it('keeps oha12k stacks separate and fixes an exact 1, 2, or 4 generator topology', () => {
+        const runStack = synthPerfPhase1KinesisOha12k();
+        const streamStack = synthPerfPhase1KinesisOha12kStream();
+        const template = Template.fromStack(runStack);
+        const text = JSON.stringify(template.toJSON());
+
+        expect(runStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityOha12kStack');
+        expect(streamStack.stackName).toBe('LoopAdPerfPhase1KinesisCapacityOha12kStreamStack');
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-loop-ad-load-generator',
+            MinSize: '2', MaxSize: '2',
+        });
+        template.hasOutput('Phase1ExperimentMode', { Value: 'capacity-oha12k' });
+        template.hasOutput('Phase1LoadGeneratorCount', { Value: '2' });
+        template.hasOutput('Phase1RequiredOnDemandVcpus', { Value: '20' });
+        expect(text).toContain('"Key":"Phase","Value":"phase1-capacity-oha12k"');
+        expect(() => synthPerfPhase1KinesisOha12k({ phase1LoadGeneratorCount: 3 })).toThrow(
+            'phase1LoadGeneratorCount must be 1, 2, or 4 in capacity-oha12k mode.',
+        );
+        expect(() => synthPerfPhase1KinesisCapacity({ phase1LoadGeneratorCount: 2 })).toThrow(
+            'phase1LoadGeneratorCount must remain 1 outside capacity-oha12k mode.',
+        );
+    });
+
+    it('isolates generator qualification behind a fixed-response ALB without collectors or Kinesis', () => {
+        const stack = synthPerfPhase1GeneratorControl();
+        const template = Template.fromStack(stack);
+        const text = JSON.stringify(template.toJSON());
+
+        expect(stack.stackName).toBe('LoopAdPerfPhase1KinesisGeneratorControlStack');
+        template.resourceCountIs('AWS::ECS::Service', 0);
+        template.resourceCountIs('AWS::ECS::TaskDefinition', 0);
+        template.resourceCountIs('AWS::Kinesis::Stream', 0);
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            AutoScalingGroupName: 'perf-phase1-generator-control', MinSize: '1', MaxSize: '1',
+        });
+        template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
+            DefaultActions: [Match.objectLike({
+                Type: 'fixed-response',
+                FixedResponseConfig: Match.objectLike({ StatusCode: '202' }),
+            })],
+        });
+        expect(text).toContain('"Key":"Phase","Value":"phase1-generator-diagnosis"');
+        expect(text).toContain('"Key":"TargetKind","Value":"fast-control"');
+        expect(text).toContain('AmazonSSMManagedInstanceCore');
+    });
+
+    it('uses new diagnosis stack identities for actual Kinesis candidate probes', () => {
+        const runStack = synthPerfPhase1GeneratorDiagnosis();
+        const streamStack = synthPerfPhase1GeneratorDiagnosisStream();
+        const template = Template.fromStack(runStack);
+        expect(runStack.stackName).toBe('LoopAdPerfPhase1KinesisGeneratorDiagnosisStack');
+        expect(streamStack.stackName).toBe('LoopAdPerfPhase1KinesisGeneratorDiagnosisStreamStack');
+        template.hasOutput('Phase1ExperimentMode', { Value: 'generator-diagnosis' });
+        expect(JSON.stringify(template.toJSON())).toContain('"Key":"Phase","Value":"phase1-generator-diagnosis"');
+    });
+});
+
+function protocolPortMappings(template: Template): Record<string, unknown>[] {
+	const taskDefinition = Object.values(resourcesOf(template)).find((resource) => resource.Type === 'AWS::ECS::TaskDefinition');
+	const containers = taskDefinition?.Properties?.ContainerDefinitions as Array<{ PortMappings?: Record<string, unknown>[] }>;
+	return containers?.[0]?.PortMappings?.filter((mapping) => mapping.ContainerPort === 8443) ?? [];
+}
+
+function nlbHealthIngressCount(template: Template): number {
+	return Object.values(resourcesOf(template))
+		.filter((resource) => resource.Type === 'AWS::EC2::SecurityGroup')
+		.flatMap((resource) => (resource.Properties?.SecurityGroupIngress ?? []) as Record<string, unknown>[])
+		.filter((ingress) => ingress.FromPort === 8080 && ingress.CidrIp !== undefined)
+		.length;
+}
+
+function nlbDataIngressCount(template: Template, protocol: 'tcp' | 'udp'): number {
+	return Object.values(resourcesOf(template))
+		.filter((resource) => resource.Type === 'AWS::EC2::SecurityGroup')
+		.flatMap((resource) => (resource.Properties?.SecurityGroupIngress ?? []) as Record<string, unknown>[])
+		.filter((ingress) => ingress.FromPort === 8443 && ingress.IpProtocol === protocol && ingress.CidrIp !== undefined)
+		.length;
+}
+
+function connectionPathCollectorTlsIngressCount(template: Template): number {
+	return Object.values(resourcesOf(template))
+		.filter((resource) => resource.Type === 'AWS::EC2::SecurityGroup')
+		.flatMap((resource) => (resource.Properties?.SecurityGroupIngress ?? []) as Record<string, unknown>[])
+		.filter((ingress) => ingress.FromPort === 8443 && ingress.IpProtocol === 'tcp' && ingress.CidrIp !== undefined &&
+			ingress.Description === 'Client-IP-preserving NLB traffic may reach collector TLS HTTP/2.')
+		.length;
+}
+
+function connectionPathGeneratorTlsEgressCount(template: Template): number {
+	return Object.values(resourcesOf(template))
+		.filter((resource) => resource.Type === 'AWS::EC2::SecurityGroup')
+		.flatMap((resource) => (resource.Properties?.SecurityGroupEgress ?? []) as Record<string, unknown>[])
+		.filter((egress) => egress.FromPort === 8443 && egress.IpProtocol === 'tcp' && egress.CidrIp !== undefined &&
+			egress.Description === 'Load generator may run direct collector TLS readiness probes.')
+		.length;
+}

@@ -1,0 +1,572 @@
+import {
+    CfnOutput,
+    Duration,
+    Fn,
+    RemovalPolicy,
+    Stack,
+    Tags,
+    type CfnTag,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Construct } from 'constructs';
+import {
+    PHASE4_AL2023_ARM64_AMI_SSM_PARAMETER,
+    PHASE4_ARCHIVE_PREFIX,
+    PHASE4_AVAILABILITY_ZONE,
+    PHASE4_CLICKHOUSE_DATABASE,
+    PHASE4_CLICKHOUSE_HTTP_PORT,
+    PHASE4_CLICKHOUSE_IMAGE,
+    PHASE4_CLICKHOUSE_INSTANCE_TYPE,
+    PHASE4_CLICKHOUSE_VOLUME_GIB,
+    PHASE4_CLICKHOUSE_VOLUME_IOPS,
+    PHASE4_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS,
+    PHASE4_ESM_BATCHING_WINDOW_SECONDS,
+    PHASE4_ESM_BATCH_SIZE,
+    PHASE4_ESM_MAX_RECORD_AGE_SECONDS,
+    PHASE4_ESM_MAX_RETRY_ATTEMPTS,
+    PHASE4_ESM_PARALLELIZATION_FACTOR,
+    PHASE4_KINESIS_RETENTION_HOURS,
+    PHASE4_KINESIS_SHARD_COUNT,
+    PHASE4_LAMBDA_MEMORY_MIB,
+    PHASE4_LAMBDA_RESERVED_CONCURRENCY,
+    PHASE4_LAMBDA_TIMEOUT_SECONDS,
+    PHASE4_LATE_EVENT_METRIC_NAME,
+    PHASE4_LATE_EVENT_NAMESPACE,
+    PHASE4_LOG_RETENTION,
+    PHASE4_REGION,
+    PHASE4_VPC_CIDR,
+    readPerfPhase4ClickHouseConfig,
+} from './perf-phase4-clickhouse-config';
+
+const ROOT = join(__dirname, '..');
+const CLICKHOUSE_SCHEMA_PATH = join(ROOT, 'assets/clickhouse/phase4-schema.sql');
+const CLICKHOUSE_BOOTSTRAP_PATH = join(ROOT, 'assets/user-data/perf-phase4-clickhouse.sh');
+
+export class LoopAdPerfPhase4ClickHouseStack extends Stack {
+    public readonly stream: kinesis.Stream;
+    public readonly ingestFunction: NodejsFunction;
+    public readonly clickHouseInstance: ec2.CfnInstance;
+    public readonly onFailureBucket: s3.Bucket;
+    public readonly archiveBucket: s3.Bucket;
+
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        const config = readPerfPhase4ClickHouseConfig(this);
+        if (Stack.of(this).region !== PHASE4_REGION) {
+            throw new Error(`Phase 4 must synthesize in ${PHASE4_REGION}.`);
+        }
+
+        Tags.of(this).add('Project', 'loop-ad');
+        Tags.of(this).add('CdkProject', 'loop-ad_aws_cdk');
+        Tags.of(this).add('Environment', 'perf-phase4-clickhouse');
+        Tags.of(this).add('Phase', 'phase4-clickhouse-lambda');
+        Tags.of(this).add('RunId', config.runId);
+        Tags.of(this).add('SessionId', config.sessionId);
+        Tags.of(this).add('ManagedBy', 'codex');
+        Tags.of(this).add('Owner', 'loop-ad');
+        Tags.of(this).add('ResourceScope', 'run');
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            ipAddresses: ec2.IpAddresses.cidr(PHASE4_VPC_CIDR),
+            availabilityZones: [PHASE4_AVAILABILITY_ZONE],
+            natGateways: 0,
+            restrictDefaultSecurityGroup: true,
+            subnetConfiguration: [{
+                name: 'Ingest',
+                cidrMask: 24,
+                subnetType: ec2.SubnetType.PUBLIC,
+            }],
+        });
+        const subnetSelection: ec2.SubnetSelection = { subnets: vpc.publicSubnets };
+
+        this.onFailureBucket = new s3.Bucket(this, 'OnFailureBucket', {
+            autoDeleteObjects: true,
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        this.archiveBucket = new s3.Bucket(this, 'ArchiveBucket', {
+            autoDeleteObjects: true,
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        const credentialsSecret = new secretsmanager.Secret(this, 'ClickHouseCredentials', {
+            description: `Run-scoped ClickHouse credentials for ${config.runId}.`,
+            generateSecretString: {
+                secretStringTemplate: JSON.stringify({ username: 'loopad_ingest' }),
+                generateStringKey: 'password',
+                passwordLength: 40,
+                excludePunctuation: true,
+            },
+        });
+        credentialsSecret.applyRemovalPolicy(RemovalPolicy.DESTROY);
+
+        const clickHouseSecurityGroup = new ec2.SecurityGroup(this, 'ClickHouseSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 ClickHouse; no public ingress.',
+        });
+        const lambdaSecurityGroup = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 Lambda private ClickHouse and Secrets Manager access only.',
+        });
+        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 interface endpoint ingress.',
+        });
+
+        clickHouseSecurityGroup.addIngressRule(
+            lambdaSecurityGroup,
+            ec2.Port.tcp(PHASE4_CLICKHOUSE_HTTP_PORT),
+            'Lambda may reach ClickHouse over the private address only.',
+        );
+        lambdaSecurityGroup.addEgressRule(
+            clickHouseSecurityGroup,
+            ec2.Port.tcp(PHASE4_CLICKHOUSE_HTTP_PORT),
+            'Lambda may insert into ClickHouse.',
+        );
+        for (const securityGroup of [clickHouseSecurityGroup, lambdaSecurityGroup]) {
+            securityGroup.addEgressRule(
+                ec2.Peer.ipv4(PHASE4_VPC_CIDR),
+                ec2.Port.udp(53),
+                'VPC DNS over UDP.',
+            );
+            securityGroup.addEgressRule(
+                ec2.Peer.ipv4(PHASE4_VPC_CIDR),
+                ec2.Port.tcp(53),
+                'VPC DNS over TCP.',
+            );
+            securityGroup.addEgressRule(
+                endpointSecurityGroup,
+                ec2.Port.tcp(443),
+                'Workload may reach the Secrets Manager endpoint.',
+            );
+            endpointSecurityGroup.addIngressRule(
+                securityGroup,
+                ec2.Port.tcp(443),
+                'Phase 4 workload may enter the endpoint.',
+            );
+        }
+        clickHouseSecurityGroup.addEgressRule(
+            ec2.Peer.anyIpv4(),
+            ec2.Port.tcp(443),
+            'EC2 may bootstrap packages, Docker image, SSM, and use S3 HTTPS.',
+        );
+
+        const secretsEndpoint = vpc.addInterfaceEndpoint('SecretsManagerEndpoint', {
+            service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
+            open: false,
+            privateDnsEnabled: true,
+            securityGroups: [endpointSecurityGroup],
+            subnets: subnetSelection,
+        });
+        secretsEndpoint.addToPolicy(new iam.PolicyStatement({
+            principals: [new iam.AnyPrincipal()],
+            actions: ['secretsmanager:GetSecretValue'],
+            resources: [credentialsSecret.secretArn],
+        }));
+
+        const s3Endpoint = vpc.addGatewayEndpoint('S3Endpoint', {
+            service: ec2.GatewayVpcEndpointAwsService.S3,
+            subnets: [{ subnetType: ec2.SubnetType.PUBLIC }],
+        });
+        s3Endpoint.addToPolicy(new iam.PolicyStatement({
+            principals: [new iam.AnyPrincipal()],
+            actions: [
+                's3:GetBucketLocation',
+                's3:ListBucket',
+                's3:ListBucketMultipartUploads',
+            ],
+            resources: [this.archiveBucket.bucketArn],
+        }));
+        s3Endpoint.addToPolicy(new iam.PolicyStatement({
+            principals: [new iam.AnyPrincipal()],
+            actions: [
+                's3:AbortMultipartUpload',
+                's3:GetObject',
+                's3:ListMultipartUploadParts',
+                's3:PutObject',
+            ],
+            resources: [this.archiveBucket.arnForObjects(`${PHASE4_ARCHIVE_PREFIX}*`)],
+        }));
+
+        const clickHouseRole = new iam.Role(this, 'ClickHouseInstanceRole', {
+            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+            ],
+        });
+        clickHouseRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['secretsmanager:GetSecretValue'],
+            resources: [credentialsSecret.secretArn],
+        }));
+        clickHouseRole.addToPolicy(new iam.PolicyStatement({
+            actions: [
+                's3:GetBucketLocation',
+                's3:ListBucketMultipartUploads',
+            ],
+            resources: [this.archiveBucket.bucketArn],
+        }));
+        clickHouseRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:ListBucket'],
+            resources: [this.archiveBucket.bucketArn],
+            conditions: {
+                StringLike: { 's3:prefix': [`${PHASE4_ARCHIVE_PREFIX}*`] },
+            },
+        }));
+        clickHouseRole.addToPolicy(new iam.PolicyStatement({
+            actions: [
+                's3:AbortMultipartUpload',
+                's3:GetObject',
+                's3:ListMultipartUploadParts',
+                's3:PutObject',
+            ],
+            resources: [this.archiveBucket.arnForObjects(`${PHASE4_ARCHIVE_PREFIX}*`)],
+        }));
+        const clickHouseUserData = createClickHouseUserData({
+            AWS_REGION: PHASE4_REGION,
+            CLICKHOUSE_ALLOWED_CIDR: PHASE4_VPC_CIDR,
+            CLICKHOUSE_CREDENTIALS_SECRET_ARN: credentialsSecret.secretArn,
+            CLICKHOUSE_HTTP_PORT: PHASE4_CLICKHOUSE_HTTP_PORT.toString(),
+            CLICKHOUSE_IMAGE: PHASE4_CLICKHOUSE_IMAGE,
+            CLICKHOUSE_SCHEMA_PATH: '/opt/loop-ad/phase4-schema.sql',
+        });
+        const instanceProfile = new iam.CfnInstanceProfile(this, 'ClickHouseInstanceProfile', {
+            roles: [clickHouseRole.roleName],
+        });
+        const instanceTags = phase4ResourceTags(config.runId, config.sessionId, {
+            Name: `loopad-${config.runId}-clickhouse`,
+        });
+        const volumeTags = phase4ResourceTags(config.runId, config.sessionId, {
+            Name: `loopad-${config.runId}-clickhouse-root`,
+        });
+        const launchTemplate = new ec2.CfnLaunchTemplate(this, 'ClickHouseLaunchTemplate', {
+            launchTemplateData: {
+                blockDeviceMappings: [{
+                    deviceName: '/dev/xvda',
+                    ebs: {
+                        deleteOnTermination: true,
+                        encrypted: true,
+                        iops: PHASE4_CLICKHOUSE_VOLUME_IOPS,
+                        throughput: PHASE4_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS,
+                        volumeSize: PHASE4_CLICKHOUSE_VOLUME_GIB,
+                        volumeType: 'gp3',
+                    },
+                }],
+                iamInstanceProfile: { name: instanceProfile.ref },
+                imageId: ec2.MachineImage
+                    .fromSsmParameter(PHASE4_AL2023_ARM64_AMI_SSM_PARAMETER)
+                    .getImage(this)
+                    .imageId,
+                instanceType: PHASE4_CLICKHOUSE_INSTANCE_TYPE,
+                metadataOptions: {
+                    httpEndpoint: 'enabled',
+                    // The ClickHouse Docker bridge must obtain the instance-role
+                    // credentials used by the S3 archive fixture.
+                    httpPutResponseHopLimit: 2,
+                    httpTokens: 'required',
+                },
+                networkInterfaces: [{
+                    associatePublicIpAddress: true,
+                    deviceIndex: 0,
+                    groups: [clickHouseSecurityGroup.securityGroupId],
+                    subnetId: vpc.publicSubnets[0]!.subnetId,
+                }],
+                tagSpecifications: [
+                    { resourceType: 'instance', tags: instanceTags },
+                    { resourceType: 'volume', tags: volumeTags },
+                ],
+                userData: Fn.base64(clickHouseUserData.render()),
+            },
+        });
+        this.clickHouseInstance = new ec2.CfnInstance(this, 'ClickHouseInstance', {
+            availabilityZone: PHASE4_AVAILABILITY_ZONE,
+            launchTemplate: {
+                launchTemplateId: launchTemplate.ref,
+                version: launchTemplate.attrLatestVersionNumber,
+            },
+        });
+        this.clickHouseInstance.node.addDependency(secretsEndpoint);
+
+        this.stream = new kinesis.Stream(this, 'EventStream', {
+            encryption: kinesis.StreamEncryption.MANAGED,
+            retentionPeriod: Duration.hours(PHASE4_KINESIS_RETENTION_HOURS),
+            shardCount: PHASE4_KINESIS_SHARD_COUNT,
+            shardLevelMetrics: [
+                kinesis.ShardLevelMetrics.INCOMING_BYTES,
+                kinesis.ShardLevelMetrics.INCOMING_RECORDS,
+                kinesis.ShardLevelMetrics.ITERATOR_AGE_MILLISECONDS,
+                kinesis.ShardLevelMetrics.READ_PROVISIONED_THROUGHPUT_EXCEEDED,
+                kinesis.ShardLevelMetrics.WRITE_PROVISIONED_THROUGHPUT_EXCEEDED,
+            ],
+            streamMode: kinesis.StreamMode.PROVISIONED,
+        });
+        this.stream.applyRemovalPolicy(RemovalPolicy.DESTROY);
+
+        const ingestLogGroup = new logs.LogGroup(this, 'IngestLogGroup', {
+            retention: PHASE4_LOG_RETENTION,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        this.ingestFunction = new NodejsFunction(this, 'IngestFunction', {
+            entry: join(ROOT, 'src/phase4-clickhouse-handler/index.ts'),
+            handler: 'handler',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            architecture: lambda.Architecture.ARM_64,
+            memorySize: PHASE4_LAMBDA_MEMORY_MIB,
+            timeout: Duration.seconds(PHASE4_LAMBDA_TIMEOUT_SECONDS),
+            reservedConcurrentExecutions: PHASE4_LAMBDA_RESERVED_CONCURRENCY,
+            vpc,
+            vpcSubnets: subnetSelection,
+            allowPublicSubnet: true,
+            securityGroups: [lambdaSecurityGroup],
+            logGroup: ingestLogGroup,
+            environment: {
+                CLICKHOUSE_DATABASE: PHASE4_CLICKHOUSE_DATABASE,
+                CLICKHOUSE_HTTP_URL: Fn.join('', [
+                    'http://',
+                    this.clickHouseInstance.attrPrivateIp,
+                    `:${PHASE4_CLICKHOUSE_HTTP_PORT}`,
+                ]),
+                CLICKHOUSE_SECRET_ARN: credentialsSecret.secretArn,
+                METRIC_NAMESPACE: PHASE4_LATE_EVENT_NAMESPACE,
+                RUN_ID: config.runId,
+            },
+            bundling: {
+                minify: true,
+                sourceMap: true,
+                target: 'node24',
+                externalModules: [],
+            },
+            depsLockFilePath: join(ROOT, 'package-lock.json'),
+        });
+        this.ingestFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['secretsmanager:GetSecretValue'],
+            resources: [credentialsSecret.secretArn],
+        }));
+        this.ingestFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: [
+                'kinesis:DescribeStream',
+                'kinesis:DescribeStreamSummary',
+                'kinesis:GetRecords',
+                'kinesis:GetShardIterator',
+                'kinesis:ListShards',
+            ],
+            resources: [this.stream.streamArn],
+        }));
+        this.ingestFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['s3:ListBucket'],
+            resources: [this.onFailureBucket.bucketArn],
+            conditions: {
+                StringEquals: { 's3:ResourceAccount': Stack.of(this).account },
+            },
+        }));
+        this.ingestFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [this.onFailureBucket.arnForObjects('*')],
+            conditions: {
+                StringEquals: { 's3:ResourceAccount': Stack.of(this).account },
+            },
+        }));
+
+        const onFailureDestination: lambda.IEventSourceDlq = {
+            bind: () => ({ destination: this.onFailureBucket.bucketArn }),
+        };
+        const eventSource = new lambda.EventSourceMapping(this, 'IngestEventSourceMapping', {
+            target: this.ingestFunction,
+            eventSourceArn: this.stream.streamArn,
+            batchSize: PHASE4_ESM_BATCH_SIZE,
+            maxBatchingWindow: Duration.seconds(PHASE4_ESM_BATCHING_WINDOW_SECONDS),
+            parallelizationFactor: PHASE4_ESM_PARALLELIZATION_FACTOR,
+            startingPosition: lambda.StartingPosition.TRIM_HORIZON,
+            enabled: false,
+            reportBatchItemFailures: true,
+            bisectBatchOnError: false,
+            retryAttempts: PHASE4_ESM_MAX_RETRY_ATTEMPTS,
+            maxRecordAge: Duration.seconds(PHASE4_ESM_MAX_RECORD_AGE_SECONDS),
+            onFailure: onFailureDestination,
+            supportS3OnFailureDestination: true,
+            metricsConfig: { metrics: [lambda.MetricType.EVENT_COUNT] },
+        });
+
+        createAlarms(
+            this,
+            this.ingestFunction,
+            this.stream,
+            eventSource.eventSourceMappingId,
+            config.runId,
+        );
+
+        new CfnOutput(this, 'RunId', { value: config.runId });
+        new CfnOutput(this, 'SessionId', { value: config.sessionId });
+        new CfnOutput(this, 'AvailabilityZone', { value: PHASE4_AVAILABILITY_ZONE });
+        new CfnOutput(this, 'VpcId', { value: vpc.vpcId });
+        new CfnOutput(this, 'StreamName', { value: this.stream.streamName });
+        new CfnOutput(this, 'StreamArn', { value: this.stream.streamArn });
+        new CfnOutput(this, 'IngestFunctionName', { value: this.ingestFunction.functionName });
+        new CfnOutput(this, 'EventSourceMappingUuid', { value: eventSource.eventSourceMappingId });
+        new CfnOutput(this, 'ClickHouseInstanceId', {
+            value: this.clickHouseInstance.attrInstanceId,
+        });
+        new CfnOutput(this, 'ClickHousePrivateUrl', {
+            value: Fn.join('', [
+                'http://',
+                this.clickHouseInstance.attrPrivateIp,
+                `:${PHASE4_CLICKHOUSE_HTTP_PORT}`,
+            ]),
+        });
+        new CfnOutput(this, 'ClickHouseSecretArn', { value: credentialsSecret.secretArn });
+        new CfnOutput(this, 'OnFailureBucketName', { value: this.onFailureBucket.bucketName });
+        new CfnOutput(this, 'ArchiveBucketName', { value: this.archiveBucket.bucketName });
+    }
+}
+
+function createAlarms(
+    scope: Construct,
+    fn: NodejsFunction,
+    stream: kinesis.Stream,
+    eventSourceMappingUuid: string,
+    runId: string,
+): void {
+    const common: Pick<cloudwatch.AlarmProps, 'evaluationPeriods' | 'datapointsToAlarm' | 'treatMissingData'> = {
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    };
+    new cloudwatch.Alarm(scope, 'LambdaErrorsAlarm', {
+        ...common,
+        metric: fn.metricErrors({ period: Duration.minutes(1), statistic: 'Sum' }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+    new cloudwatch.Alarm(scope, 'LambdaThrottlesAlarm', {
+        ...common,
+        metric: fn.metricThrottles({ period: Duration.minutes(1), statistic: 'Sum' }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+    new cloudwatch.Alarm(scope, 'LambdaDurationP99Alarm', {
+        ...common,
+        metric: fn.metricDuration({ period: Duration.minutes(1), statistic: 'p99' }),
+        threshold: PHASE4_LAMBDA_TIMEOUT_SECONDS * 1_000 * 0.8,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    new cloudwatch.Alarm(scope, 'KinesisIteratorAgeAlarm', {
+        ...common,
+        metric: stream.metricGetRecordsIteratorAgeMilliseconds({
+            period: Duration.minutes(1),
+            statistic: 'Maximum',
+        }),
+        threshold: 60_000,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+
+    for (const metricName of [
+        'DroppedEventCount',
+        'OnFailureDestinationDeliveredEventCount',
+    ]) {
+        new cloudwatch.Alarm(scope, `${metricName}Alarm`, {
+            ...common,
+            metric: new cloudwatch.Metric({
+                namespace: 'AWS/Lambda',
+                metricName,
+                dimensionsMap: {
+                    EventSourceMappingUUID: eventSourceMappingUuid,
+                },
+                period: Duration.minutes(1),
+                statistic: 'Sum',
+            }),
+            threshold: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        });
+    }
+    new cloudwatch.Alarm(scope, 'DestinationDeliveryFailuresAlarm', {
+        ...common,
+        metric: new cloudwatch.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'DestinationDeliveryFailures',
+            dimensionsMap: { FunctionName: fn.functionName },
+            period: Duration.minutes(1),
+            statistic: 'Sum',
+        }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+    new cloudwatch.Alarm(scope, 'LateEventDroppedAlarm', {
+        ...common,
+        metric: new cloudwatch.Metric({
+            namespace: PHASE4_LATE_EVENT_NAMESPACE,
+            metricName: PHASE4_LATE_EVENT_METRIC_NAME,
+            dimensionsMap: { RunId: runId },
+            period: Duration.minutes(1),
+            statistic: 'Sum',
+        }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+}
+
+function createClickHouseUserData(environment: Record<string, string>): ec2.UserData {
+    const schema = readFileSync(CLICKHOUSE_SCHEMA_PATH, 'utf8').trimEnd();
+    const script = readFileSync(CLICKHOUSE_BOOTSTRAP_PATH, 'utf8').trimEnd();
+    const schemaMarker = 'LOOP_AD_PHASE4_SCHEMA_EOF';
+    const scriptMarker = 'LOOP_AD_PHASE4_CLICKHOUSE_EOF';
+    if (schema.split('\n').includes(schemaMarker) || script.split('\n').includes(scriptMarker)) {
+        throw new Error('Phase 4 ClickHouse assets contain a reserved heredoc marker.');
+    }
+
+    const userData = ec2.UserData.forLinux();
+    userData.addCommands(
+        'set -euo pipefail',
+        'mkdir -p /opt/loop-ad',
+        `cat > /opt/loop-ad/phase4-schema.sql <<'${schemaMarker}'\n${schema}\n${schemaMarker}`,
+        `cat > /opt/loop-ad/perf-phase4-clickhouse.sh <<'${scriptMarker}'\n${script}\n${scriptMarker}`,
+        'chmod 600 /opt/loop-ad/phase4-schema.sql',
+        'chmod 700 /opt/loop-ad/perf-phase4-clickhouse.sh',
+        [
+            'env \\',
+            ...Object.entries(environment).map(([key, value]) => `  ${key}=${shellQuote(value)} \\`),
+            '  /opt/loop-ad/perf-phase4-clickhouse.sh',
+        ].join('\n'),
+    );
+    return userData;
+}
+
+function phase4ResourceTags(
+    runId: string,
+    sessionId: string,
+    extra: Record<string, string> = {},
+): CfnTag[] {
+    return Object.entries({
+        Project: 'loop-ad',
+        CdkProject: 'loop-ad_aws_cdk',
+        Environment: 'perf-phase4-clickhouse',
+        Phase: 'phase4-clickhouse-lambda',
+        RunId: runId,
+        SessionId: sessionId,
+        ManagedBy: 'codex',
+        Owner: 'loop-ad',
+        ResourceScope: 'run',
+        ...extra,
+    }).map(([key, value]) => ({ key, value }));
+}
+
+function shellQuote(value: string): string {
+    return `'${value.replace(/'/g, String.raw`'\''`)}'`;
+}

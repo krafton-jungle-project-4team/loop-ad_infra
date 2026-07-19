@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "purpose": "restorable performance-infrastructure reference; not an active build target",
+  "source": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "branch": "codex/aws-perf-test-plan",
+    "head": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "originMainAtCapture": "a3d424e8dde31ee2770a0eff8094ca3063771bf2",
+    "workingTreeState": "dirty"
+  },
+  "isolation": {
+    "compileInRoot": false,
+    "testInRoot": false,
+    "synthInRoot": false,
+    "typescriptStoredWithReferenceSuffix": true
+  },
+  "fileCount": 46,
+  "files": [
+    {
+      "originalPath": "assets/clickhouse/phase4-async-insert-log.xml",
+      "storedPath": "source-tree/assets/clickhouse/phase4-async-insert-log.xml",
+      "restorePath": "assets/clickhouse/phase4-async-insert-log.xml",
+      "storageTransform": "none",
+      "bytes": 227,
+      "sha256": "353eaad18896a58cd04713c0035cb7dab1cbe5cef5d58530b83918aecbc54fa1"
+    },
+    {
+      "originalPath": "assets/clickhouse/phase4-schema.sql",
+      "storedPath": "source-tree/assets/clickhouse/phase4-schema.sql",
+      "restorePath": "assets/clickhouse/phase4-schema.sql",
+      "storageTransform": "none",
+      "bytes": 1356,
+      "sha256": "fb93f531e0499f8d714deddee18694fd9080bfe2b44ff28bf05f3a08d2e4a697"
+    },
+    {
+      "originalPath": "assets/user-data/clickhouse.sh",
+      "storedPath": "source-tree/assets/user-data/clickhouse.sh",
+      "restorePath": "assets/user-data/clickhouse.sh",
+      "storageTransform": "none",
+      "bytes": 3885,
+      "sha256": "d7d150e9ef82234c8e99913a637c40f590da252813037b6572705dd0e7001a9f"
+    },
+    {
+      "originalPath": "assets/user-data/kafka.sh",
+      "storedPath": "source-tree/assets/user-data/kafka.sh",
+      "restorePath": "assets/user-data/kafka.sh",
+      "storageTransform": "none",
+      "bytes": 6264,
+      "sha256": "d62a188903b72fec9ac6504084f4eed912bd8606573fb4c3bb51c79b7054a6aa"
+    },
+    {
+      "originalPath": "assets/user-data/perf-phase4-clickhouse.sh",
+      "storedPath": "source-tree/assets/user-data/perf-phase4-clickhouse.sh",
+      "restorePath": "assets/user-data/perf-phase4-clickhouse.sh",
+      "storageTransform": "none",
+      "bytes": 4100,
+      "sha256": "677798783d7860d07c21218ec9d7509e5553042a7272523a84ca4f02c875e05d"
+    },
+    {
+      "originalPath": "cdk.json",
+      "storedPath": "source-tree/cdk.json",
+      "restorePath": "cdk.json",
+      "storageTransform": "none",
+      "bytes": 6388,
+      "sha256": "7d663b236111631fcd87a088f52eabe806246be8d2d436f7f58dd2a99fd8caf0"
+    },
+    {
+      "originalPath": "package-lock.json",
+      "storedPath": "source-tree/package-lock.json",
+      "restorePath": "package-lock.json",
+      "storageTransform": "none",
+      "bytes": 223166,
+      "sha256": "6d654abf89ebea0d61a9f7ed26c12714bb6de2b74798a9251c831bfb7c336cf6"
+    },
+    {
+      "originalPath": "package.json",
+      "storedPath": "source-tree/package.json",
+      "restorePath": "package.json",
+      "storageTransform": "none",
+      "bytes": 6027,
+      "sha256": "ccc87f2f1dddba27575406f0e500b2295448391ce13646c645f751a9cd0b4c0c"
+    },
+    {
+      "originalPath": "src/cdk-app-config.ts",
+      "storedPath": "source-tree/src/cdk-app-config.ts.reference",
+      "restorePath": "src/cdk-app-config.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10390,
+      "sha256": "446c7d7e1d69169f01454f82d0d52f6608ad515c63d19282e036e7525216fed3"
+    },
+    {
+      "originalPath": "src/cdk-app.ts",
+      "storedPath": "source-tree/src/cdk-app.ts.reference",
+      "restorePath": "src/cdk-app.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10774,
+      "sha256": "09d238a3fc22f1fa2c6e9f73c8efea0882fb7a0abe4dcfe2980f05aabaff1aae"
+    },
+    {
+      "originalPath": "src/config-validation.ts",
+      "storedPath": "source-tree/src/config-validation.ts.reference",
+      "restorePath": "src/config-validation.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2727,
+      "sha256": "83badef9d42933b930b6f8f894055d8cbf56a61d4aa8fc40bf8f1f6b8a006ae2"
+    },
+    {
+      "originalPath": "src/dev-config.ts",
+      "storedPath": "source-tree/src/dev-config.ts.reference",
+      "restorePath": "src/dev-config.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5267,
+      "sha256": "9e5a73715093073dd92aa9295c5d7ddee5fba35100f13ad39c576236af83ec1f"
+    },
+    {
+      "originalPath": "src/lifecycle-stacks.ts",
+      "storedPath": "source-tree/src/lifecycle-stacks.ts.reference",
+      "restorePath": "src/lifecycle-stacks.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6379,
+      "sha256": "3b8eaf3f2d2078fde48e75ead17e1eeaa64da42fab78c46df42a2fb5d1580254"
+    },
+    {
+      "originalPath": "src/loop-ad-stack.ts",
+      "storedPath": "source-tree/src/loop-ad-stack.ts.reference",
+      "restorePath": "src/loop-ad-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 37049,
+      "sha256": "9b690cec4974a20ff6fc1912b3b7eef9c9b0583175b974dba765fd6eedc1a6d9"
+    },
+    {
+      "originalPath": "src/perf-phase0-stack.ts",
+      "storedPath": "source-tree/src/perf-phase0-stack.ts.reference",
+      "restorePath": "src/perf-phase0-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 18567,
+      "sha256": "00f7d689dfd96bbbf4b27df21dc53d41c72a13737f76da7af64b1c8ace3bd45b"
+    },
+    {
+      "originalPath": "src/perf-phase1-generator-control-stack.ts",
+      "storedPath": "source-tree/src/perf-phase1-generator-control-stack.ts.reference",
+      "restorePath": "src/perf-phase1-generator-control-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6907,
+      "sha256": "ca6c8ed8a13a8fd4d2271ffcf4724c2652715dea7247c4f4e0c08aebe999f8f3"
+    },
+    {
+      "originalPath": "src/perf-phase1-kinesis-stack.ts",
+      "storedPath": "source-tree/src/perf-phase1-kinesis-stack.ts.reference",
+      "restorePath": "src/perf-phase1-kinesis-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 105198,
+      "sha256": "211425a3cae7b0eb9b4cdac6d0b771f348b7a3f0b86613e06d748cb376ae9ae4"
+    },
+    {
+      "originalPath": "src/perf-phase4-clickhouse-config.ts",
+      "storedPath": "source-tree/src/perf-phase4-clickhouse-config.ts.reference",
+      "restorePath": "src/perf-phase4-clickhouse-config.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2925,
+      "sha256": "c27a30a67cad2ce0ac3fb97752465f5473ed9f9137d15a11ef2672c25c3f016e"
+    },
+    {
+      "originalPath": "src/perf-phase4-clickhouse-ecs-config.ts",
+      "storedPath": "source-tree/src/perf-phase4-clickhouse-ecs-config.ts.reference",
+      "restorePath": "src/perf-phase4-clickhouse-ecs-config.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4111,
+      "sha256": "7fc96216b26ba5e366b73d76d86a6009ac011838dcd5ea0767e6289b2c05ee52"
+    },
+    {
+      "originalPath": "src/perf-phase4-clickhouse-ecs-stack.ts",
+      "storedPath": "source-tree/src/perf-phase4-clickhouse-ecs-stack.ts.reference",
+      "restorePath": "src/perf-phase4-clickhouse-ecs-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 48387,
+      "sha256": "f12bc2072c66706bcb43218994cd486b0e67dd3486cfaf62ca9baa6f130fb222"
+    },
+    {
+      "originalPath": "src/perf-phase4-clickhouse-stack.ts",
+      "storedPath": "source-tree/src/perf-phase4-clickhouse-stack.ts.reference",
+      "restorePath": "src/perf-phase4-clickhouse-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 23999,
+      "sha256": "1c62157f9916ade0d33824e9811d0c32f7c03c6bd6ad4c273a2113a92e19fcd2"
+    },
+    {
+      "originalPath": "src/perf-phase6-archive-stack.ts",
+      "storedPath": "source-tree/src/perf-phase6-archive-stack.ts.reference",
+      "restorePath": "src/perf-phase6-archive-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 13028,
+      "sha256": "0d9e748c930b67266c67cf61c8df148e3d27474985e0c1554dfd5f49b4617039"
+    },
+    {
+      "originalPath": "src/perf-phase7-archive-diagnostic-stack.ts",
+      "storedPath": "source-tree/src/perf-phase7-archive-diagnostic-stack.ts.reference",
+      "restorePath": "src/perf-phase7-archive-diagnostic-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 23142,
+      "sha256": "03bbecebe2e66acc69abfd1ffaa8b477a11e18113d4b9396ee380b8d3b03eee2"
+    },
+    {
+      "originalPath": "src/perf-phase7-integration-config.ts",
+      "storedPath": "source-tree/src/perf-phase7-integration-config.ts.reference",
+      "restorePath": "src/perf-phase7-integration-config.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5554,
+      "sha256": "ccbe8d34ef2c2e711288324e62bdb1241b7ad9cfe2efbaab3561f02d5fc85088"
+    },
+    {
+      "originalPath": "src/perf-phase7-integration-stack.ts",
+      "storedPath": "source-tree/src/perf-phase7-integration-stack.ts.reference",
+      "restorePath": "src/perf-phase7-integration-stack.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 50566,
+      "sha256": "32afd68d0a4c57893f9155305eb4c58c434d71334a8e4448c1f4d72a37aa2b33"
+    },
+    {
+      "originalPath": "src/phase4-clickhouse-handler/core.ts",
+      "storedPath": "source-tree/src/phase4-clickhouse-handler/core.ts.reference",
+      "restorePath": "src/phase4-clickhouse-handler/core.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15893,
+      "sha256": "e3972292a99ea44ecf3da4f7125669da5bb12a6e2aaee0ae2d203a1056a93929"
+    },
+    {
+      "originalPath": "src/phase4-clickhouse-handler/index.ts",
+      "storedPath": "source-tree/src/phase4-clickhouse-handler/index.ts.reference",
+      "restorePath": "src/phase4-clickhouse-handler/index.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3012,
+      "sha256": "4938684efc1d4ed1e77be2588f4420aed1e625823a9c6842bb1eee21dd6e646c"
+    },
+    {
+      "originalPath": "src/runtime-helpers.ts",
+      "storedPath": "source-tree/src/runtime-helpers.ts.reference",
+      "restorePath": "src/runtime-helpers.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10329,
+      "sha256": "9a84cbee8ac89509fe3403c8eb867c65cc7925a291f03fc52cbc97cfe73ff4ec"
+    },
+    {
+      "originalPath": "test/config-validation.test.ts",
+      "storedPath": "source-tree/test/config-validation.test.ts.reference",
+      "restorePath": "test/config-validation.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1534,
+      "sha256": "69a72eed8c3580fe15db4e2f1780dd83989e450b466c0803d9e9230dcad1ef22"
+    },
+    {
+      "originalPath": "test/data.test.ts",
+      "storedPath": "source-tree/test/data.test.ts.reference",
+      "restorePath": "test/data.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6193,
+      "sha256": "9b4b9ee2ac94f50a774d53542100578b337d25a4d9fa4457656dc269c0db4757"
+    },
+    {
+      "originalPath": "test/helpers.ts",
+      "storedPath": "source-tree/test/helpers.ts.reference",
+      "restorePath": "test/helpers.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 20789,
+      "sha256": "7efd88e6c682b9a6f84dab2d4b1a3cc377e76859d323edd0326facc3a9598cce"
+    },
+    {
+      "originalPath": "test/local-contract.test.ts",
+      "storedPath": "source-tree/test/local-contract.test.ts.reference",
+      "restorePath": "test/local-contract.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12646,
+      "sha256": "74345462c70455f2e5df007794f2c57b038f8ec16281c26bd75368d0225fb4f0"
+    },
+    {
+      "originalPath": "test/network.test.ts",
+      "storedPath": "source-tree/test/network.test.ts.reference",
+      "restorePath": "test/network.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6063,
+      "sha256": "84b38bf453a16185807bcbc1ae2f5b0ca8fcb8ba9fdc9a536b3828028d52c592"
+    },
+    {
+      "originalPath": "test/perf-phase0.test.ts",
+      "storedPath": "source-tree/test/perf-phase0.test.ts.reference",
+      "restorePath": "test/perf-phase0.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 25751,
+      "sha256": "fdc08270637211a3594b162fbc1286cded61ff74eadc9f7e5621bf279d0f1946"
+    },
+    {
+      "originalPath": "test/perf-phase1-kinesis.test.ts",
+      "storedPath": "source-tree/test/perf-phase1-kinesis.test.ts.reference",
+      "restorePath": "test/perf-phase1-kinesis.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 61306,
+      "sha256": "40704449b284f4587131ebbf8d850cb03c16aa30dea3e596652fa5338f755cbe"
+    },
+    {
+      "originalPath": "test/perf-phase4-clickhouse-ecs.test.ts",
+      "storedPath": "source-tree/test/perf-phase4-clickhouse-ecs.test.ts.reference",
+      "restorePath": "test/perf-phase4-clickhouse-ecs.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15688,
+      "sha256": "81d4b4a8de72306bf1eb51e2371c52000cdecbf4231ed223046df4c06afcd468"
+    },
+    {
+      "originalPath": "test/perf-phase4-clickhouse.test.ts",
+      "storedPath": "source-tree/test/perf-phase4-clickhouse.test.ts.reference",
+      "restorePath": "test/perf-phase4-clickhouse.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12802,
+      "sha256": "138ba66cda8a8adee3fb26cb66b5940388c3e72ab44436fb79cce49ff07a0972"
+    },
+    {
+      "originalPath": "test/perf-phase6-archive.test.ts",
+      "storedPath": "source-tree/test/perf-phase6-archive.test.ts.reference",
+      "restorePath": "test/perf-phase6-archive.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5510,
+      "sha256": "92706b66e229749d1b0b125bd99151cbd6537ca486d63dc2dbc8640bea5f0506"
+    },
+    {
+      "originalPath": "test/perf-phase7-archive-diagnostic.test.ts",
+      "storedPath": "source-tree/test/perf-phase7-archive-diagnostic.test.ts.reference",
+      "restorePath": "test/perf-phase7-archive-diagnostic.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 11648,
+      "sha256": "15eea1f4460f381f00c50082971ebf6687a51a807ac553b4c8126e9ee557fba7"
+    },
+    {
+      "originalPath": "test/perf-phase7-integration.test.ts",
+      "storedPath": "source-tree/test/perf-phase7-integration.test.ts.reference",
+      "restorePath": "test/perf-phase7-integration.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 36414,
+      "sha256": "bcf340f8ced9fb592b5d99f95a4e2c9b6686a68419315669ae7efce85c21dbf5"
+    },
+    {
+      "originalPath": "test/phase1-payload.test.ts",
+      "storedPath": "source-tree/test/phase1-payload.test.ts.reference",
+      "restorePath": "test/phase1-payload.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6459,
+      "sha256": "c6f78a92671083e2950187010e50d918ad3e5823a62a6b2e4cc5607880b71e9f"
+    },
+    {
+      "originalPath": "test/phase4-clickhouse-handler.test.ts",
+      "storedPath": "source-tree/test/phase4-clickhouse-handler.test.ts.reference",
+      "restorePath": "test/phase4-clickhouse-handler.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10650,
+      "sha256": "07faa775de9d447c0917212e957c787f2c2b72ea8cd54e967fd93e9776e04762"
+    },
+    {
+      "originalPath": "test/repository.test.ts",
+      "storedPath": "source-tree/test/repository.test.ts.reference",
+      "restorePath": "test/repository.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2291,
+      "sha256": "571b6e9b7e303c0cfd69b64e1430afbc25c7d05663791c23c1f8a0c316e40924"
+    },
+    {
+      "originalPath": "test/runtime.test.ts",
+      "storedPath": "source-tree/test/runtime.test.ts.reference",
+      "restorePath": "test/runtime.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8142,
+      "sha256": "9636cdf0ed44eb4340b209fcf1c2179afdca906ca354c1f7c1ca55c59b153c81"
+    },
+    {
+      "originalPath": "test/secrets-sync.test.ts",
+      "storedPath": "source-tree/test/secrets-sync.test.ts.reference",
+      "restorePath": "test/secrets-sync.test.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1361,
+      "sha256": "975327a86f97c6b5ec3711fd429c775fccf04d2ab7fa149e69531dd9e617d57b"
+    },
+    {
+      "originalPath": "tsconfig.json",
+      "storedPath": "source-tree/tsconfig.json",
+      "restorePath": "tsconfig.json",
+      "storageTransform": "none",
+      "bytes": 1068,
+      "sha256": "d1be1e76b932a280897f2c7c365be42f62cf733bc8f8dc7790f526f50147fed1"
+    }
+  ]
+}

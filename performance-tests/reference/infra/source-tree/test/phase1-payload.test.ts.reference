@@ -1,0 +1,129 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT } from './helpers';
+
+interface PayloadManifest {
+    readonly rows: number;
+    readonly uniqueEventIds: number;
+    readonly sha256: string;
+    readonly requiredEnvelopeFields: string[];
+    readonly profiles: {
+        readonly counts: Record<string, number>;
+        readonly targetBodyBytes: Record<string, number>;
+    };
+    readonly bodyBytes: {
+        readonly min: number;
+        readonly max: number;
+        readonly mean: number;
+    };
+    readonly kinesisPartitioning: {
+        readonly shardCount: number;
+        readonly targetRps: number;
+        readonly shardWriteLimits: {
+            readonly recordsPerSecond: number;
+            readonly bytesPerSecond: number;
+        };
+        readonly poolRowsPerShard: {
+            readonly min: number;
+            readonly max: number;
+        };
+        readonly expectedAtTarget: {
+            readonly maxRecordsPerSecond: number;
+            readonly maxBytesPerSecond: number;
+        };
+        readonly shards: Array<{
+            readonly poolRows: number;
+            readonly profileCounts: Record<string, number>;
+            readonly expectedRecordsPerSecond: number;
+            readonly expectedBytesPerSecond: number;
+        }>;
+    };
+}
+
+const PAYLOAD_DIR = join(ROOT, 'performance-tests/phase1-kinesis/payloads');
+const POOL_PATH = join(PAYLOAD_DIR, 'sdk-compatible-event-bodies.ndjson');
+const MANIFEST_PATH = join(PAYLOAD_DIR, 'sdk-compatible-event-bodies.manifest.json');
+
+describe('phase 1 SDK-compatible payload pool', () => {
+    it('contains 480 unique pre-serialized envelopes with balanced profiles', () => {
+        const manifest = readManifest();
+        const poolText = readFileSync(POOL_PATH, 'utf8');
+        const lines = poolText.trimEnd().split('\n');
+        const eventIds = new Set<string>();
+        const profileCounts: Record<string, number> = {};
+        const bodySizes: number[] = [];
+
+        expect(poolText.endsWith('\n')).toBe(true);
+        expect(createHash('sha256').update(poolText).digest('hex')).toBe(manifest.sha256);
+        expect(lines).toHaveLength(480);
+
+        for (const [index, line] of lines.entries()) {
+            const body = JSON.parse(line) as Record<string, string>;
+            const properties = JSON.parse(body.properties_json ?? '') as Record<string, unknown>;
+            const perf = properties.perf as Record<string, string>;
+            const profile = perf.profile;
+            const bodyBytes = Buffer.byteLength(line);
+
+            if (!body.event_id || !profile) {
+                throw new Error(`Payload row ${index + 1} is missing event_id or profile.`);
+            }
+            expect(Object.keys(body).sort()).toEqual([...manifest.requiredEnvelopeFields].sort());
+            expect(body.event_id).toMatch(/^evt_phase1_[0-9]{8}$/);
+            expect(eventIds.has(body.event_id)).toBe(false);
+            expect(bodyBytes).toBe(manifest.profiles.targetBodyBytes[profile]);
+            expect(properties).not.toHaveProperty('perf_padding');
+            expect(Object.values(properties)).not.toContain(null);
+            expect(line).not.toMatch(/[\t\r]/);
+            eventIds.add(body.event_id);
+            profileCounts[profile] = (profileCounts[profile] ?? 0) + 1;
+            bodySizes.push(bodyBytes);
+        }
+
+        expect(eventIds.size).toBe(manifest.uniqueEventIds);
+        expect(profileCounts).toEqual({ compact: 160, standard: 160, expanded: 160 });
+        expect(profileCounts).toEqual(manifest.profiles.counts);
+        expect(Math.min(...bodySizes)).toBe(manifest.bodyBytes.min);
+        expect(Math.max(...bodySizes)).toBe(manifest.bodyBytes.max);
+        expect(bodySizes.reduce((sum, size) => sum + size, 0) / bodySizes.length).toBe(manifest.bodyBytes.mean);
+    });
+
+    it('maps evenly to 120 Kinesis hash ranges below per-shard target capacity', () => {
+        const manifest = readManifest();
+        const lines = readFileSync(POOL_PATH, 'utf8').trimEnd().split('\n');
+        const hashSpace = 1n << 128n;
+        const counts = Array.from({ length: manifest.kinesisPartitioning.shardCount }, () => 0);
+        const bytes = Array.from({ length: manifest.kinesisPartitioning.shardCount }, () => 0);
+
+        for (const line of lines) {
+            const body = JSON.parse(line) as { event_id: string };
+            const hash = BigInt(`0x${createHash('md5').update(body.event_id).digest('hex')}`);
+            const shardIndex = Number(hash * BigInt(counts.length) / hashSpace);
+            counts[shardIndex] = (counts[shardIndex] ?? 0) + 1;
+            bytes[shardIndex] = (bytes[shardIndex] ?? 0) + Buffer.byteLength(line) + Buffer.byteLength(body.event_id);
+        }
+
+        const expectedRecordsPerSecond = counts.map((count) => manifest.kinesisPartitioning.targetRps * count / lines.length);
+        const expectedBytesPerSecond = bytes.map((byteCount) => manifest.kinesisPartitioning.targetRps * byteCount / lines.length);
+        const maxRecordsPerSecond = Math.max(...expectedRecordsPerSecond);
+        const maxBytesPerSecond = Math.max(...expectedBytesPerSecond);
+
+        expect(Math.min(...counts)).toBe(manifest.kinesisPartitioning.poolRowsPerShard.min);
+        expect(Math.max(...counts)).toBe(manifest.kinesisPartitioning.poolRowsPerShard.max);
+        expect(maxRecordsPerSecond).toBe(manifest.kinesisPartitioning.expectedAtTarget.maxRecordsPerSecond);
+        expect(maxBytesPerSecond).toBe(manifest.kinesisPartitioning.expectedAtTarget.maxBytesPerSecond);
+        expect(manifest.kinesisPartitioning.shards).toHaveLength(120);
+        for (const shard of manifest.kinesisPartitioning.shards) {
+            expect(shard.poolRows).toBe(4);
+            expect(Object.values(shard.profileCounts).sort()).toEqual([1, 1, 2]);
+            expect(shard.expectedRecordsPerSecond).toBeCloseTo(416.666_666_666_666_7);
+            expect(shard.expectedBytesPerSecond).toBeLessThanOrEqual(manifest.kinesisPartitioning.expectedAtTarget.maxBytesPerSecond);
+        }
+        expect(maxRecordsPerSecond).toBeLessThan(manifest.kinesisPartitioning.shardWriteLimits.recordsPerSecond);
+        expect(maxBytesPerSecond).toBeLessThan(manifest.kinesisPartitioning.shardWriteLimits.bytesPerSecond);
+    });
+});
+
+function readManifest(): PayloadManifest {
+    return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as PayloadManifest;
+}

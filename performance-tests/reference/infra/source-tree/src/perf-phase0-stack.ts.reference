@@ -1,0 +1,422 @@
+import { CfnOutput, Duration, Fn, Stack, Tags, type StackProps } from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Construct } from 'constructs';
+import { DEV_VPC_AVAILABILITY_ZONES } from './dev-config';
+
+const PHASE0_FIXED_RESPONSE_PATH = '/__fixed';
+const LOAD_GENERATOR_CLUSTER_NAME = 'perf-phase0-loop-ad-load-generator-cluster';
+const LOAD_GENERATOR_CAPACITY_PROVIDER_NAME = 'perf-phase0-loop-ad-ec2';
+const LOAD_GENERATOR_ASG_NAME = 'perf-phase0-loop-ad-load-generator';
+const LOAD_GENERATOR_INSTANCE_ROLE_NAME = 'loop-ad-perf-phase0-load-generator-instance';
+const DEFAULT_LOAD_GENERATOR_INSTANCE_TYPE = 'c6in.xlarge';
+const DEFAULT_LOAD_GENERATOR_DESIRED_CAPACITY = 4;
+const KEEPALIVE_DISTRIBUTED_PLAN = '4 hosts x 5 Artillery processes x 625 keep-alive VUs/process x about 5 req/sec = about 62500 HTTP requests/sec';
+const CONNECTION_CHURN_SWEEP_PLAN = '1x500=500,2x750=1500,3x1000=3000,4x1250=5000';
+const LOCAL_PROBE_CIDR_CONTEXT_KEY = 'phase0LocalProbeCidr';
+const LOAD_GENERATOR_INSTANCE_TYPE_CONTEXT_KEY = 'phase0LoadGeneratorInstanceType';
+const LOAD_GENERATOR_DESIRED_CAPACITY_CONTEXT_KEY = 'phase0LoadGeneratorDesiredCapacity';
+const LOAD_GENERATOR_SPOT_PRICE_CONTEXT_KEY = 'phase0LoadGeneratorSpotPrice';
+
+export class LoopAdPerfPhase0Stack extends Stack {
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        const target = createPhase0FixedResponseTarget(this);
+        const loadGenerator = createEc2LoadGenerator(this, {
+            vpc: target.vpc,
+            securityGroup: target.loadGeneratorSecurityGroup,
+        });
+
+        outputPhase0RunConfiguration(this, {
+            target,
+            loadGenerator,
+        });
+    }
+}
+
+interface Phase0FixedResponseTarget {
+    readonly vpc: ec2.IVpc;
+    readonly loadBalancerDnsName: string;
+    readonly targetBaseUrl: string;
+    readonly fixedResponseUrl: string;
+    readonly loadGeneratorSubnetIds: string;
+    readonly loadGeneratorSecurityGroup: ec2.ISecurityGroup;
+    readonly loadGeneratorSecurityGroupId: string;
+    readonly localProbeCidr?: string;
+}
+
+interface Ec2LoadGeneratorInput {
+    readonly vpc: ec2.IVpc;
+    readonly securityGroup: ec2.ISecurityGroup;
+}
+
+interface Ec2LoadGenerator {
+    readonly clusterArn: string;
+    readonly clusterName: string;
+    readonly capacityProviderName: string;
+    readonly autoScalingGroupName: string;
+    readonly instanceRoleArn: string;
+    readonly instanceType: string;
+    readonly desiredCapacity: number;
+    readonly launchType: string;
+}
+
+interface Ec2LoadGeneratorConfig {
+    readonly instanceType: string;
+    readonly desiredCapacity: number;
+    readonly spotPrice?: string;
+}
+
+interface Phase0RunConfiguration {
+    readonly target: Phase0FixedResponseTarget;
+    readonly loadGenerator: Ec2LoadGenerator;
+}
+
+function createPhase0FixedResponseTarget(scope: Construct): Phase0FixedResponseTarget {
+    const localProbeCidr = readLocalProbeCidr(scope);
+    const vpc = new ec2.Vpc(scope, 'Vpc', {
+        vpcName: 'perf-phase0-loop-ad-vpc',
+        availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
+        // Phase 0은 테스트 중에만 여는 임시 인프라라 NAT 비용을 만들지 않고 public subnet에서 로드 생성기를 실행한다.
+        natGateways: 0,
+        // default SG를 열어 두면 테스트 트래픽 경계가 흐려지므로, 아래에서 만든 SG 규칙만 사용하게 제한한다.
+        restrictDefaultSecurityGroup: true,
+        subnetConfiguration: [
+            {
+                name: 'public',
+                subnetType: ec2.SubnetType.PUBLIC,
+                cidrMask: 24,
+            },
+        ],
+    });
+    const publicSubnets = vpc.selectSubnets({ subnetGroupName: 'public' });
+
+    const albSecurityGroup = new ec2.SecurityGroup(scope, 'AlbSecurityGroup', {
+        vpc,
+        allowAllOutbound: false,
+        description: 'Perf phase 0 internal ALB fixed response endpoint.',
+    });
+    const loadGeneratorSecurityGroup = new ec2.SecurityGroup(scope, 'LoadGeneratorSecurityGroup', {
+        vpc,
+        allowAllOutbound: false,
+        description: 'Perf phase 0 EC2 load generators.',
+    });
+
+    // 테스트 트래픽은 로드 생성기 SG에서 ALB SG의 HTTP listener로만 보낸다.
+    albSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(80), 'EC2 load generators may reach ALB HTTP listener.');
+    if (localProbeCidr) {
+        // 로컬 Artillery 검증은 stack을 닫기 전 잠깐만 사용한다. 실수로 공개 범위가 넓어지지 않게 /32만 허용한다.
+        albSecurityGroup.addIngressRule(ec2.Peer.ipv4(localProbeCidr), ec2.Port.tcp(80), 'Local Artillery probe may reach ALB HTTP listener.');
+    }
+    loadGeneratorSecurityGroup.addEgressRule(albSecurityGroup, ec2.Port.tcp(80), 'EC2 load generators may send phase 0 traffic to ALB.');
+    // SSM, npm, AWS API 접근을 위해 HTTPS egress를 연다. ALB 부하 트래픽은 위 HTTP SG 규칙으로만 흐른다.
+    loadGeneratorSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'EC2 load generators may reach SSM, package registries, and AWS APIs.');
+
+    // Phase 0은 collector 없이 ALB 자체 처리 한계를 보므로 target group 대신 fixed response만 둔다.
+    const alb = new elbv2.ApplicationLoadBalancer(scope, 'ApplicationLoadBalancer', {
+        vpc,
+        vpcSubnets: publicSubnets,
+        internetFacing: Boolean(localProbeCidr),
+        securityGroup: albSecurityGroup,
+        loadBalancerName: 'perf-phase0-loop-ad-alb',
+        idleTimeout: Duration.seconds(60),
+    });
+    const listener = alb.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        open: false,
+        defaultAction: elbv2.ListenerAction.fixedResponse(404, {
+            contentType: 'text/plain',
+            messageBody: 'No perf phase 0 route is registered.',
+        }),
+    });
+    listener.addAction('FixedResponseAction', {
+        priority: 10,
+        conditions: [elbv2.ListenerCondition.pathPatterns([PHASE0_FIXED_RESPONSE_PATH])],
+        action: elbv2.ListenerAction.fixedResponse(204),
+    });
+
+    const targetBaseUrl = `http://${alb.loadBalancerDnsName}`;
+
+    return {
+        vpc,
+        loadBalancerDnsName: alb.loadBalancerDnsName,
+        targetBaseUrl,
+        fixedResponseUrl: `${targetBaseUrl}${PHASE0_FIXED_RESPONSE_PATH}`,
+        loadGeneratorSubnetIds: Fn.join(',', publicSubnets.subnetIds),
+        loadGeneratorSecurityGroup,
+        loadGeneratorSecurityGroupId: loadGeneratorSecurityGroup.securityGroupId,
+        localProbeCidr,
+    };
+}
+
+function createEc2LoadGenerator(scope: Construct, input: Ec2LoadGeneratorInput): Ec2LoadGenerator {
+    const config = readEc2LoadGeneratorConfig(scope);
+    const cluster = new ecs.Cluster(scope, 'LoadGeneratorCluster', {
+        vpc: input.vpc,
+        clusterName: LOAD_GENERATOR_CLUSTER_NAME,
+        containerInsightsV2: ecs.ContainerInsights.ENABLED,
+    });
+    const instanceRole = createLoadGeneratorInstanceRole(scope);
+    const autoScalingGroup = new autoscaling.AutoScalingGroup(scope, 'LoadGeneratorAutoScalingGroup', {
+        vpc: input.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        autoScalingGroupName: LOAD_GENERATOR_ASG_NAME,
+        minCapacity: config.desiredCapacity,
+        maxCapacity: config.desiredCapacity,
+        instanceType: new ec2.InstanceType(config.instanceType),
+        machineImage: ecs.EcsOptimizedImage.amazonLinux2023(),
+        requireImdsv2: true,
+        role: instanceRole,
+        securityGroup: input.securityGroup,
+        spotPrice: config.spotPrice,
+    });
+    const capacityProvider = new ecs.AsgCapacityProvider(scope, 'LoadGeneratorCapacityProvider', {
+        autoScalingGroup,
+        capacityProviderName: LOAD_GENERATOR_CAPACITY_PROVIDER_NAME,
+        enableManagedDraining: false,
+        enableManagedScaling: false,
+        enableManagedTerminationProtection: false,
+    });
+
+    // SSM target tag로 인스턴스를 찾는다. ASG tag는 launched instance에도 전파된다.
+    Tags.of(autoScalingGroup).add('Name', LOAD_GENERATOR_ASG_NAME, {
+        applyToLaunchedInstances: true,
+    });
+    addLoadGeneratorUserData(autoScalingGroup);
+    cluster.addAsgCapacityProvider(capacityProvider);
+
+    return {
+        clusterArn: cluster.clusterArn,
+        clusterName: cluster.clusterName,
+        capacityProviderName: capacityProvider.capacityProviderName,
+        autoScalingGroupName: autoScalingGroup.autoScalingGroupName,
+        instanceRoleArn: instanceRole.roleArn,
+        instanceType: config.instanceType,
+        desiredCapacity: config.desiredCapacity,
+        launchType: config.spotPrice ? 'EC2 Spot' : 'EC2 On-Demand',
+    };
+}
+
+function outputPhase0RunConfiguration(scope: Construct, config: Phase0RunConfiguration): void {
+    const region = Stack.of(scope).region;
+
+    new CfnOutput(scope, 'Phase0LoadBalancerDnsName', {
+        value: config.target.loadBalancerDnsName,
+        description: 'Internal ALB DNS name for phase 0 fixed-response load tests.',
+    });
+    new CfnOutput(scope, 'Phase0TargetUrl', {
+        value: config.target.fixedResponseUrl,
+        description: 'Fixed-response target URL for direct checks.',
+    });
+    if (config.target.localProbeCidr) {
+        new CfnOutput(scope, 'Phase0LocalArtilleryTargetUrl', {
+            value: config.target.fixedResponseUrl,
+            description: `Public fixed-response URL temporarily opened to ${config.target.localProbeCidr} for local Artillery proof.`,
+        });
+    }
+    new CfnOutput(scope, 'Phase0LoadGeneratorTargetBaseUrl', {
+        value: config.target.targetBaseUrl,
+        description: 'Base target URL for Artillery running on the phase 0 EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorSubnetIds', {
+        value: config.target.loadGeneratorSubnetIds,
+        description: 'Comma-separated public subnet IDs used by the phase 0 EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorSecurityGroupId', {
+        value: config.target.loadGeneratorSecurityGroupId,
+        description: 'Security group ID for the phase 0 EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorClusterArn', {
+        value: config.loadGenerator.clusterArn,
+        description: 'ECS cluster ARN for the EC2-backed phase 0 load generator capacity.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorClusterName', {
+        value: config.loadGenerator.clusterName,
+        description: 'ECS cluster name for the EC2-backed phase 0 load generator capacity.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorCapacityProviderName', {
+        value: config.loadGenerator.capacityProviderName,
+        description: 'ECS EC2 capacity provider name for the phase 0 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorAutoScalingGroupName', {
+        value: config.loadGenerator.autoScalingGroupName,
+        description: 'Auto Scaling group that owns the phase 0 load generator EC2 instance.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorInstanceRoleArn', {
+        value: config.loadGenerator.instanceRoleArn,
+        description: 'Instance role ARN used by the phase 0 EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorInstanceType', {
+        value: config.loadGenerator.instanceType,
+        description: 'EC2 instance type used by the phase 0 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorDesiredCapacity', {
+        value: config.loadGenerator.desiredCapacity.toString(),
+        description: 'Number of EC2 load generator instances created by the phase 0 stack.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorLaunchType', {
+        value: config.loadGenerator.launchType,
+        description: `Launch type selected by ${LOAD_GENERATOR_SPOT_PRICE_CONTEXT_KEY}.`,
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorDescribeInstancesCommand', {
+        value: [
+            'aws ec2 describe-instances',
+            `--region ${region}`,
+            `--filters Name=tag:Name,Values=${LOAD_GENERATOR_ASG_NAME} Name=instance-state-name,Values=running`,
+            "--query 'Reservations[].Instances[].InstanceId'",
+            '--output text',
+        ].join(' '),
+        description: 'Find the phase 0 EC2 load generator instance ID before opening an SSM session.',
+    });
+    new CfnOutput(scope, 'Phase0LoadGeneratorSsmStartSessionCommand', {
+        value: `aws ssm start-session --region ${region} --target <instance-id>`,
+        description: 'Open a shell on the EC2 load generator instance with Session Manager.',
+    });
+    new CfnOutput(scope, 'Phase0Ec2ArtilleryRunCommand', {
+        value: [
+            `TARGET_BASE_URL=${config.target.targetBaseUrl}`,
+            'RUN_ID=run_<id>',
+            'HOST_LABEL=$(hostname -s)',
+            'PROCESSES_PER_HOST=5',
+            'VUS_PER_PROCESS=625',
+            'REQUESTS_PER_VU=750',
+            'VU_THINK_SECONDS=0.15',
+            'HTTP_TIMEOUT_SECONDS=10',
+            'TELEMETRY_INTERVAL_SECONDS=5',
+            './performance-tests/phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh',
+        ].join(' '),
+        description: 'Run the default multi-process keep-alive Artillery worker from a checked-out repo on each EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0Ec2KeepAlivePlan', {
+        value: KEEPALIVE_DISTRIBUTED_PLAN,
+        description: 'Default distributed keep-alive target for phase 0.',
+    });
+    new CfnOutput(scope, 'Phase0Ec2KeepAliveWorkerCommand', {
+        value: [
+            `TARGET_BASE_URL=${config.target.targetBaseUrl}`,
+            'RUN_ID=run_<id>',
+            'HOST_LABEL=$(hostname -s)',
+            'PROCESSES_PER_HOST=5',
+            'VUS_PER_PROCESS=625',
+            'REQUESTS_PER_VU=750',
+            'VU_THINK_SECONDS=0.15',
+            'HTTP_TIMEOUT_SECONDS=10',
+            'TELEMETRY_INTERVAL_SECONDS=5',
+            './performance-tests/phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh',
+        ].join(' '),
+        description: 'Run one multi-process keep-alive Artillery worker. Execute on every phase 0 EC2 load generator.',
+    });
+    new CfnOutput(scope, 'Phase0Ec2ArtillerySweepPlan', {
+        value: CONNECTION_CHURN_SWEEP_PLAN,
+        description: 'Connection-churn diagnostic sweep plan. Format is process-count x per-process-rps = total-rps.',
+    });
+    new CfnOutput(scope, 'Phase0Ec2ArtillerySweepCommand', {
+        value: [
+            `TARGET_BASE_URL=${config.target.targetBaseUrl}`,
+            'RUN_ID=run_<id>',
+            './performance-tests/phase0/run-ec2-artillery-sweep.sh',
+        ].join(' '),
+        description: 'Run the default c6in.xlarge-safe connection-churn sweep from a checked-out repo on the EC2 load generator.',
+    });
+}
+
+function readLocalProbeCidr(scope: Construct): string | undefined {
+    const value = scope.node.tryGetContext(LOCAL_PROBE_CIDR_CONTEXT_KEY);
+
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+    if (typeof value !== 'string') {
+        throw new Error(`${LOCAL_PROBE_CIDR_CONTEXT_KEY} must be a string CIDR.`);
+    }
+
+    const cidr = value.trim();
+    if (!cidr.endsWith('/32')) {
+        throw new Error(`${LOCAL_PROBE_CIDR_CONTEXT_KEY} only accepts an IPv4 /32 CIDR for temporary local Artillery probes.`);
+    }
+
+    return cidr;
+}
+
+function readEc2LoadGeneratorConfig(scope: Construct): Ec2LoadGeneratorConfig {
+    const instanceType = readOptionalStringContext(scope, LOAD_GENERATOR_INSTANCE_TYPE_CONTEXT_KEY) ?? DEFAULT_LOAD_GENERATOR_INSTANCE_TYPE;
+    const desiredCapacity = readOptionalNumberContext(scope, LOAD_GENERATOR_DESIRED_CAPACITY_CONTEXT_KEY) ?? DEFAULT_LOAD_GENERATOR_DESIRED_CAPACITY;
+    const spotPrice = readOptionalStringContext(scope, LOAD_GENERATOR_SPOT_PRICE_CONTEXT_KEY);
+
+    if (desiredCapacity < 1) {
+        throw new Error(`${LOAD_GENERATOR_DESIRED_CAPACITY_CONTEXT_KEY} must be at least 1.`);
+    }
+
+    return {
+        instanceType,
+        desiredCapacity,
+        spotPrice,
+    };
+}
+
+function readOptionalStringContext(scope: Construct, key: string): string | undefined {
+    const value = scope.node.tryGetContext(key);
+
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+    if (typeof value !== 'string') {
+        throw new Error(`${key} must be a string.`);
+    }
+
+    return value.trim();
+}
+
+function readOptionalNumberContext(scope: Construct, key: string): number | undefined {
+    const value = scope.node.tryGetContext(key);
+
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+
+    const numberValue = typeof value === 'number' ? value : Number(value);
+    if (!Number.isInteger(numberValue)) {
+        throw new Error(`${key} must be an integer.`);
+    }
+
+    return numberValue;
+}
+
+function createLoadGeneratorInstanceRole(scope: Construct): iam.Role {
+    const instanceRole = new iam.Role(scope, 'LoadGeneratorInstanceRole', {
+        roleName: LOAD_GENERATOR_INSTANCE_ROLE_NAME,
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        description: 'Perf phase 0 EC2 load generator instance role.',
+    });
+
+    instanceRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+    instanceRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonEC2ContainerServiceforEC2Role'));
+
+    return instanceRole;
+}
+
+function addLoadGeneratorUserData(autoScalingGroup: autoscaling.AutoScalingGroup): void {
+    autoScalingGroup.addUserData(
+        'cat <<EOF >/etc/sysctl.d/99-loop-ad-load-generator.conf',
+        'net.ipv4.ip_local_port_range = 1024 65535',
+        'net.ipv4.tcp_tw_reuse = 1',
+        'net.ipv4.tcp_fin_timeout = 15',
+        'net.ipv4.tcp_max_syn_backlog = 65535',
+        'net.core.somaxconn = 65535',
+        'EOF',
+        'sysctl --system',
+        'systemctl enable --now docker',
+        'cat <<EOF >/etc/security/limits.d/99-loop-ad-load-generator.conf',
+        '* soft nofile 1048576',
+        '* hard nofile 1048576',
+        'root soft nofile 1048576',
+        'root hard nofile 1048576',
+        'EOF',
+        'dnf install -y git jq awscli-2',
+    );
+}

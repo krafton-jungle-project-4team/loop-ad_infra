@@ -1,0 +1,583 @@
+import {
+    CfnOutput,
+    CfnWaitCondition,
+    CfnWaitConditionHandle,
+    Duration,
+    RemovalPolicy,
+    Size,
+    Stack,
+    Tags,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { Construct } from 'constructs';
+import {
+    PHASE7_CLICKHOUSE_IMAGE,
+    PHASE7_HOST_INSTANCE_TYPES,
+    PHASE7_REGION,
+} from './perf-phase7-integration-config';
+import {
+    addPhase7EcsCapacityReadinessSignals,
+    PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB,
+    PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES,
+} from './perf-phase7-integration-stack';
+
+export const PHASE7_ARCHIVE_DIAGNOSTIC_ENVIRONMENT =
+    'perf-phase7-archive-diagnostic';
+export const PHASE7_ARCHIVE_DIAGNOSTIC_QUERY_MEMORY_BYTES = 5 * 1024 ** 3;
+export const PHASE7_ARCHIVE_DIAGNOSTIC_VOLUME_GIB = 500;
+
+export interface Phase7ArchiveDiagnosticConfig {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly archiveImageDigest: string;
+    readonly armEcsAmiId: string;
+    readonly archiveRepositoryName: string;
+}
+
+export class LoopAdPerfPhase7ArchiveDiagnosticImageStack extends Stack {
+    public readonly archiveRepository: ecr.Repository;
+
+    public constructor(scope: Construct, id: string, props: StackProps) {
+        const config = readArchiveDiagnosticConfig(scope, false);
+        super(scope, id, {
+            ...props,
+            stackName: diagnosticStackName('Image', config.sessionId),
+            tags: { ...props.tags, ...diagnosticTags(config) },
+        });
+        requireRegion(this);
+        this.archiveRepository = new ecr.Repository(this, 'ArchiveRepository', {
+            repositoryName: config.archiveRepositoryName,
+            imageScanOnPush: true,
+            imageTagMutability: ecr.TagMutability.IMMUTABLE,
+            emptyOnDelete: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        addDiagnosticTags(this, config);
+        new CfnOutput(this, 'ArchiveRepositoryName', {
+            value: this.archiveRepository.repositoryName,
+        });
+        new CfnOutput(this, 'ArchiveRepositoryUri', {
+            value: this.archiveRepository.repositoryUri,
+        });
+    }
+}
+
+export interface LoopAdPerfPhase7ArchiveDiagnosticStackProps extends StackProps {
+    readonly archiveRepository: ecr.IRepository;
+}
+
+export class LoopAdPerfPhase7ArchiveDiagnosticStack extends Stack {
+    public constructor(
+        scope: Construct,
+        id: string,
+        props: LoopAdPerfPhase7ArchiveDiagnosticStackProps,
+    ) {
+        const config = readArchiveDiagnosticConfig(scope, true);
+        super(scope, id, {
+            ...props,
+            stackName: diagnosticStackName('Runtime', config.sessionId),
+            tags: { ...props.tags, ...diagnosticTags(config) },
+        });
+        requireRegion(this);
+        addDiagnosticTags(this, config);
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            ipAddresses: ec2.IpAddresses.cidr('10.48.0.0/24'),
+            maxAzs: 1,
+            natGateways: 0,
+            restrictDefaultSecurityGroup: false,
+            subnetConfiguration: [{
+                name: 'Diagnostic',
+                cidrMask: 28,
+                subnetType: ec2.SubnetType.PUBLIC,
+            }],
+        });
+        vpc.addGatewayEndpoint('S3Endpoint', {
+            service: ec2.GatewayVpcEndpointAwsService.S3,
+        });
+
+        const archiveBucket = new s3.Bucket(this, 'ArchiveBucket', {
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            enforceSSL: true,
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            autoDeleteObjects: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        const clickHouseSecret = new secretsmanager.Secret(this, 'ClickHouseSecret', {
+            description: `Targeted Phase 7 ClickHouse credential for ${config.runId}.`,
+            generateSecretString: {
+                secretStringTemplate: JSON.stringify({ username: 'loopad_diagnostic' }),
+                generateStringKey: 'password',
+                passwordLength: 32,
+                excludePunctuation: true,
+            },
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        const cluster = new ecs.Cluster(this, 'Cluster', {
+            vpc,
+            containerInsightsV2: ecs.ContainerInsights.DISABLED,
+        });
+        const registrationHandle = new CfnWaitConditionHandle(
+            this,
+            'ClickHouseCapacityProviderRegistrationHandle',
+        );
+
+        const hostRole = new iam.Role(this, 'HostRole', {
+            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName(
+                    'service-role/AmazonEC2ContainerServiceforEC2Role',
+                ),
+                iam.ManagedPolicy.fromAwsManagedPolicyName(
+                    'AmazonSSMManagedInstanceCore',
+                ),
+            ],
+        });
+        const hostSecurityGroup = new ec2.SecurityGroup(this, 'HostSecurityGroup', {
+            vpc,
+            allowAllOutbound: true,
+            description: 'No ingress; public-subnet egress is used only by the run-owned ECS host.',
+        });
+        const workerSecurityGroup = new ec2.SecurityGroup(this, 'WorkerSecurityGroup', {
+            vpc,
+            allowAllOutbound: true,
+            description: 'Targeted seed/archive tasks have no ingress.',
+        });
+        const clickHouseSecurityGroup = new ec2.SecurityGroup(this, 'ClickHouseSecurityGroup', {
+            vpc,
+            allowAllOutbound: true,
+            description: 'ClickHouse accepts only targeted seed/archive task traffic.',
+        });
+        clickHouseSecurityGroup.addIngressRule(
+            workerSecurityGroup,
+            ec2.Port.tcp(8123),
+            'Targeted diagnostic tasks only.',
+        );
+
+        const userData = ec2.UserData.forLinux();
+        userData.addCommands(
+            'set -euo pipefail',
+            'install -d -m 0755 /opt/loopad/clickhouse-config /var/lib/clickhouse',
+            "cat > /opt/loopad/clickhouse-config/phase7-memory.xml <<'PHASE7_MEMORY_EOF'",
+            clickHouseMemoryConfig(),
+            'PHASE7_MEMORY_EOF',
+            'chmod 0444 /opt/loopad/clickhouse-config/phase7-memory.xml',
+        );
+        const host = new autoscaling.AutoScalingGroup(this, 'ClickHouseHost', {
+            vpc,
+            vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+            machineImage: ec2.MachineImage.genericLinux({
+                [PHASE7_REGION]: config.armEcsAmiId,
+            }),
+            instanceType: new ec2.InstanceType(PHASE7_HOST_INSTANCE_TYPES.clickHouse),
+            role: hostRole,
+            securityGroup: hostSecurityGroup,
+            requireImdsv2: true,
+            userData,
+            minCapacity: 1,
+            maxCapacity: 1,
+            desiredCapacity: 1,
+            signals: autoscaling.Signals.waitForAll({
+                timeout: Duration.minutes(10),
+            }),
+            blockDevices: [{
+                deviceName: '/dev/xvda',
+                volume: autoscaling.BlockDeviceVolume.ebs(PHASE7_ARCHIVE_DIAGNOSTIC_VOLUME_GIB, {
+                    deleteOnTermination: true,
+                    encrypted: true,
+                    volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+                    iops: 3_000,
+                    throughput: 500,
+                }),
+            }],
+        });
+        const capacityProviderName =
+            `loopad-${config.runId}-archive-diagnostic`;
+        const capacityProvider = new ecs.AsgCapacityProvider(
+            this,
+            'ClickHouseCapacityProvider',
+            {
+                autoScalingGroup: host,
+                capacityProviderName,
+                enableManagedDraining: false,
+                enableManagedScaling: false,
+                enableManagedTerminationProtection: false,
+            },
+        );
+        const noDrainHook = { taskDrainTime: Duration.seconds(0) } as unknown as
+            ecs.AddAutoScalingGroupCapacityOptions;
+        const legacyCluster = cluster as unknown as {
+            addAutoScalingGroup(
+                autoScalingGroup: autoscaling.AutoScalingGroup,
+                options: ecs.AddAutoScalingGroupCapacityOptions,
+            ): void;
+        };
+        legacyCluster.addAutoScalingGroup(host, noDrainHook);
+        const capacityProviderAssociation = new ecs.CfnClusterCapacityProviderAssociations(
+            cluster,
+            'CapacityProviderAssociation',
+            {
+                cluster: cluster.clusterName,
+                capacityProviders: [capacityProvider.capacityProviderName],
+                defaultCapacityProviderStrategy: [],
+            },
+        );
+        capacityProviderAssociation.addDependency(
+            host.node.defaultChild as autoscaling.CfnAutoScalingGroup,
+        );
+        const registrationCondition = new CfnWaitCondition(
+            this,
+            'ClickHouseCapacityProviderRegistration',
+            {
+                count: 1,
+                handle: registrationHandle.ref,
+                timeout: '600',
+            },
+        );
+        registrationCondition.addDependency(capacityProviderAssociation);
+        const readinessPolicy = new iam.Policy(
+            this,
+            'ClickHouseHostReadinessPolicy',
+            {
+                statements: [new iam.PolicyStatement({
+                    actions: ['ecs:DescribeContainerInstances'],
+                    resources: [this.formatArn({
+                        service: 'ecs',
+                        resource: 'container-instance',
+                        resourceName: `${cluster.clusterName}/*`,
+                    })],
+                })],
+            },
+        );
+        readinessPolicy.attachToRole(hostRole);
+        host.node.addDependency(readinessPolicy);
+        addPhase7EcsCapacityReadinessSignals(host, {
+            id: 'ClickHouseArchiveDiagnostic',
+            clusterName: cluster.clusterName,
+            capacityProviderName,
+            waitHandleUrl: registrationHandle.ref,
+        });
+
+        const clickHouseTaskRole = taskRole(this, 'ClickHouseTaskRole');
+        archiveBucket.grantRead(clickHouseTaskRole, 'attempts/v1/*');
+        const clickHouseTask = armTask(this, 'ClickHouseTask', clickHouseTaskRole);
+        clickHouseTask.addVolume({
+            name: 'data',
+            host: { sourcePath: '/var/lib/clickhouse' },
+        });
+        clickHouseTask.addVolume({ name: 'runtime', host: {} });
+        clickHouseTask.addVolume({
+            name: 'memory-config',
+            host: { sourcePath: '/opt/loopad/clickhouse-config/phase7-memory.xml' },
+        });
+        const clickHouse = clickHouseTask.addContainer('clickhouse', {
+            image: ecs.ContainerImage.fromRegistry(PHASE7_CLICKHOUSE_IMAGE),
+            cpu: 4_096,
+            memoryLimitMiB: PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB,
+            logging: logDriver(this, 'ClickHouseLogs', config),
+            environment: {
+                CLICKHOUSE_DB: 'loopad',
+                CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1',
+            },
+            secrets: clickHouseSecrets(clickHouseSecret),
+            healthCheck: {
+                command: [
+                    'CMD-SHELL',
+                    'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"',
+                ],
+                interval: Duration.seconds(10),
+                retries: 10,
+                startPeriod: Duration.seconds(30),
+                timeout: Duration.seconds(5),
+            },
+        });
+        clickHouse.addMountPoints({
+            sourceVolume: 'data',
+            containerPath: '/var/lib/clickhouse',
+            readOnly: false,
+        });
+        clickHouse.addMountPoints({
+            sourceVolume: 'memory-config',
+            containerPath: '/etc/clickhouse-server/config.d/phase7-memory.xml',
+            readOnly: true,
+        });
+        clickHouse.addPortMappings({ containerPort: 8123, protocol: ecs.Protocol.TCP });
+        const schemaGuard = clickHouseTask.addContainer('schema-guard', {
+            image: ecs.ContainerImage.fromEcrRepository(
+                props.archiveRepository,
+                config.archiveImageDigest,
+            ),
+            cpu: 128,
+            memoryLimitMiB: 256,
+            essential: true,
+            entryPoint: ['python', '/opt/loopad/archive/schema_sidecar.py'],
+            environment: { CLICKHOUSE_HTTP_URL: 'http://127.0.0.1:8123' },
+            secrets: clickHouseSecrets(clickHouseSecret),
+            logging: logDriver(this, 'SchemaGuardLogs', config),
+            healthCheck: {
+                command: ['CMD-SHELL', 'test -f /run/loopad/schema-ready'],
+                interval: Duration.seconds(10),
+                retries: 10,
+                startPeriod: Duration.seconds(80),
+                timeout: Duration.seconds(2),
+            },
+        });
+        schemaGuard.addMountPoints({
+            sourceVolume: 'runtime',
+            containerPath: '/run/loopad',
+            readOnly: false,
+        });
+        schemaGuard.addContainerDependencies({
+            container: clickHouse,
+            condition: ecs.ContainerDependencyCondition.HEALTHY,
+        });
+        const clickHouseService = new ecs.Ec2Service(this, 'ClickHouseService', {
+            cluster,
+            taskDefinition: clickHouseTask,
+            desiredCount: 1,
+            capacityProviderStrategies: [{
+                capacityProvider: capacityProvider.capacityProviderName,
+                weight: 1,
+            }],
+            minHealthyPercent: 0,
+            maxHealthyPercent: 100,
+            securityGroups: [clickHouseSecurityGroup],
+            vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+            enableExecuteCommand: false,
+            circuitBreaker: { rollback: true },
+        });
+        const serviceResource = clickHouseService.node.defaultChild as ecs.CfnService;
+        serviceResource.addDependency(host.node.defaultChild as autoscaling.CfnAutoScalingGroup);
+        serviceResource.addDependency(capacityProviderAssociation);
+        serviceResource.addDependency(registrationCondition);
+
+        const seedTaskRole = taskRole(this, 'SeedTaskRole');
+        archiveBucket.grantPut(seedTaskRole, `diagnostics/${config.runId}/*.json`);
+        const seedTask = armTask(this, 'SeedTask', seedTaskRole);
+        seedTask.addContainer('seed', {
+            image: ecs.ContainerImage.fromEcrRepository(
+                props.archiveRepository,
+                config.archiveImageDigest,
+            ),
+            cpu: 1_024,
+            memoryLimitMiB: 2_048,
+            entryPoint: ['python', '/opt/loopad/archive/targeted_seed.py'],
+            environment: targetedEnvironment(this, config, archiveBucket.bucketName),
+            secrets: clickHouseSecrets(clickHouseSecret),
+            logging: logDriver(this, 'SeedLogs', config),
+        });
+
+        const archiveTaskRole = taskRole(this, 'ArchiveTaskRole');
+        archiveTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject', 's3:PutObject'],
+            resources: [
+                archiveBucket.arnForObjects('attempts/v1/*'),
+                archiveBucket.arnForObjects('commits/v1/*'),
+            ],
+            conditions: { StringEquals: { 's3:ResourceAccount': this.account } },
+        }));
+        archiveTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:ListBucket'],
+            resources: [archiveBucket.bucketArn],
+            conditions: {
+                StringLike: { 's3:prefix': ['attempts/v1/*', 'commits/v1/*'] },
+            },
+        }));
+        const archiveTask = armTask(this, 'ArchiveTask', archiveTaskRole);
+        archiveTask.addContainer('archive', {
+            image: ecs.ContainerImage.fromEcrRepository(
+                props.archiveRepository,
+                config.archiveImageDigest,
+            ),
+            cpu: 1_024,
+            memoryLimitMiB: 2_048,
+            logging: logDriver(this, 'ArchiveLogs', config),
+            environment: {
+                ...targetedEnvironment(this, config, archiveBucket.bucketName),
+                ARCHIVE_EXPECTED_ROWS: '15000000',
+                ARCHIVE_ROWS_PER_PART: '5000000',
+                ARCHIVE_PART_COUNT: '3',
+                ARCHIVE_RETAIN_SOURCE_AFTER_COMMIT: 'true',
+                CLICKHOUSE_IMAGE: PHASE7_CLICKHOUSE_IMAGE,
+                ARCHIVE_IMAGE_DIGEST: config.archiveImageDigest,
+            },
+            secrets: clickHouseSecrets(clickHouseSecret),
+        });
+
+        new CfnOutput(this, 'ArchiveBucketName', { value: archiveBucket.bucketName });
+        new CfnOutput(this, 'ArchiveClusterName', { value: cluster.clusterName });
+        new CfnOutput(this, 'ArchiveCapacityProviderName', {
+            value: capacityProvider.capacityProviderName,
+        });
+        new CfnOutput(this, 'ClickHouseServiceName', { value: clickHouseService.serviceName });
+        new CfnOutput(this, 'ClickHouseAutoScalingGroupName', {
+            value: host.autoScalingGroupName,
+        });
+        new CfnOutput(this, 'SeedTaskDefinitionArn', { value: seedTask.taskDefinitionArn });
+        new CfnOutput(this, 'ArchiveTaskDefinitionArn', { value: archiveTask.taskDefinitionArn });
+        new CfnOutput(this, 'WorkerSecurityGroupId', { value: workerSecurityGroup.securityGroupId });
+        new CfnOutput(this, 'WorkerSubnetId', { value: vpc.publicSubnets[0]!.subnetId });
+        new CfnOutput(this, 'ArchiveImageDigest', { value: config.archiveImageDigest });
+        new CfnOutput(this, 'ClickHouseContainerMemoryMiB', {
+            value: PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB.toString(),
+        });
+        new CfnOutput(this, 'ClickHouseServerMemoryBytes', {
+            value: PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES.toString(),
+        });
+        new CfnOutput(this, 'ArchiveQueryMemoryBytes', {
+            value: PHASE7_ARCHIVE_DIAGNOSTIC_QUERY_MEMORY_BYTES.toString(),
+        });
+    }
+}
+
+function readArchiveDiagnosticConfig(
+    scope: Construct,
+    requireRuntime: boolean,
+): Phase7ArchiveDiagnosticConfig {
+    const runId = context(scope, 'phase7ArchiveDiagnosticRunId');
+    const sessionId = context(scope, 'phase7ArchiveDiagnosticSessionId');
+    if (!/^run_\d{8}_\d{6}_phase7_archive_diagnostic$/.test(runId)) {
+        throw new Error('phase7ArchiveDiagnosticRunId has an invalid shape.');
+    }
+    if (!/^phase7-archive-diagnostic-\d{8}T\d{6}Z$/.test(sessionId)) {
+        throw new Error('phase7ArchiveDiagnosticSessionId has an invalid shape.');
+    }
+    const archiveImageDigest = requireRuntime
+        ? context(scope, 'phase7ArchiveDiagnosticImageDigest')
+        : `sha256:${'0'.repeat(64)}`;
+    const armEcsAmiId = requireRuntime
+        ? context(scope, 'phase7ArchiveDiagnosticArmEcsAmiId')
+        : 'ami-00000000';
+    if (!/^sha256:[0-9a-f]{64}$/.test(archiveImageDigest)) {
+        throw new Error('phase7ArchiveDiagnosticImageDigest must be an exact digest.');
+    }
+    if (!/^ami-[0-9a-f]{8,17}$/.test(armEcsAmiId)) {
+        throw new Error('phase7ArchiveDiagnosticArmEcsAmiId must be an exact AMI ID.');
+    }
+    return {
+        runId,
+        sessionId,
+        archiveImageDigest,
+        armEcsAmiId,
+        archiveRepositoryName: `loop-ad/perf-phase7-targeted/${runId}/archive`,
+    };
+}
+
+function context(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) {
+        throw new Error(`Missing or invalid CDK context "${key}".`);
+    }
+    return value;
+}
+
+function diagnosticStackName(kind: 'Image' | 'Runtime', sessionId: string): string {
+    const timestamp = sessionId.replace(/\D/g, '').slice(-14);
+    return `LoopAd-P7-ArchiveDiag-${kind}-${timestamp}`;
+}
+
+function diagnosticTags(config: Phase7ArchiveDiagnosticConfig): Record<string, string> {
+    return {
+        Project: 'loop-ad',
+        Phase: '7',
+        RunId: config.runId,
+        SessionId: config.sessionId,
+        ResourceScope: 'run',
+        ManagedBy: 'codex',
+        AttemptType: 'aws-targeted-diagnostic',
+        PromotionEligible: 'false',
+    };
+}
+
+function addDiagnosticTags(stack: Stack, config: Phase7ArchiveDiagnosticConfig): void {
+    for (const [key, value] of Object.entries(diagnosticTags(config))) {
+        Tags.of(stack).add(key, value);
+    }
+}
+
+function requireRegion(stack: Stack): void {
+    if (stack.region !== PHASE7_REGION) {
+        throw new Error(`Phase 7 archive diagnostic region must be ${PHASE7_REGION}.`);
+    }
+}
+
+function clickHouseMemoryConfig(): string {
+    return `<clickhouse>
+  <max_server_memory_usage>${PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES}</max_server_memory_usage>
+  <max_server_memory_usage_to_ram_ratio>0.875</max_server_memory_usage_to_ram_ratio>
+</clickhouse>`;
+}
+
+function taskRole(scope: Construct, id: string): iam.Role {
+    return new iam.Role(scope, id, {
+        assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+    });
+}
+
+function armTask(
+    scope: Construct,
+    id: string,
+    role: iam.Role,
+): ecs.Ec2TaskDefinition {
+    const task = new ecs.Ec2TaskDefinition(scope, id, {
+        networkMode: ecs.NetworkMode.AWS_VPC,
+        taskRole: role,
+    });
+    const resource = task.node.defaultChild as ecs.CfnTaskDefinition;
+    resource.runtimePlatform = {
+        cpuArchitecture: 'ARM64',
+        operatingSystemFamily: 'LINUX',
+    };
+    return task;
+}
+
+function clickHouseSecrets(
+    secret: secretsmanager.Secret,
+): Record<string, ecs.Secret> {
+    return {
+        CLICKHOUSE_USER: ecs.Secret.fromSecretsManager(secret, 'username'),
+        CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(secret, 'password'),
+    };
+}
+
+function targetedEnvironment(
+    stack: Stack,
+    config: Phase7ArchiveDiagnosticConfig,
+    bucketName: string,
+): Record<string, string> {
+    return {
+        AWS_REGION: PHASE7_REGION,
+        AWS_ACCOUNT_ID: stack.account,
+        RUN_ID: config.runId,
+        CLICKHOUSE_HTTP_URL: 'OVERRIDE_REQUIRED',
+        ARCHIVE_BUCKET: bucketName,
+        ARCHIVE_PARTITION: 'OVERRIDE_REQUIRED',
+        ARCHIVE_TODAY: 'OVERRIDE_REQUIRED',
+    };
+}
+
+function logDriver(
+    scope: Construct,
+    id: string,
+    config: Phase7ArchiveDiagnosticConfig,
+): ecs.LogDriver {
+    const group = new logs.LogGroup(scope, `${id}Group`, {
+        logGroupName: `/loopad/perf/phase7-targeted/${config.runId}/${id}`,
+        retention: logs.RetentionDays.ONE_DAY,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    return ecs.LogDrivers.awsLogs({
+        logGroup: group,
+        streamPrefix: id.toLowerCase(),
+        mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+        maxBufferSize: Size.mebibytes(5),
+    });
+}

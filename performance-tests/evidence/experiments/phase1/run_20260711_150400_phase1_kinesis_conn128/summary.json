@@ -1,0 +1,261 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_150400_phase1_kinesis_conn128",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-11T15:04:00",
+  "purpose": "not_recorded",
+  "hypothesis": "Reducing the per-process Kinesis pool from 256 to 128 will further bound synchronous transport concurrency and lower target latency enough to increase 30k completion throughput, without changing admission or oha connections.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "kinesisShardCount",
+      "value": 80,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "kinesisShardCount",
+      "value": 80,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "maxInFlightRequests",
+      "value": 1024,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/run.json"
+    },
+    {
+      "name": "generatedAt",
+      "value": "2026-07-11T06:17:53.347Z",
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.targetRps",
+      "value": 30000,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.completedRequests",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.attemptedRequests",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.actualRps",
+      "value": 25239.440846749425,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p50",
+      "value": 5079.7877419999995,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p95",
+      "value": 9039.809411,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p99",
+      "value": 9451.683674,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.kinesisIncomingRecords",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.albRequests",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 78.13528785705566,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 9.658203125,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_operations_total",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_attempts_total",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_successes_total",
+      "value": 1515385,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_retries_total",
+      "value": 0,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.actualRpsAtLeast99Percent",
+      "value": false,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p95AtMost100ms",
+      "value": false,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p99AtMost200ms",
+      "value": false,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.passed",
+      "value": false,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    },
+    {
+      "name": "passed",
+      "value": false,
+      "source": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_150400_phase1_kinesis_conn128"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/cleanup-verification.json",
+      "bytes": 1014,
+      "sha256": "20995a76c8f24d677861d201adae72f93acfb71e0ab45c824ca085d4c53bf013"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/commands.md",
+      "bytes": 144,
+      "sha256": "85efe6d6cfb712a1813ef0ae0ca4f7fdf0d9485a153b9b238c2fbd4aca85d717"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/cost-realtime.json",
+      "bytes": 1512,
+      "sha256": "95f6a7bd87d5314a0114d00d1a177f8121e2972134b9b947a3dfb09e0bad6411"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/cost-upper-bound.json",
+      "bytes": 1513,
+      "sha256": "ba0892b54a9fe889f1846319c394deb06e8432b32f06f4ba7a4362d9200024ec"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/cost.md",
+      "bytes": 169,
+      "sha256": "ac3945a9d56154a7bd6149c903637454f429c5764187c14710c29f41cde48867"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/hypothesis.md",
+      "bytes": 297,
+      "sha256": "7d917665280771bd3a9582d3bc22b064ce8c060c7f7f1a4443be1bad7ea41464"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/metrics-summary.json",
+      "bytes": 2799,
+      "sha256": "0261790a57eb2bd229256a048a4f6009187e6594a313792fe1e2776835bb27d2"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/report.md",
+      "bytes": 450,
+      "sha256": "d1f409cb3c3679419e33a2744decd5fe5a4ed02efbd2164767761f98cc3ecde6"
+    },
+    {
+      "path": "run_20260711_150400_phase1_kinesis_conn128/run.json",
+      "bytes": 760,
+      "sha256": "be54967f4b9437b4c92ea43a8565987255362c7243ca14004984f2d09f57a0c0"
+    }
+  ]
+}

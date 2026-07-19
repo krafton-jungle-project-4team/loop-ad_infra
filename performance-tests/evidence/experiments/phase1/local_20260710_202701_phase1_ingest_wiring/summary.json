@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "runId": "local_20260710_202701_phase1_ingest_wiring",
+  "phase": "phase1",
+  "category": "validation",
+  "executedAt": "2026-07-10T20:27:01",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "local_20260710_202701_phase1_ingest_wiring"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "local_20260710_202701_phase1_ingest_wiring/commands.md",
+      "bytes": 1108,
+      "sha256": "ead1345f96486e884331b1863e3876e7bb10b12e33e539f6668ebfa0f5ef4538"
+    },
+    {
+      "path": "local_20260710_202701_phase1_ingest_wiring/hypothesis.md",
+      "bytes": 880,
+      "sha256": "d8fde229d87c3d38c39531b69e2617b853556464171cd5a731c24148798c34c5"
+    },
+    {
+      "path": "local_20260710_202701_phase1_ingest_wiring/verdict.md",
+      "bytes": 767,
+      "sha256": "b32bfe2c9c43cb0910854fc00fef025277f06c3af780ba77ba381d99789ae0e2"
+    }
+  ]
+}

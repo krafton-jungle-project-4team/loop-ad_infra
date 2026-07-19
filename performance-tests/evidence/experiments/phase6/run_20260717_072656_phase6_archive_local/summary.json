@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_072656_phase6_archive_local",
+  "phase": "phase6",
+  "category": "validation",
+  "executedAt": "2026-07-17T07:26:56",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "local-only",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260717_072656_phase6_archive_local/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260717_072656_phase6_archive_local/run.json"
+    },
+    {
+      "name": "startingGitStatusSha256",
+      "value": "550750c0c806cd0740f4bdd611c52df48a10ae04a09ec8deeb0693dbe1332fd9",
+      "source": "run_20260717_072656_phase6_archive_local/run.json"
+    },
+    {
+      "name": "docker.cpuCount",
+      "value": 10,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.memoryLimitBytes",
+      "value": 8321712128,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.clickHouseMemoryLimitBytes",
+      "value": 5368709120,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.peakMemoryBytes",
+      "value": 3316366966,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.peakMemoryPercentOfLimit",
+      "value": 39.851979,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.oomCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "docker.restartCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale1MFinal.peakMemoryBytes",
+      "value": 2860521618,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale1MFinal.peakMemoryPercent",
+      "value": 34.374196,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale1MFinal.oomCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale1MFinal.restartCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.status",
+      "value": "failed",
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.sourceUniqueEventsAfterFailure",
+      "value": 15000000,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryBytes",
+      "value": 3316366966,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryPercent",
+      "value": 39.851979,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.oomCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.restartCount",
+      "value": 0,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "cost.deterministicMaximumUsd",
+      "value": "6.089506",
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "cost.hardCapUsd",
+      "value": "15",
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    },
+    {
+      "name": "cost.passed",
+      "value": true,
+      "source": "run_20260717_072656_phase6_archive_local/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "passed",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_072656_phase6_archive_local"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_072656_phase6_archive_local/cleanup-verification.json",
+      "bytes": 718,
+      "sha256": "11787e5cbbe9f484658fb93506c318e4864c0660d1a845b836c730960cb29629"
+    },
+    {
+      "path": "run_20260717_072656_phase6_archive_local/commands.md",
+      "bytes": 4236,
+      "sha256": "143f4ce673bf32f4905bd9c07f5969e5718b8d716601c7a37ef0be6e8a44ecb3"
+    },
+    {
+      "path": "run_20260717_072656_phase6_archive_local/metrics-summary.json",
+      "bytes": 2276,
+      "sha256": "68439e5e7102a81711b5ebb194fafcb073b4fd9a50e011ab2be06a9a64ad7144"
+    },
+    {
+      "path": "run_20260717_072656_phase6_archive_local/report.md",
+      "bytes": 3432,
+      "sha256": "12b8fa1f38bd5f5dc65af753c39da526e4aeb8d1129dc2bc7125f74b8ac2e6ee"
+    },
+    {
+      "path": "run_20260717_072656_phase6_archive_local/run.json",
+      "bytes": 1085,
+      "sha256": "4db4c9fdf6ea309d92b83b4b23f0d8f60f23af5ebe0a9b80daeacc5d6b3aee2c"
+    }
+  ]
+}

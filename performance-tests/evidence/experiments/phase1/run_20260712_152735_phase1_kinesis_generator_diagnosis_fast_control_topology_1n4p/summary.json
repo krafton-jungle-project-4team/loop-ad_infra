@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-12T15:27:35",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p/cost-before-attempt.json",
+      "bytes": 1773,
+      "sha256": "02d3de87e4bb4ba1dc53324f051a6921850d6a6e4186db97635d89fffb7aaf39"
+    }
+  ]
+}

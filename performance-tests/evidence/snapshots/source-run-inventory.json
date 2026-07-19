@@ -1,0 +1,940 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "snapshot_20260719T200907Z",
+  "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+  "sourceRootContract": "paths are relative to the captured performance-tests directory",
+  "sourcePathCount": 228,
+  "uniqueRunIdCount": 224,
+  "duplicateRunIds": [
+    {
+      "runId": "run_20260714_225101_connection_path",
+      "sourcePaths": [
+        "run_20260714_225101_connection_path",
+        "run_20260714_225101_connection_path/rollback-alb-bucket-02/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path",
+        "run_20260714_225101_connection_path/rollback-alb-bucket/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path"
+      ]
+    },
+    {
+      "runId": "run_20260715_111808_t3_e2e_30usd",
+      "sourcePaths": [
+        "goal_20260715_oha_p95/run_20260715_111808_t3_e2e_30usd",
+        "run_20260715_111808_t3_e2e_30usd",
+        "run_20260715_111808_t3_e2e_30usd/correctness-6collector/run_20260715_111808_t3_e2e_30usd"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "runId": "run_20260715_111808_t3_e2e_30usd",
+      "path": "goal_20260715_oha_p95/run_20260715_111808_t3_e2e_30usd"
+    },
+    {
+      "runId": "local_20260710_202701_phase1_ingest_wiring",
+      "path": "local_20260710_202701_phase1_ingest_wiring"
+    },
+    {
+      "runId": "local_20260710_203803_phase1_admission_control",
+      "path": "local_20260710_203803_phase1_admission_control"
+    },
+    {
+      "runId": "local_20260710_204642_phase1_payload_contract",
+      "path": "local_20260710_204642_phase1_payload_contract"
+    },
+    {
+      "runId": "local_20260710_210531_phase1_debug_metrics",
+      "path": "local_20260710_210531_phase1_debug_metrics"
+    },
+    {
+      "runId": "run_20260709_190153_phase0_alb_smoke",
+      "path": "run_20260709_190153_phase0_alb_smoke"
+    },
+    {
+      "runId": "run_20260709_192612_phase0_alb_50k",
+      "path": "run_20260709_192612_phase0_alb_50k"
+    },
+    {
+      "runId": "run_20260709_193112_phase0_alb_17k5",
+      "path": "run_20260709_193112_phase0_alb_17k5"
+    },
+    {
+      "runId": "run_20260709_193312_phase0_alb_10k",
+      "path": "run_20260709_193312_phase0_alb_10k"
+    },
+    {
+      "runId": "run_20260709_193612_phase0_alb_5k",
+      "path": "run_20260709_193612_phase0_alb_5k"
+    },
+    {
+      "runId": "run_20260709_194012_phase0_alb_ramp",
+      "path": "run_20260709_194012_phase0_alb_ramp"
+    },
+    {
+      "runId": "run_20260709_203904_phase0_alb_precomputed",
+      "path": "run_20260709_203904_phase0_alb_precomputed"
+    },
+    {
+      "runId": "run_20260709_210700_phase0_alb_50k_precomputed",
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed"
+    },
+    {
+      "runId": "run_20260709_230404_phase0_alb_ec2_sweep",
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep"
+    },
+    {
+      "runId": "run_20260710_001859_phase0_alb_keepalive_4ec2",
+      "path": "run_20260710_001859_phase0_alb_keepalive_4ec2"
+    },
+    {
+      "runId": "run_20260710_011033_phase0_alb_keepalive_50k",
+      "path": "run_20260710_011033_phase0_alb_keepalive_50k"
+    },
+    {
+      "runId": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k",
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k"
+    },
+    {
+      "runId": "run_20260710_020152_phase0_alb_keepalive_multiprocess_54k",
+      "path": "run_20260710_020152_phase0_alb_keepalive_multiprocess_54k"
+    },
+    {
+      "runId": "run_20260710_022215_phase0_alb_keepalive_5proc_62k",
+      "path": "run_20260710_022215_phase0_alb_keepalive_5proc_62k"
+    },
+    {
+      "runId": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c",
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c"
+    },
+    {
+      "runId": "run_20260710_034012_phase0_alb_oha_16vcpu_75s",
+      "path": "run_20260710_034012_phase0_alb_oha_16vcpu_75s"
+    },
+    {
+      "runId": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s",
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s"
+    },
+    {
+      "runId": "run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s",
+      "path": "run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s"
+    },
+    {
+      "runId": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps",
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps"
+    },
+    {
+      "runId": "run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps",
+      "path": "run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps"
+    },
+    {
+      "runId": "run_20260710_105235_phase0_alb_16vcpu_5proc_62k",
+      "path": "run_20260710_105235_phase0_alb_16vcpu_5proc_62k"
+    },
+    {
+      "runId": "run_20260710_221849_phase1_kinesis_smoke_1c_1krps",
+      "path": "run_20260710_221849_phase1_kinesis_smoke_1c_1krps"
+    },
+    {
+      "runId": "run_20260710_225534_phase1_kinesis_smoke_retry",
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry"
+    },
+    {
+      "runId": "run_20260710_232642_phase1_kinesis_explore_1c_5krps",
+      "path": "run_20260710_232642_phase1_kinesis_explore_1c_5krps"
+    },
+    {
+      "runId": "run_20260710_235854_phase1_kinesis_al2023_smoke",
+      "path": "run_20260710_235854_phase1_kinesis_al2023_smoke"
+    },
+    {
+      "runId": "run_20260711_003908_phase1_kinesis_1c_5krps",
+      "path": "run_20260711_003908_phase1_kinesis_1c_5krps"
+    },
+    {
+      "runId": "run_20260711_010045_phase1_kinesis_1c_10krps",
+      "path": "run_20260711_010045_phase1_kinesis_1c_10krps"
+    },
+    {
+      "runId": "run_20260711_011750_phase1_kinesis_2c_10krps",
+      "path": "run_20260711_011750_phase1_kinesis_2c_10krps"
+    },
+    {
+      "runId": "run_20260711_013903_phase1_kinesis_2c_10k_retry",
+      "path": "run_20260711_013903_phase1_kinesis_2c_10k_retry"
+    },
+    {
+      "runId": "run_20260711_015921_phase1_kinesis_2c_10k_retry2",
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2"
+    },
+    {
+      "runId": "run_20260711_101443_phase1_kinesis_2c_10k_retry3",
+      "path": "run_20260711_101443_phase1_kinesis_2c_10k_retry3"
+    },
+    {
+      "runId": "run_20260711_103455_phase1_kinesis_4c_10krps",
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps"
+    },
+    {
+      "runId": "run_20260711_105300_phase1_kinesis_4c_10k_ec2",
+      "path": "run_20260711_105300_phase1_kinesis_4c_10k_ec2"
+    },
+    {
+      "runId": "run_20260711_112221_phase1_kinesis_4c_20k",
+      "path": "run_20260711_112221_phase1_kinesis_4c_20k"
+    },
+    {
+      "runId": "run_20260711_114008_phase1_kinesis_6c_20k",
+      "path": "run_20260711_114008_phase1_kinesis_6c_20k"
+    },
+    {
+      "runId": "run_20260711_121544_phase1_kinesis_8c_20k",
+      "path": "run_20260711_121544_phase1_kinesis_8c_20k"
+    },
+    {
+      "runId": "run_20260711_123500_phase1_kinesis_final_cleanup",
+      "path": "run_20260711_123500_phase1_kinesis_final_cleanup"
+    },
+    {
+      "runId": "run_20260711_132330_phase1_kinesis_pprof_baseline",
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline"
+    },
+    {
+      "runId": "run_20260711_142200_phase1_kinesis_combined1024",
+      "path": "run_20260711_142200_phase1_kinesis_combined1024"
+    },
+    {
+      "runId": "run_20260711_144444_phase1_kinesis_conn256",
+      "path": "run_20260711_144444_phase1_kinesis_conn256"
+    },
+    {
+      "runId": "run_20260711_150400_phase1_kinesis_conn128",
+      "path": "run_20260711_150400_phase1_kinesis_conn128"
+    },
+    {
+      "runId": "run_20260711_151900_phase1_kinesis_conn512",
+      "path": "run_20260711_151900_phase1_kinesis_conn512"
+    },
+    {
+      "runId": "run_20260712_050212_phase1_kinesis_compare_go-sync",
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync"
+    },
+    {
+      "runId": "run_20260712_061339_phase1_kinesis_compare_go-batch",
+      "path": "run_20260712_061339_phase1_kinesis_compare_go-batch"
+    },
+    {
+      "runId": "run_20260712_065416_phase1_kinesis_compare_java-kpl",
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl"
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics",
+      "path": "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics"
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period",
+      "path": "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period"
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order",
+      "path": "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order"
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_go_batch",
+      "path": "run_20260712_081500_phase1_kinesis_capacity_go_batch"
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_go_sync",
+      "path": "run_20260712_081500_phase1_kinesis_capacity_go_sync"
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_java_kpl",
+      "path": "run_20260712_081500_phase1_kinesis_capacity_java_kpl"
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_final_plan",
+      "path": "run_20260712_102207_phase1_kinesis_capacity_final_plan"
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_go_batch",
+      "path": "run_20260712_102207_phase1_kinesis_capacity_scout_go_batch"
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_go_sync",
+      "path": "run_20260712_102207_phase1_kinesis_capacity_scout_go_sync"
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl",
+      "path": "run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl"
+    },
+    {
+      "runId": "run_20260712_114756_phase1_kinesis_capacity_scout_cleanup",
+      "path": "run_20260712_114756_phase1_kinesis_capacity_scout_cleanup"
+    },
+    {
+      "runId": "run_20260712_120232_capacity_go_batch",
+      "path": "run_20260712_120232_capacity_go_batch"
+    },
+    {
+      "runId": "run_20260712_120232_capacity_go_sync",
+      "path": "run_20260712_120232_capacity_go_sync"
+    },
+    {
+      "runId": "run_20260712_120232_capacity_java_kpl",
+      "path": "run_20260712_120232_capacity_java_kpl"
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_go_batch",
+      "path": "run_20260712_120232_phase1_kinesis_capacity_go_batch"
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_go_sync",
+      "path": "run_20260712_120232_phase1_kinesis_capacity_go_sync"
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_java_kpl",
+      "path": "run_20260712_120232_phase1_kinesis_capacity_java_kpl"
+    },
+    {
+      "runId": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup",
+      "path": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup"
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch",
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch"
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node",
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node"
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync",
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync"
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl",
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl"
+    },
+    {
+      "runId": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic",
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic"
+    },
+    {
+      "runId": "run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup",
+      "path": "run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup"
+    },
+    {
+      "runId": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p",
+      "path": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p"
+    },
+    {
+      "runId": "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p",
+      "path": "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p"
+    },
+    {
+      "runId": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p",
+      "path": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p"
+    },
+    {
+      "runId": "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p",
+      "path": "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p"
+    },
+    {
+      "runId": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p",
+      "path": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p"
+    },
+    {
+      "runId": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync",
+      "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync"
+    },
+    {
+      "runId": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch",
+      "path": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch"
+    },
+    {
+      "runId": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl",
+      "path": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl"
+    },
+    {
+      "runId": "run_20260712_181327_phase1_kinesis_alb_warmup_go_batch",
+      "path": "run_20260712_181327_phase1_kinesis_alb_warmup_go_batch"
+    },
+    {
+      "runId": "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch",
+      "path": "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch"
+    },
+    {
+      "runId": "run_20260712_191537_phase1_kinesis_alb_warmup_go_batch",
+      "path": "run_20260712_191537_phase1_kinesis_alb_warmup_go_batch"
+    },
+    {
+      "runId": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session",
+      "path": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session"
+    },
+    {
+      "runId": "run_20260713_163800_phase1_kinesis_admission_scaleout_session",
+      "path": "run_20260713_163800_phase1_kinesis_admission_scaleout_session"
+    },
+    {
+      "runId": "run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a",
+      "path": "run_20260713_163800_phase1_kinesis_admission_scaleout_session/correctness/run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a"
+    },
+    {
+      "runId": "run_20260713_193800_latency_tcp_root",
+      "path": "run_20260713_193800_latency_tcp_root"
+    },
+    {
+      "runId": "run_20260713_220500_alb_fanout_crossover",
+      "path": "run_20260713_220500_alb_fanout_crossover"
+    },
+    {
+      "runId": "run_20260714_112000_protocol_crossover",
+      "path": "run_20260714_112000_protocol_crossover"
+    },
+    {
+      "runId": "run_20260714_161818_independent_crossover",
+      "path": "run_20260714_161818_independent_crossover"
+    },
+    {
+      "runId": "run_20260714_175820_a2_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/a2/run_20260714_175820_a2_correctness"
+    },
+    {
+      "runId": "run_20260714_190050_n2_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/n2/run_20260714_190050_n2_correctness"
+    },
+    {
+      "runId": "run_20260714_191800_n2_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/n2/run_20260714_191800_n2_correctness"
+    },
+    {
+      "runId": "run_20260714_195000_n3_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_195000_n3_correctness"
+    },
+    {
+      "runId": "run_20260714_200300_n3_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_200300_n3_correctness"
+    },
+    {
+      "runId": "run_20260714_200800_n3_correctness",
+      "path": "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_200800_n3_correctness"
+    },
+    {
+      "runId": "run_20260714_225101_connection_path",
+      "path": "run_20260714_225101_connection_path"
+    },
+    {
+      "runId": "run_20260714_225101_connection_path",
+      "path": "run_20260714_225101_connection_path/rollback-alb-bucket-02/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path"
+    },
+    {
+      "runId": "run_20260714_225101_connection_path",
+      "path": "run_20260714_225101_connection_path/rollback-alb-bucket/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path"
+    },
+    {
+      "runId": "run_20260715_002706_connection_path_retry",
+      "path": "run_20260715_002706_connection_path_retry"
+    },
+    {
+      "runId": "run_20260715_011247_connection_path_60usd",
+      "path": "run_20260715_011247_connection_path_60usd"
+    },
+    {
+      "runId": "run_20260715_111808_t3_e2e_30usd",
+      "path": "run_20260715_111808_t3_e2e_30usd"
+    },
+    {
+      "runId": "run_20260715_111808_t3_e2e_30usd",
+      "path": "run_20260715_111808_t3_e2e_30usd/correctness-6collector/run_20260715_111808_t3_e2e_30usd"
+    },
+    {
+      "runId": "run_20260715_213856_oha_p95",
+      "path": "run_20260715_213856_oha_p95"
+    },
+    {
+      "runId": "run_20260716_010529_haproxy_auto",
+      "path": "run_20260716_010529_haproxy_auto"
+    },
+    {
+      "runId": "run_20260716_031735_locust_kinesis_generator_qualification",
+      "path": "run_20260716_031735_locust_kinesis_generator_qualification"
+    },
+    {
+      "runId": "run_20260716_090942_locust_kinesis_generator_qualification",
+      "path": "run_20260716_090942_locust_kinesis_generator_qualification"
+    },
+    {
+      "runId": "run_20260716_101059_phase4_clickhouse_lambda",
+      "path": "run_20260716_101059_phase4_clickhouse_lambda"
+    },
+    {
+      "runId": "run_20260716_110956_locust_kinesis_generator_qualification",
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification"
+    },
+    {
+      "runId": "run_20260716_114704_phase4_clickhouse_lambda",
+      "path": "run_20260716_114704_phase4_clickhouse_lambda"
+    },
+    {
+      "runId": "run_20260716_142341_phase4_clickhouse_ecs",
+      "path": "run_20260716_142341_phase4_clickhouse_ecs"
+    },
+    {
+      "runId": "run_20260716_150729_phase4_clickhouse_ecs",
+      "path": "run_20260716_150729_phase4_clickhouse_ecs"
+    },
+    {
+      "runId": "run_20260716_155254_phase4_clickhouse_ecs",
+      "path": "run_20260716_155254_phase4_clickhouse_ecs"
+    },
+    {
+      "runId": "run_20260716_165030_phase4_clickhouse_ecs",
+      "path": "run_20260716_165030_phase4_clickhouse_ecs"
+    },
+    {
+      "runId": "run_20260716_194426_phase4_clickhouse_ecs",
+      "path": "run_20260716_194426_phase4_clickhouse_ecs"
+    },
+    {
+      "runId": "run_20260717_041219_phase6_clickhouse_s3_archive",
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive"
+    },
+    {
+      "runId": "run_20260717_050834_phase6_archive_local_bootstrap_fix",
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix"
+    },
+    {
+      "runId": "run_20260717_055837_phase6_clickhouse_s3_archive",
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive"
+    },
+    {
+      "runId": "run_20260717_072656_phase6_archive_local",
+      "path": "run_20260717_072656_phase6_archive_local"
+    },
+    {
+      "runId": "run_20260717_083257_phase7_local",
+      "path": "run_20260717_083257_phase7_local"
+    },
+    {
+      "runId": "run_20260717_083457_phase7_local",
+      "path": "run_20260717_083457_phase7_local"
+    },
+    {
+      "runId": "run_20260717_083757_phase7_local",
+      "path": "run_20260717_083757_phase7_local"
+    },
+    {
+      "runId": "run_20260717_084157_phase7_local",
+      "path": "run_20260717_084157_phase7_local"
+    },
+    {
+      "runId": "run_20260717_084709_phase7_local",
+      "path": "run_20260717_084709_phase7_local"
+    },
+    {
+      "runId": "run_20260717_085149_phase7_local",
+      "path": "run_20260717_085149_phase7_local"
+    },
+    {
+      "runId": "run_20260717_085618_phase7_local",
+      "path": "run_20260717_085618_phase7_local"
+    },
+    {
+      "runId": "run_20260717_090042_phase7_local",
+      "path": "run_20260717_090042_phase7_local"
+    },
+    {
+      "runId": "run_20260717_090350_phase7_local",
+      "path": "run_20260717_090350_phase7_local"
+    },
+    {
+      "runId": "run_20260717_091439_phase7_local",
+      "path": "run_20260717_091439_phase7_local"
+    },
+    {
+      "runId": "run_20260717_091812_phase7_local",
+      "path": "run_20260717_091812_phase7_local"
+    },
+    {
+      "runId": "run_20260717_092553_phase7_local",
+      "path": "run_20260717_092553_phase7_local"
+    },
+    {
+      "runId": "run_20260717_093049_phase7_local",
+      "path": "run_20260717_093049_phase7_local"
+    },
+    {
+      "runId": "run_20260717_100126_phase6_archive_local_retry",
+      "path": "run_20260717_100126_phase6_archive_local_retry"
+    },
+    {
+      "runId": "run_20260717_112554_phase7_1_local_integration",
+      "path": "run_20260717_112554_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_114232_phase7_2_deployment_readiness",
+      "path": "run_20260717_114232_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_115310_phase7_1_local_integration",
+      "path": "run_20260717_115310_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_120032_phase7_2_deployment_readiness",
+      "path": "run_20260717_120032_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_121121_phase7_1_local_integration",
+      "path": "run_20260717_121121_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_121922_phase7_2_deployment_readiness",
+      "path": "run_20260717_121922_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_122819_phase7_1_local_integration",
+      "path": "run_20260717_122819_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_122936_phase7_1_local_integration",
+      "path": "run_20260717_122936_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_123647_phase7_2_aws_integration",
+      "path": "run_20260717_123647_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260717_123647_phase7_2_deployment_readiness",
+      "path": "run_20260717_123647_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_135302_phase7_1_local_integration",
+      "path": "run_20260717_135302_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_140022_phase7_2_deployment_readiness",
+      "path": "run_20260717_140022_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_145409_phase7_1_local_integration",
+      "path": "run_20260717_145409_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_145426_phase7_1_local_integration",
+      "path": "run_20260717_145426_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_150129_phase7_2_deployment_readiness",
+      "path": "run_20260717_150129_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260717_223832_phase7_1_local_integration",
+      "path": "run_20260717_223832_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_224217_phase7_1_local_integration",
+      "path": "run_20260717_224217_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260717_225316_phase7_2_aws_integration",
+      "path": "run_20260717_225316_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260717_225316_phase7_2_deployment_readiness",
+      "path": "run_20260717_225316_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_002925_phase7_1_local_integration",
+      "path": "run_20260718_002925_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_003703_phase7_1_local_integration",
+      "path": "run_20260718_003703_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_004921_phase7_2_aws_integration",
+      "path": "run_20260718_004921_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_004921_phase7_2_deployment_readiness",
+      "path": "run_20260718_004921_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_011725_phase7_1_local_integration",
+      "path": "run_20260718_011725_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_011744_phase7_1_local_integration",
+      "path": "run_20260718_011744_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_024916_phase7_1_local_integration",
+      "path": "run_20260718_024916_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_025510_phase7_2_aws_integration",
+      "path": "run_20260718_025510_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_025510_phase7_2_deployment_readiness",
+      "path": "run_20260718_025510_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_041110_phase7_1_local_integration",
+      "path": "run_20260718_041110_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_041125_phase7_1_local_integration",
+      "path": "run_20260718_041125_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_042130_phase7_2_aws_integration",
+      "path": "run_20260718_042130_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_042130_phase7_2_deployment_readiness",
+      "path": "run_20260718_042130_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_055034_phase7_1_local_integration",
+      "path": "run_20260718_055034_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_055103_phase7_1_local_integration",
+      "path": "run_20260718_055103_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_060935_phase7_1_local_integration",
+      "path": "run_20260718_060935_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_061644_phase7_2_aws_integration",
+      "path": "run_20260718_061644_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_061644_phase7_2_deployment_readiness",
+      "path": "run_20260718_061644_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_074333_phase7_1_local_integration",
+      "path": "run_20260718_074333_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_074351_phase7_1_local_integration",
+      "path": "run_20260718_074351_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_075926_phase7_2_aws_integration",
+      "path": "run_20260718_075926_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_075926_phase7_2_deployment_readiness",
+      "path": "run_20260718_075926_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_104859_phase7_1_local_integration",
+      "path": "run_20260718_104859_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_105848_phase7_2_aws_integration",
+      "path": "run_20260718_105848_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_105848_phase7_2_deployment_readiness",
+      "path": "run_20260718_105848_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_120309_phase7_1_local_integration",
+      "path": "run_20260718_120309_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_122355_phase7_1_local_integration",
+      "path": "run_20260718_122355_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_124510_phase7_2_aws_integration",
+      "path": "run_20260718_124510_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_124510_phase7_2_deployment_readiness",
+      "path": "run_20260718_124510_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_140208_phase7_1_local_integration",
+      "path": "run_20260718_140208_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_140243_phase7_1_local_integration",
+      "path": "run_20260718_140243_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_141425_phase7_2_deployment_readiness",
+      "path": "run_20260718_141425_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_143442_phase7_1_local_integration",
+      "path": "run_20260718_143442_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_144405_phase7_2_aws_integration",
+      "path": "run_20260718_144405_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_144405_phase7_2_deployment_readiness",
+      "path": "run_20260718_144405_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_160954_phase7_1_local_integration",
+      "path": "run_20260718_160954_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_161016_phase7_1_local_integration",
+      "path": "run_20260718_161016_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_162042_phase7_2_aws_integration",
+      "path": "run_20260718_162042_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_162042_phase7_2_deployment_readiness",
+      "path": "run_20260718_162042_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_175009_phase7_1_local_integration",
+      "path": "run_20260718_175009_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_175720_phase7_2_aws_integration",
+      "path": "run_20260718_175720_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_175720_phase7_2_deployment_readiness",
+      "path": "run_20260718_175720_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_192234_phase7_1_local_integration",
+      "path": "run_20260718_192234_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_192254_phase7_1_local_integration",
+      "path": "run_20260718_192254_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_193035_phase7_2_aws_integration",
+      "path": "run_20260718_193035_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_193035_phase7_2_deployment_readiness",
+      "path": "run_20260718_193035_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_205704_phase7_1_local_integration",
+      "path": "run_20260718_205704_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_210703_phase7_2_aws_integration",
+      "path": "run_20260718_210703_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_210703_phase7_2_deployment_readiness",
+      "path": "run_20260718_210703_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260718_224032_phase7_1_local_integration",
+      "path": "run_20260718_224032_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_224059_phase7_1_local_integration",
+      "path": "run_20260718_224059_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260718_225218_phase7_2_aws_integration",
+      "path": "run_20260718_225218_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260718_225218_phase7_2_deployment_readiness",
+      "path": "run_20260718_225218_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_003924_phase7_1_local_integration",
+      "path": "run_20260719_003924_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260719_003944_phase7_1_local_integration",
+      "path": "run_20260719_003944_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260719_012539_phase7_1_local_integration",
+      "path": "run_20260719_012539_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260719_020156_phase7_2_aws_integration",
+      "path": "run_20260719_020156_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260719_020156_phase7_2_deployment_readiness",
+      "path": "run_20260719_020156_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_034506_phase7_1_local_integration",
+      "path": "run_20260719_034506_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260719_041439_phase7_1_local_integration",
+      "path": "run_20260719_041439_phase7_1_local_integration"
+    },
+    {
+      "runId": "run_20260719_043415_phase7_2_aws_integration",
+      "path": "run_20260719_043415_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260719_043415_phase7_2_deployment_readiness",
+      "path": "run_20260719_043415_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_071857_phase7_2_aws_targeted_diagnostic",
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic"
+    },
+    {
+      "runId": "run_20260719_071857_phase7_2_targeted_archive_readiness",
+      "path": "run_20260719_071857_phase7_2_targeted_archive_readiness"
+    },
+    {
+      "runId": "run_20260719_083356_phase7_2_aws_targeted_diagnostic",
+      "path": "run_20260719_083356_phase7_2_aws_targeted_diagnostic"
+    },
+    {
+      "runId": "run_20260719_083356_phase7_2_targeted_archive_readiness",
+      "path": "run_20260719_083356_phase7_2_targeted_archive_readiness"
+    },
+    {
+      "runId": "run_20260719_094035_phase7_2_aws_targeted_diagnostic",
+      "path": "run_20260719_094035_phase7_2_aws_targeted_diagnostic"
+    },
+    {
+      "runId": "run_20260719_125547_phase7_2_aws_integration",
+      "path": "run_20260719_125547_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260719_125547_phase7_2_deployment_readiness",
+      "path": "run_20260719_125547_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_144544_phase7_2_aws_integration",
+      "path": "run_20260719_144544_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260719_144544_phase7_2_deployment_readiness",
+      "path": "run_20260719_144544_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_162701_phase7_2_deployment_readiness",
+      "path": "run_20260719_162701_phase7_2_deployment_readiness"
+    },
+    {
+      "runId": "run_20260719_164311_phase7_2_aws_integration",
+      "path": "run_20260719_164311_phase7_2_aws_integration"
+    },
+    {
+      "runId": "run_20260719_164311_phase7_2_deployment_readiness",
+      "path": "run_20260719_164311_phase7_2_deployment_readiness"
+    }
+  ]
+}

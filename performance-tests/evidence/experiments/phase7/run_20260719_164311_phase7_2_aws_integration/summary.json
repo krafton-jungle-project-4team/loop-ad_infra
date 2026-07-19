@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260719_164311_phase7_2_aws_integration",
+  "phase": "phase7",
+  "category": "experiment",
+  "executedAt": "2026-07-19T16:43:11",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "finalized",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "failure.error",
+      "value": "inventory exited 2",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "failure.errorType",
+      "value": "RuntimeError",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[0].passed",
+      "value": true,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[1].passed",
+      "value": true,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[2].passed",
+      "value": true,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[3].passed",
+      "value": true,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[4].passed",
+      "value": true,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[5].error",
+      "value": "cleanup exited 124 after timeout",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[5].errorType",
+      "value": "RuntimeError",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[5].passed",
+      "value": false,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[6].error",
+      "value": "inventory exited 2",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[6].errorType",
+      "value": "RuntimeError",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[6].passed",
+      "value": false,
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "status",
+      "value": "finalized",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260719_164311_phase7_2_aws_integration/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260719_164311_phase7_2_aws_integration"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260719_164311_phase7_2_aws_integration/cleanup-verification.json",
+      "bytes": 2492,
+      "sha256": "fb5cbcfef347aa99621bfd7a385723deed88394c7861ae1695355e845208d1d3"
+    },
+    {
+      "path": "run_20260719_164311_phase7_2_aws_integration/commands.md",
+      "bytes": 396,
+      "sha256": "2182198116cd7221acbcf50297a3c52ce0f819654d089c02bede0f218e77b645"
+    },
+    {
+      "path": "run_20260719_164311_phase7_2_aws_integration/infra.md",
+      "bytes": 178,
+      "sha256": "9cf52535ef1b68ab8a995b67337b7c67470410fc9d8f5a893af6ce1f9c2ea979"
+    },
+    {
+      "path": "run_20260719_164311_phase7_2_aws_integration/report.md",
+      "bytes": 377,
+      "sha256": "1a1f81badb06d049efb3bb5261b5991324351219bc902348ea73c7a2c3855dc3"
+    },
+    {
+      "path": "run_20260719_164311_phase7_2_aws_integration/run.json",
+      "bytes": 3636,
+      "sha256": "8faf18d8e25de00d219370575b527350085cb1161c50da103da428bbb2478227"
+    }
+  ]
+}

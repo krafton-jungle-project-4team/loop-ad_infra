@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-13T14:05:07",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session/correctness-summary.json",
+      "bytes": 1033,
+      "sha256": "c3a27b655e8d059b7b6d8a51bbb8a40e88057a08b6cd84a4ad39a93b22391fa4"
+    },
+    {
+      "path": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session/cost-accrued-before-a0.json",
+      "bytes": 1831,
+      "sha256": "5661aa69059f54cf71e5074e9dff984c1c13eb271ee48eaf662a5fb9cc74aae3"
+    }
+  ]
+}

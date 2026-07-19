@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260718_002925_phase7_1_local_integration",
+  "phase": "phase7",
+  "category": "validation",
+  "executedAt": "2026-07-18T00:29:25",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "local-only",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260718_002925_phase7_1_local_integration/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "passed",
+      "source": "run_20260718_002925_phase7_1_local_integration/run.json"
+    },
+    {
+      "name": "awsNetworkAudit.localRequests",
+      "value": 21,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "awsNetworkAudit.realAwsRequests",
+      "value": 0,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "haproxy.allErrorsLogged",
+      "value": true,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "haproxy.sampledRequestLogLines",
+      "value": 25,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "haproxy.successLogSampleRate",
+      "value": "1/1000",
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "localThroughputIsCapacityGate",
+      "value": false,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "overlap.achievedRps",
+      "value": 146.920402,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "overlap.durationSeconds",
+      "value": 163.35376,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "overlap.records",
+      "value": 24000,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "overlap.requestedRps",
+      "value": 200,
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    },
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "passed",
+  "conclusion": "passed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260718_002925_phase7_1_local_integration"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/cleanup-verification.json",
+      "bytes": 202,
+      "sha256": "edfcb4f99a13aeddafaf424eebd7fc02c3fad478fd73523608692e53d1816b6e"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/commands.md",
+      "bytes": 45,
+      "sha256": "c0c126847626f5bdbb0f329c7bc85bce2d287220e95691dab8c927b4116b3062"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/correctness-summary.json",
+      "bytes": 377,
+      "sha256": "9927f0d2ad97eaa6dcd5d477df812f6d8ff41e82d513e94f94fc550585619c3e"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/infra.md",
+      "bytes": 142,
+      "sha256": "a1ce6fcf27e137a4e095ab15440472bec5ffb57508855dec11ea986d5bfb75ca"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/metrics-summary.json",
+      "bytes": 1006,
+      "sha256": "b4eba7fe67dac1cfd4413de25f0252a8db44709555a75c3efabee07d89d28b8c"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/report.md",
+      "bytes": 289,
+      "sha256": "e40bda48593c5392fd4632732a991b25661e27d4c67a18c9a4c4e13129925550"
+    },
+    {
+      "path": "run_20260718_002925_phase7_1_local_integration/run.json",
+      "bytes": 506,
+      "sha256": "0bd9631d59939ea5b07b34d2c3c0b94ffc7b1aaeddd51132a89ad2cfbf7e6d89"
+    }
+  ]
+}

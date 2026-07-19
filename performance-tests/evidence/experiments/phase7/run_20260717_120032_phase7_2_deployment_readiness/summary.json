@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_120032_phase7_2_deployment_readiness",
+  "phase": "phase7",
+  "category": "deployment_readiness",
+  "executedAt": "2026-07-17T12:00:32",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed-image-preparation",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed-image-preparation",
+      "source": "run_20260717_120032_phase7_2_deployment_readiness/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260717_120032_phase7_2_deployment_readiness/run.json"
+    },
+    {
+      "name": "costAccruedUpperBoundUsd",
+      "value": "0.000000",
+      "source": "run_20260717_120032_phase7_2_deployment_readiness/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "passed",
+  "cleanupStatus": "unknown",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_120032_phase7_2_deployment_readiness"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_120032_phase7_2_deployment_readiness/cleanup-verification.json",
+      "bytes": 1742,
+      "sha256": "8fdc2d4eba32e2af41b6e484ce6be291f7faf20ff074018d8f58a50f1968d3a1"
+    },
+    {
+      "path": "run_20260717_120032_phase7_2_deployment_readiness/commands.md",
+      "bytes": 587,
+      "sha256": "a9a6728681776c645480e4a54c308d8ad084244a5aac43fbcc2d903f7cc2dd21"
+    },
+    {
+      "path": "run_20260717_120032_phase7_2_deployment_readiness/cost-model.json",
+      "bytes": 7438,
+      "sha256": "55663c4ad06a653e10b6d8cc576b86b8d5475ffe5d4c20228cbf8aad7203946b"
+    },
+    {
+      "path": "run_20260717_120032_phase7_2_deployment_readiness/report.md",
+      "bytes": 779,
+      "sha256": "59fedff73b08bf0a92b0ce71873530651adc636a14442df41f54715a4e6b6dcb"
+    },
+    {
+      "path": "run_20260717_120032_phase7_2_deployment_readiness/run.json",
+      "bytes": 465,
+      "sha256": "6c20a6d68a973ea89906f5f48212bda8f9e330556a4558dcc5d8407f51f9c9aa"
+    }
+  ]
+}

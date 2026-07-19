@@ -25,7 +25,7 @@ const options = args(process.argv.slice(2));
 for (const required of ["source", "evidence", "snapshot-id", "archive-sha", "source-head"]) if (!options[required]) throw new Error(`missing --${required}`);
 const sourceRoot = resolve(options.source);
 const evidenceRoot = resolve(options.evidence);
-if (existsSync(join(evidenceRoot, "experiment-index.json"))) throw new Error("experiment-index.json already exists; generated evidence is immutable by default");
+if (existsSync(join(evidenceRoot, "experiment-index.json")) && options.refresh !== "true") throw new Error("experiment-index.json already exists; pass --refresh true only when regenerating from the same immutable snapshot");
 
 const safeText = (value) => {
   if (typeof value !== "string" || !value.trim()) return "not_recorded";
@@ -67,7 +67,7 @@ for (const group of groups) {
   const status = normalizeStatus(rawStatus, group.runId);
   const explicitValidity = safeText(firstString(records, ["validity", "validityStatus"]));
   const validity = /invalidated/i.test(group.runId) || /invalid/i.test(explicitValidity) ? "invalidated" : ["valid", "inconclusive"].includes(explicitValidity) ? explicitValidity : "unknown";
-  const metricsRecords = directJsonObjects(group.sourcePaths, ["metrics-summary.json", "summary.json"]);
+  const metricsRecords = [...runRecords, ...directJsonObjects(group.sourcePaths, ["metrics-summary.json"])];
   const correctnessRecords = directJsonObjects(group.sourcePaths, ["correctness-summary.json"]);
   const cleanupRecords = directJsonObjects(group.sourcePaths, ["cleanup-verification.json"]);
   const costRecords = [];
@@ -101,7 +101,7 @@ for (const group of groups) {
     hypothesis,
     topology,
     majorSettings,
-    sourceRevision: sourceRevision === "not_recorded" ? options["source-head"] : sourceRevision,
+    sourceRevision,
     status,
     rawStatus,
     validity,
@@ -112,7 +112,7 @@ for (const group of groups) {
     conclusion,
     limitations,
     relatedIncidents: [],
-    provenance: { snapshotId: options["snapshot-id"], workspaceArchiveSha256: options["archive-sha"], sourcePaths: group.sourcePaths },
+    provenance: { snapshotId: options["snapshot-id"], workspaceArchiveSha256: options["archive-sha"], sourceHeadAtSnapshot: options["source-head"], sourcePaths: group.sourcePaths },
     sourceEvidence: importantEvidenceFiles(sourceRoot, group.sourcePaths),
   };
   const relativeDir = `experiments/${phase}/${group.runId}`;

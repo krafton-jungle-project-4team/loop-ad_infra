@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-12T15:57:59",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/cleanup-verification.json",
+      "bytes": 1174,
+      "sha256": "245524875c110fb8d373b9befccff74bf0c78c23916dbfa496c9fb878f353d98"
+    },
+    {
+      "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/correctness-summary.json",
+      "bytes": 1032,
+      "sha256": "430cf157226d7de0fef29f7f358cbfc4ff4ff24a845d6efd61452aaca8d1fc28"
+    },
+    {
+      "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/cost-plan.json",
+      "bytes": 1843,
+      "sha256": "abcb25581b9af7bdf579cea7dac71d4b798b7e10c23688cfe82f67982566f7cb"
+    }
+  ]
+}

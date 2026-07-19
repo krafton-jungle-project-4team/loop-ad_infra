@@ -1,0 +1,666 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_225534_phase1_kinesis_smoke_retry",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-10T22:55:34",
+  "purpose": "not_recorded",
+  "hypothesis": "After making the deterministic payload generator Python 3.7 compatible, one c6i.xlarge collector sustains 1,000 RPS for 30 seconds with the synchronous one-event/one-PutRecord contract, no throttling or unhealthy targets, and complete cleanup.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "previousCumulativeUpperBoundUsd",
+      "value": 2.7183923287671234,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "costPolicyChangeDuringRun.atStart.hardLimitUsd",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "costPolicyChangeDuringRun.atStart.optionalRunStopUsd",
+      "value": 27,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "costPolicyChangeDuringRun.workspaceCommitAfterCleanup.hardLimitUsd",
+      "value": 50,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "costPolicyChangeDuringRun.workspaceCommitAfterCleanup.optionalRunStopUsd",
+      "value": 45,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.appliedVcpus",
+      "value": 80,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.goalOwnedRunningOrPendingVcpus",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.ignoredNonStandardInstanceCount",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.loadGeneratorVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.safetyReserveVcpus",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.collectorVcpusPerHost",
+      "value": 4,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.availableCollectorVcpus",
+      "value": 72,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "quota.maxSafeCollectorCount",
+      "value": 17,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.verdict",
+      "value": "passed",
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.targetRps",
+      "value": 1000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.actualRps",
+      "value": 999.730872049352,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.requests.http202Rate",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.requests.transportErrors",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.requests.transportErrorRate",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.latencyMs.p50",
+      "value": 9.5505,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.latencyMs.p95",
+      "value": 12.962216999999999,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.latencyMs.p99",
+      "value": 29.397559,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.kinesis.incomingRecords",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.kinesis.incomingDifferenceRate",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.kinesis.writeProvisionedThroughputExceeded",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.alb.requestCount",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.ecsCpuAverage",
+      "value": 3.278830554361048,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.ecsCpuMaximum",
+      "value": 12.771571969985962,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.ecsMemoryAverage",
+      "value": 2.0686848958333335,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.ecsMemoryMaximum",
+      "value": 3.26171875,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.serviceMemoryGrowthRatio",
+      "value": 1.7715133531157272,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.loadGeneratorCpuAverage",
+      "value": 2.5708481314271205,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.compute.loadGeneratorCpuMaximum",
+      "value": 2.8668100071670253,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.logs.matchedEventCount",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.http202RateAtLeast999",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.transportErrorsAtMost001",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.p95AtMost100ms",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.p99AtMost500ms",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.incomingRecordsWithin001",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "result.criteria.eventHttpPutRecordOneToOne",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.instanceCount",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.requestsUpperBound",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.detailedMetricCount",
+      "value": 20,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.previousUpperBoundUsd",
+      "value": 2.7183923287671234,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.runUpperBoundUsd",
+      "value": 2.719987368767123,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.projectedCumulativeUpperBoundUsd",
+      "value": 5.438379697534247,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.hardLimitUsd",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.optionalRunStopUsd",
+      "value": 27,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.instanceCount",
+      "value": 2,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.requestsUpperBound",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.detailedMetricCount",
+      "value": 20,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.previousUpperBoundUsd",
+      "value": 2.7183923287671234,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.runUpperBoundUsd",
+      "value": 2.719987368767123,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.projectedCumulativeUpperBoundUsd",
+      "value": 5.438379697534247,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "passed",
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 30,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "actualRps",
+      "value": 999.730872049352,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "requests.http202Rate",
+      "value": 1,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "requests.transportErrors",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "requests.transportErrorRate",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "latencyMs.p50",
+      "value": 9.5505,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "latencyMs.p95",
+      "value": 12.962216999999999,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "latencyMs.p99",
+      "value": 29.397559,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "kinesis.incomingRecords",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "kinesis.incomingDifferenceRate",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "kinesis.writeProvisionedThroughputExceeded",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "alb.requestCount",
+      "value": 30000,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.ecsCpuAverage",
+      "value": 3.278830554361048,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.ecsCpuMaximum",
+      "value": 12.771571969985962,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.ecsMemoryAverage",
+      "value": 2.0686848958333335,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.ecsMemoryMaximum",
+      "value": 3.26171875,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.serviceMemoryGrowthRatio",
+      "value": 1.7715133531157272,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.loadGeneratorCpuAverage",
+      "value": 2.5708481314271205,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "compute.loadGeneratorCpuMaximum",
+      "value": 2.8668100071670253,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "logs.matchedEventCount",
+      "value": 0,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.http202RateAtLeast999",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.transportErrorsAtMost001",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.p95AtMost100ms",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.p99AtMost500ms",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.incomingRecordsWithin001",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    },
+    {
+      "name": "criteria.eventHttpPutRecordOneToOne",
+      "value": true,
+      "source": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_225534_phase1_kinesis_smoke_retry"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/artifacts.md",
+      "bytes": 1522,
+      "sha256": "474b79d750550c039bb879210cd752b01996a5a085d2fc28fe13f71037bc6e2e"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/cleanup-verification.json",
+      "bytes": 844,
+      "sha256": "39ad301d003aabd085f19517196359e1e0d1cdf96aeb7397b0a49cc3cb421ce6"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/commands.md",
+      "bytes": 1350,
+      "sha256": "6dbd826a79cecf024bbe2ecc0489a447e4516d7fd3ea028aab2b7ca591b65736"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/cost-explorer.json",
+      "bytes": 939,
+      "sha256": "8d57f560fae5e20e716fa30baa152f81ad971339d428b9e0e76e536e6279c264"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/cost-realtime.json",
+      "bytes": 1468,
+      "sha256": "67a243d02ccf967a674a858acb60795eeb07624e14511624b6dddd15bf8a93ac"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/cost-upper-bound.json",
+      "bytes": 1468,
+      "sha256": "68fa621146d4dec2340b4753ce08d57d5dfd2b01e3786ea9a5b567b9011ba671"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/cost.md",
+      "bytes": 486,
+      "sha256": "fcf95467ddee89d38c795931bde67cc95db2003177bd6a2a1a8c42cba1f0accc"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/infra.md",
+      "bytes": 776,
+      "sha256": "74a5078b738dd8ba7c219406eee3c5dfa79d5dc97df828f0e89a498b90743774"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/metrics-summary.json",
+      "bytes": 2731,
+      "sha256": "491b67715c05855c422ff45b88cb6a021725b68a5ea809ead74fc0553af6d5b5"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/report.md",
+      "bytes": 719,
+      "sha256": "2824ada807a522c793a4f0383ee82b52430de5e60fdfc6d5ef2bd05c9190077d"
+    },
+    {
+      "path": "run_20260710_225534_phase1_kinesis_smoke_retry/run.json",
+      "bytes": 11210,
+      "sha256": "0cfe6912d38b8b495ff85c07e6d2279c67c98f8b6ae29be0606b74443caf1f90"
+    }
+  ]
+}

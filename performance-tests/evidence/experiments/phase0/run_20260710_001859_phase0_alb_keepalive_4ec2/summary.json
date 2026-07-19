@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_001859_phase0_alb_keepalive_4ec2",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-10T00:18:59",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_001859_phase0_alb_keepalive_4ec2"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_001859_phase0_alb_keepalive_4ec2/artifacts.md",
+      "bytes": 298,
+      "sha256": "4c7a63319b9092e0388f7cba663d26b54fb40f152440e6483ff4af402e86ee18"
+    },
+    {
+      "path": "run_20260710_001859_phase0_alb_keepalive_4ec2/commands.md",
+      "bytes": 277,
+      "sha256": "e694e655d3e36bd7c98e460112d7a5639d52bfe96e6fd7d37fadaa1dce82cfbe"
+    },
+    {
+      "path": "run_20260710_001859_phase0_alb_keepalive_4ec2/infra.md",
+      "bytes": 403,
+      "sha256": "5315e077a71047960781552e93e30043087a225fb2b401729c0c0a276451d59e"
+    },
+    {
+      "path": "run_20260710_001859_phase0_alb_keepalive_4ec2/report.md",
+      "bytes": 851,
+      "sha256": "3aea9b9b7d5bf2b8399470979551499b241c06edca5051562247a77cf90a90be"
+    }
+  ]
+}

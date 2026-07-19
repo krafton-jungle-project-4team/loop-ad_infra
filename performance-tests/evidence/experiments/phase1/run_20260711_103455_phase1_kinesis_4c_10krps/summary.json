@@ -1,0 +1,461 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_103455_phase1_kinesis_4c_10krps",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-11T10:34:55",
+  "purpose": "not_recorded",
+  "hypothesis": "Four ECS-optimized Amazon Linux 2023 c6i.xlarge collectors sustain 10,000 RPS for 60 seconds through the synchronous one-event/one-PutRecord path within every exploration acceptance gate after two collectors missed latency and zero-retry gates.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "previousCumulativeUpperBoundUsd",
+      "value": 38.45698955667353,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.appliedVcpus",
+      "value": 80,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.goalOwnedRunningOrPendingVcpus",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.ignoredNonStandardInstanceCount",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.loadGeneratorVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.safetyReserveVcpus",
+      "value": 2,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.collectorVcpusPerHost",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.availableCollectorVcpus",
+      "value": 72,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "quota.maxSafeCollectorCount",
+      "value": 17,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.verdict",
+      "value": "failed",
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.targetRps",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 60,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.requests.transportErrors",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "result.evidence.preflightPassed",
+      "value": true,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.instanceCount",
+      "value": 5,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.requestsUpperBound",
+      "value": 600000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.detailedMetricCount",
+      "value": 50,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.previousUpperBoundUsd",
+      "value": 38.45698955667353,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.runUpperBoundUsd",
+      "value": 1.8848657315068496,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.projectedCumulativeUpperBoundUsd",
+      "value": 40.341855288180376,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.hardLimitUsd",
+      "value": 50,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.optionalRunStopUsd",
+      "value": 45,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.instanceCount",
+      "value": 5,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.requestsUpperBound",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.detailedMetricCount",
+      "value": 50,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.previousUpperBoundUsd",
+      "value": 38.45698955667353,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.runUpperBoundUsd",
+      "value": 1.8529649315068495,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.projectedCumulativeUpperBoundUsd",
+      "value": 40.309954488180374,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.hardLimitUsd",
+      "value": 50,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.optionalRunStopUsd",
+      "value": 45,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.costExplorer.relevantAccountCostUsd",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cost.costExplorer.apiChargeIncludedInRealtimeModelUsd",
+      "value": 0.01,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.status",
+      "value": "ACTIVE",
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.openShardCount",
+      "value": 80,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "cleanup.passed",
+      "value": true,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "errorSummary",
+      "value": "All four AL2023 hosts registered before the explicit association completed, but ECS still reported no container instances in the capacity provider and the circuit breaker failed with zero task launches.",
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    },
+    {
+      "name": "requests.transportErrors",
+      "value": 0,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    },
+    {
+      "name": "evidence.preflightPassed",
+      "value": true,
+      "source": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_103455_phase1_kinesis_4c_10krps"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/artifacts.md",
+      "bytes": 649,
+      "sha256": "dec167a6750f8cefa3fe98cf4fbc5c5a1f7400b15b3968fda0eb75222b89ee42"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/cleanup-verification.json",
+      "bytes": 1016,
+      "sha256": "d4d8f18d9bac56392124c604f8f191adf9c2f9dc74434b5689823a025fece24a"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/commands.md",
+      "bytes": 1466,
+      "sha256": "5ac2beb05589571bd21a076861da0e66502dc2d2c859b0028c602948bb2fe941"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/cost-explorer.json",
+      "bytes": 487,
+      "sha256": "41c2a5bef687615d88199287eeda3a43be6367f70de2f8d11adba567ea315934"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/cost-realtime.json",
+      "bytes": 1455,
+      "sha256": "a8ea258c183ac2a1af8f4badf74b732f62812ef7924f689bd7ac9d8d56e2835b"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/cost-upper-bound.json",
+      "bytes": 1507,
+      "sha256": "74751a4056756b4bde0c4ef34aa0a91ac8a0ac2e7f1f2b1d5ffb87fd02891b4b"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/cost.md",
+      "bytes": 477,
+      "sha256": "80a311f31eef3add5e015596da020629d4045d4e25b5e7d0e72b60d753284ec1"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/infra.md",
+      "bytes": 878,
+      "sha256": "2950e480206e23c698c3b55c66cba87c552caad3114ce99df00254141160bf5e"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/metrics-summary.json",
+      "bytes": 1038,
+      "sha256": "ba71076f9c73db92c916cc94ed4552235f1b52a2a1a043c08dc2087576733b0f"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/report.md",
+      "bytes": 1029,
+      "sha256": "9881e8e333e2500167313671667702564a5c38fe0eb25309b033fadf406e19c9"
+    },
+    {
+      "path": "run_20260711_103455_phase1_kinesis_4c_10krps/run.json",
+      "bytes": 9308,
+      "sha256": "93591a85ec5397d2e925cc9f30d839108947f287ff2290d0811c54e0af4ef9a8"
+    }
+  ]
+}

@@ -24,7 +24,7 @@
     "conclusion": { "type": "string" },
     "limitations": { "type": "array", "items": { "type": "string" } },
     "relatedIncidents": { "type": "array", "items": { "type": "string" } },
-    "provenance": { "type": "object", "required": ["snapshotId", "workspaceArchiveSha256", "sourcePaths"], "properties": { "snapshotId": { "type": "string" }, "workspaceArchiveSha256": { "type": "string" }, "sourcePaths": { "type": "array", "minItems": 1, "items": { "type": "string" } } },
+    "provenance": { "type": "object", "required": ["snapshotId", "workspaceArchiveSha256", "sourceHeadAtSnapshot", "sourcePaths"], "properties": { "snapshotId": { "type": "string" }, "workspaceArchiveSha256": { "type": "string" }, "sourceHeadAtSnapshot": { "type": "string" }, "sourcePaths": { "type": "array", "minItems": 1, "items": { "type": "string" } } } },
     "sourceEvidence": { "type": "array", "items": { "type": "object" } }
   }
 }

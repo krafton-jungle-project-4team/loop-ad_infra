@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260718_075926_phase7_2_deployment_readiness",
+  "phase": "phase7",
+  "category": "deployment_readiness",
+  "executedAt": "2026-07-18T07:59:26",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "passed",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260718_075926_phase7_2_deployment_readiness"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260718_075926_phase7_2_deployment_readiness/commands.md",
+      "bytes": 1486,
+      "sha256": "39a8b381d56d3f41d307d3fc74a5eff9b61ae4ad90a83d5d7918dd1244efe563"
+    },
+    {
+      "path": "run_20260718_075926_phase7_2_deployment_readiness/cost-model-final.json",
+      "bytes": 7438,
+      "sha256": "3fdcc40dce2d476f366c5779e277bb0482e84775dd8c9fbb638d93688a8481e4"
+    },
+    {
+      "path": "run_20260718_075926_phase7_2_deployment_readiness/cost-model.json",
+      "bytes": 7438,
+      "sha256": "04031968ca4541b0e0bea3c682105315462b81e6a2f73eeb838739956e7045a9"
+    },
+    {
+      "path": "run_20260718_075926_phase7_2_deployment_readiness/report.md",
+      "bytes": 2553,
+      "sha256": "01f53c77f2cb5296a19690fd92c0965eaf480e4229eba4e88d38952098d441bf"
+    }
+  ]
+}

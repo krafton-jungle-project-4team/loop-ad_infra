@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { SECRET_PATTERNS, walk } from "./lib/curation.mjs";
 
 const root = resolve(process.argv[2] ?? new URL("..", import.meta.url).pathname);
@@ -18,6 +18,11 @@ for (const path of walk(root)) {
   if (size <= 5 * 1024 * 1024 && !/\.(?:png|jpg|jpeg|gif|zip|jar)$/i.test(path)) {
     const text = readFileSync(path, "utf8");
     for (const pattern of SECRET_PATTERNS) if (pattern.test(text)) errors.push(`secret pattern ${pattern} in ${relative}`);
+    if (path.endsWith(".md")) for (const match of text.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+      const target = match[1].split("#")[0];
+      if (!target || /^(?:https?:|mailto:|#|\$)/.test(target)) continue;
+      if (!existsSync(resolve(dirname(path), target))) errors.push(`broken internal link in ${relative}: ${match[1]}`);
+    }
   }
 }
 if (warnings.length) console.warn(warnings.join("\n"));

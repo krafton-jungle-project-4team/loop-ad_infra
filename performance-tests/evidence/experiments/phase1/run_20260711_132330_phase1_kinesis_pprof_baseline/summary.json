@@ -1,0 +1,576 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_132330_phase1_kinesis_pprof_baseline",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-11T13:23:30",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[0].targetRps",
+      "value": 10000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[0].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[1].targetRps",
+      "value": 20000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[1].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[2].targetRps",
+      "value": 30000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[2].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[0].targetRps",
+      "value": 10000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[0].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[1].targetRps",
+      "value": 20000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[1].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[2].targetRps",
+      "value": 30000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "stages[2].durationSeconds",
+      "value": 60,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "previousCumulativeUpperBoundUsd",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json"
+    },
+    {
+      "name": "generatedAt",
+      "value": "2026-07-11T05:17:40.681Z",
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.targetRps",
+      "value": 10000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.completedRequests",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.attemptedRequests",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.actualRps",
+      "value": 9996.844907068058,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p50",
+      "value": 11.55867,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p95",
+      "value": 16.128805,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p99",
+      "value": 140.119615,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.kinesisIncomingRecords",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.albRequests",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 35.13009033203125,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 19.794921875,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_operations_total",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_attempts_total",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_successes_total",
+      "value": 599996,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_retries_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.actualRpsAtLeast99Percent",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.p95AtMost100ms",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.p99AtMost200ms",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.passed",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.targetRps",
+      "value": 20000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.completedRequests",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.attemptedRequests",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.actualRps",
+      "value": 19989.229948167722,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p50",
+      "value": 13.825168,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p95",
+      "value": 107.38369300000001,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p99",
+      "value": 229.013646,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.kinesisIncomingRecords",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.albRequests",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 66.19961318969726,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 16.62109375,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_operations_total",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_attempts_total",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_successes_total",
+      "value": 1199983,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_retries_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.actualRpsAtLeast99Percent",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.p95AtMost100ms",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.p99AtMost200ms",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.passed",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.targetRps",
+      "value": 30000,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.completedRequests",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.attemptedRequests",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.actualRps",
+      "value": 27590.72973594303,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p50",
+      "value": 2820.7825159999998,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p95",
+      "value": 4604.131451,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p99",
+      "value": 4758.300015,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.kinesisIncomingRecords",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.albRequests",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 95.57689361572265,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 28.388671875,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_operations_total",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_attempts_total",
+      "value": 1657338,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_successes_total",
+      "value": 1657333,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_retries_total",
+      "value": 5,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.actualRpsAtLeast99Percent",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p95AtMost100ms",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p99AtMost200ms",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.passed",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    },
+    {
+      "name": "passed",
+      "value": false,
+      "source": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_132330_phase1_kinesis_pprof_baseline"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/artifacts.md",
+      "bytes": 454,
+      "sha256": "af32476b61e170006796aab2a76ca62b2cf7d07062a685599ccb5ae5ca31aa61"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/cleanup-verification.json",
+      "bytes": 1021,
+      "sha256": "7a1f287d7299f21a65c37e983569ab4fb38ab145ac9f335b62b6241fa1feaea8"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/commands.md",
+      "bytes": 1154,
+      "sha256": "868a5ba9a3e21c5d6bc0b93b9000322dc8753686096da5facdd374ccaf7a24ea"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/cost-explorer.json",
+      "bytes": 487,
+      "sha256": "6d69c6b49d6235db147271df90201cd2d986d32fb0bd3ecd90c2d8ee754331a7"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/cost-realtime.json",
+      "bytes": 1506,
+      "sha256": "ed411b40f8cb4d74e4f4c5ab2e4999c1ef02e38b30d718bacd9a3de0ec884d1b"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/cost-upper-bound.json",
+      "bytes": 1485,
+      "sha256": "bbe85196b2bf1256be7f2b5e401d8a66074e75c4cf29e9c595836c5c7626fed2"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/cost.md",
+      "bytes": 699,
+      "sha256": "99a32ac2f52dce01903161798dddc2d7abe4d4e1f024b232a99353b21b3ec44d"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/hypothesis.md",
+      "bytes": 299,
+      "sha256": "36c17ad7dd76851158297cfbad493867476f42b4fe726e3224fe2984dfc7f0a6"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/infra.md",
+      "bytes": 1250,
+      "sha256": "3b8fb6c57c18b4433571c719f0895e8846735e9cf7de3fa009d59927ba165022"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/metrics-summary.json",
+      "bytes": 7786,
+      "sha256": "dc7f6d5f00d119224109648e3c92d9ea1632ff2878193f52fd8f07a0f4bbf005"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/report.md",
+      "bytes": 1526,
+      "sha256": "4cd5171b048676cd590fc14c9aef5b4c625d0d816c11e52295ad694e29887290"
+    },
+    {
+      "path": "run_20260711_132330_phase1_kinesis_pprof_baseline/run.json",
+      "bytes": 1026,
+      "sha256": "728b6c3f32dca5d7899414445a3f2e1f28927a37c07cfc8b96caf76660b07ac2"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-12T13:50:12",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/cleanup-verification.json",
+      "bytes": 1241,
+      "sha256": "de67c52c320077a08f3c5902ec723a01faa3dc1994e82d9be98cdb66c45418ab"
+    },
+    {
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/correctness-summary.json",
+      "bytes": 1033,
+      "sha256": "fb045e645c044cd143cf41a475b068c2d34dfc128d103757b987a3a9bb2cfd8b"
+    },
+    {
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/cost-after-30k.json",
+      "bytes": 1822,
+      "sha256": "3e864e44b2cd6817d84f4e796a83f109d92afd9b0bde0cb4a00a3fb59faba1ee"
+    },
+    {
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/cost-before-30k.json",
+      "bytes": 1802,
+      "sha256": "b67001510255749a5c8646bf23f8196e5530e6d04fe105b789e53630911d87b1"
+    },
+    {
+      "path": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/cost-plan.json",
+      "bytes": 1822,
+      "sha256": "26daa4732e4c4d563141edbc99dec08e375407f37269336a808fdcce6fa95a71"
+    }
+  ]
+}

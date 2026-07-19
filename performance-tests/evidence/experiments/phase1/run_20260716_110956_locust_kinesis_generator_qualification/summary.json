@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260716_110956_locust_kinesis_generator_qualification",
+  "phase": "phase1",
+  "category": "qualification",
+  "executedAt": "2026-07-16T11:09:56",
+  "purpose": "not_recorded",
+  "hypothesis": "The smallest single Linux ARM64 On-Demand c7g candidate that satisfies every final 50,000 records/s criterion, including zero TCP drops and no more than 0.1 TCP retransmitted segments per second averaged over each measurement window, can be identified by testing candidates in ascending order and stopping at the first pass.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "stream.shardCount",
+      "value": 120,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.consumerCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.lambdaEventSourceMappingCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.enhancedFanOutConsumerCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[0].vcpus",
+      "value": 8,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[0].status",
+      "value": "qualified",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[1].vcpus",
+      "value": 16,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[1].status",
+      "value": "not_run_first_pass_found",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[2].vcpus",
+      "value": 32,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[2].status",
+      "value": "not_run_first_pass_found",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.accountingScope",
+      "value": "cumulative across the prior run and this run",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "auth.account",
+      "value": "742711170910",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "completed_qualified",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed_qualified",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.shardCount",
+      "value": 120,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.consumerCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.lambdaEventSourceMappingCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "stream.enhancedFanOutConsumerCount",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[0].vcpus",
+      "value": 8,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[0].status",
+      "value": "qualified",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[1].vcpus",
+      "value": 16,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[1].status",
+      "value": "not_run_first_pass_found",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[2].vcpus",
+      "value": 32,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "candidates[2].status",
+      "value": "not_run_first_pass_found",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "criteriaOverride.applicationRetryRecords",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.hardCapUsd",
+      "value": 30,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.operatingStopUsd",
+      "value": 22,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.cleanupAndPricingReserveUsd",
+      "value": 8,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.priorFinalizedUpperBoundUsd",
+      "value": 5.746919,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cost.accountingScope",
+      "value": "cumulative across the prior run and this run",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "auth.account",
+      "value": "742711170910",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "result.status",
+      "value": "QUALIFIED",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "result.finalSuccessfulRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cleanup.status",
+      "value": "VERIFIED_COMPLETE",
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    },
+    {
+      "name": "cleanup.remainingHourlyCostUsd",
+      "value": 0,
+      "source": "run_20260716_110956_locust_kinesis_generator_qualification/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260716_110956_locust_kinesis_generator_qualification"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/artifacts.md",
+      "bytes": 2208,
+      "sha256": "a23ad4bf278f370208750b110f094656a4a90a990e279edcff8266e5e018171d"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/cleanup-verification.json",
+      "bytes": 963,
+      "sha256": "4235440d0f3ef0988d12052bf3996a41cf337972c0be5106a5c1c2e96e8d0f21"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/commands.md",
+      "bytes": 1395,
+      "sha256": "d678ea93ab07ba3c56aceb0a0b78578cce5d082afa7d98243bc1b6bdf435e1d7"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/cost-ledger.json",
+      "bytes": 1650,
+      "sha256": "2138d5918011468320f1f6c35ac9f78d8a263aee8e59ae717debd035f1c0417c"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/infra.md",
+      "bytes": 1151,
+      "sha256": "f119071fe54492772c54e7ba193ecad72d53d0e54668a73cc29beb5bd426ebe8"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/report.md",
+      "bytes": 3896,
+      "sha256": "bbf223383e3855674731f305d55fe245469ff211aa0a048a1edbac131d50cdc4"
+    },
+    {
+      "path": "run_20260716_110956_locust_kinesis_generator_qualification/run.json",
+      "bytes": 3559,
+      "sha256": "1abc661662cd12bc31b18d533ebbd4c8d32529e952bcf1b91df002d926aabbce"
+    }
+  ]
+}

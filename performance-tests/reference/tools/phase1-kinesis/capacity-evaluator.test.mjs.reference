@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateCapacityInterval } from './capacity-evaluator.mjs';
+
+test('passes a four-host Go batch measurement only when every strict gate passes', () => {
+    const result = evaluateCapacityInterval(fixture());
+    assert.equal(result.passed, true);
+    assert.equal(result.producer.totals.successes, 60_000);
+    assert.equal(result.producer.totals.ackCount, 60_000);
+    assert.deepEqual(result.producer.acceptedDistribution, [15_000, 15_000, 15_000, 15_000]);
+});
+
+test('does not hide one failed repetition behind aggregate averages', () => {
+    const input = fixture();
+    input.oha.http429 = 1;
+    input.afterHosts[0].kinesis.put_records.successes += 3_000;
+    input.afterHosts[0].kinesis.put_records.final_ack_latency.count += 3_000;
+    input.afterHosts[0].kinesis.put_records.final_ack_latency.cumulative_buckets.le_25ms += 3_000;
+    input.afterHosts[0].kinesis.put_records.final_ack_latency.cumulative_buckets.le_inf += 3_000;
+    const result = evaluateCapacityInterval(input);
+    assert.equal(result.passed, false);
+    assert.equal(result.checks.http429Zero, false);
+    assert.equal(result.checks.acceptedEventsBalancedWithinTenPercent, false);
+});
+
+test('probe uses the one-percent 5xx threshold but still requires recovery and healthy topology', () => {
+    const input = fixture();
+    input.kind = 'probe';
+    input.cloudwatch.metrics.alb_target_5xx_sum.sum = 500;
+    assert.equal(evaluateCapacityInterval(input).passed, true);
+    input.afterHosts[2].kinesis.put_records.outstanding_records = 1;
+    assert.equal(evaluateCapacityInterval(input).checks.producerRecovered, false);
+});
+
+test('fails an interval when a task stops even if its replacement is healthy', () => {
+    const input = fixture();
+    input.taskAfter.stoppedTasks = [{ taskArn: 'task-restarted', containers: [{ exitCode: 0 }] }];
+    const result = evaluateCapacityInterval(input);
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.newStoppedTaskArns, ['task-restarted']);
+    assert.equal(result.checks.noRestartOomPanicFatal, false);
+});
+
+function fixture() {
+    const beforeHosts = Array.from({ length: 4 }, batchSnapshot);
+    const afterHosts = beforeHosts.map((before) => {
+        const after = structuredClone(before);
+        const batch = after.kinesis.put_records;
+        batch.successes = 15_000;
+        batch.api_calls = 300;
+        batch.final_ack_latency.count = 15_000;
+        batch.final_ack_latency.cumulative_buckets = { le_25ms: 15_000, le_inf: 15_000 };
+        return after;
+    });
+    return {
+        candidate: 'go-batch', kind: 'measurement', targetRps: 1_000, durationSeconds: 60,
+        oha: {
+            attemptedRequests: 60_000, http202: 60_000, http429: 0, http5xx: 0,
+            transportErrors: 0, actualRps: 1_000, latencyMs: { p50: 20, p95: 40, p99: 60 },
+        },
+        beforeHosts, afterHosts,
+        cloudwatch: { metrics: {
+            alb_target_5xx_sum: { sum: 0 }, alb_elb_5xx_sum: { sum: 0 },
+            kinesis_incoming_records_sum: { sampleCount: 1, sum: 60_000 }, kinesis_write_throttle_sum: { sum: 0 },
+            ...shardMetrics(),
+        } },
+        taskBefore: { passed: true, badStoppedTaskArns: [] },
+        taskAfter: { passed: true, badStoppedTaskArns: [] },
+        logs: { categories: { oomOrKilled: 0, panicOrFatal: 0 } },
+    };
+}
+
+function shardMetrics() {
+    return Object.fromEntries(Array.from({ length: 80 }).flatMap((_, index) => {
+        const prefix = `shard_${index.toString().padStart(3, '0')}`;
+        return [
+            [`${prefix}_incoming_records_sum`, { sampleCount: 1, sum: 750 }],
+            [`${prefix}_incoming_bytes_sum`, { sampleCount: 1, sum: 1_005_750 }],
+            [`${prefix}_write_throttle_sum`, { sum: 0 }],
+        ];
+    }));
+}
+
+function batchSnapshot() {
+    return { kinesis: { put_records: {
+        queue_depth: 0, sender_queue_depth: 0, queue_high_water: 0,
+        outstanding_records: 0, oldest_outstanding_age_nanoseconds: 0,
+        api_calls_in_flight: 0, api_calls: 0, successes: 0, failures: 0,
+        retries: 0, partial_failures: 0, timeouts: 0,
+        final_ack_latency: { count: 0, cumulative_buckets: { le_25ms: 0, le_inf: 0 } },
+    } } };
+}

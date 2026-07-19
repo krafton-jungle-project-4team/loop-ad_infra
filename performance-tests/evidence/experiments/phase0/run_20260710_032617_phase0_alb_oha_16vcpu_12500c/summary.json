@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-10T03:26:17",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "infra.instanceCount",
+      "value": 4,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 16.383004533,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.countDifferenceRate",
+      "value": 0,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "infra.instanceCount",
+      "value": 4,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "infra.selectedVcpu",
+      "value": 16,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "infra.quotaVcpu",
+      "value": 32,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "load.requestsPerHost",
+      "value": 2343750,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "load.expectedRequests",
+      "value": 9375000,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 16.383004533,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.requests",
+      "value": 9375000,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.successRate",
+      "value": 1,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.albRequests",
+      "value": 9375000,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.countDifferenceRate",
+      "value": 0,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.requestsPerSec",
+      "value": 572239.3582395769,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.requestsPerSecPerProvisionedVcpu",
+      "value": 35764.95988997356,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.meanHostCpuBusyPercent",
+      "value": 57.157886,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    },
+    {
+      "name": "result.artilleryThroughputRatio",
+      "value": 17.94542627439313,
+      "source": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_032617_phase0_alb_oha_16vcpu_12500c"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/artifacts.md",
+      "bytes": 581,
+      "sha256": "c62189ca22831591cbbcf6baf1340f0fd80b757b3844613dc6e3681110bd7d33"
+    },
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/commands.md",
+      "bytes": 722,
+      "sha256": "b9f526acb3b613519d6e24e94e46b6afab1494751f342fd4aef1006fc6134163"
+    },
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/cost.md",
+      "bytes": 519,
+      "sha256": "af5a298614ddaba51affc9c90a76ddb696baf37f1e275ba70df5ba4d9065159f"
+    },
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/infra.md",
+      "bytes": 446,
+      "sha256": "1195ebef5ef4362c396b1a3d948b7d7c7c9362a7058e3a79cc370a3d7c9a516d"
+    },
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/report.md",
+      "bytes": 1289,
+      "sha256": "f2a5b0c39146893323e488af93301a36d5ae319016e74dd535233996c664dbad"
+    },
+    {
+      "path": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c/run.json",
+      "bytes": 1169,
+      "sha256": "cc86f1c90fc6bbf69bd791bc38e6e9a7399fb1887a751e61c73e5a1c648f6b22"
+    }
+  ]
+}

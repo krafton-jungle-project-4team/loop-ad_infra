@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const SOURCE_FILE = join(SCRIPT_DIR, 'payloads/sdk-compatible-events.tsv');
+const OUTPUT_FILE = join(SCRIPT_DIR, 'payloads/sdk-compatible-event-bodies.tsv');
+const ENVELOPE_FIELDS = [
+    'project_id',
+    'write_key',
+    'schema_version',
+    'event_id',
+    'event_name',
+    'event_time',
+    'source',
+    'user_id',
+    'session_id',
+    'properties_json',
+];
+
+const [headerLine, ...dataLines] = readFileSync(SOURCE_FILE, 'utf8').trimEnd().split('\n');
+const headers = headerLine.split('\t');
+const outputLines = ['body_json\tpayload_size_profile\tpayload_actual_bytes'];
+
+for (const [index, line] of dataLines.entries()) {
+    const values = line.split('\t');
+    const source = Object.fromEntries(headers.map((header, fieldIndex) => [header, values[fieldIndex]]));
+    const envelope = Object.fromEntries(ENVELOPE_FIELDS.map((field) => [field, source[field]]));
+    const bodyJson = JSON.stringify(envelope);
+    const bodyBytes = Buffer.byteLength(bodyJson, 'utf8');
+
+    if (bodyJson.includes('\t') || bodyJson.includes('\n') || bodyJson.includes('\r')) {
+        throw new Error(`Payload row ${index + 2} contains a TSV-breaking control character.`);
+    }
+    if (bodyBytes !== Number(source.payload_actual_bytes)) {
+        throw new Error(`Payload row ${index + 2} declares ${source.payload_actual_bytes} bytes but serializes to ${bodyBytes}.`);
+    }
+
+    outputLines.push(`${bodyJson}\t${source.payload_size_profile}\t${bodyBytes}`);
+}
+
+writeFileSync(OUTPUT_FILE, `${outputLines.join('\n')}\n`, 'utf8');
+console.log(`Wrote ${dataLines.length} pre-serialized SDK-compatible bodies to ${OUTPUT_FILE}`);

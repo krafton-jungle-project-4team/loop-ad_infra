@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import http2 from 'node:http2';
+import net from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import tls from 'node:tls';
+import { setTimeout as delay } from 'node:timers/promises';
+import { renderHAProxyConfig } from './render-haproxy-config.mjs';
+
+const image = 'haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d';
+const directory = mkdtempSync(join(tmpdir(), 'loopad-haproxy-contract-'));
+const certificate = join(directory, 'haproxy.pem');
+const key = `${certificate}.key`;
+const combined = join(directory, 'combined.pem');
+const configPath = join(directory, 'haproxy.cfg');
+const output = optionValue('--output');
+const frontendPort = 18443;
+const backendPorts = [18081, 18082, 18083, 18084];
+const backendDelayMs = 100;
+const body = Buffer.from('{"device_id":"contract-device","event":"contract"}');
+const bodySha256 = createHash('sha256').update(body).digest('hex');
+const backendRequests = [];
+const servers = [];
+const containerName = `loopad-haproxy-contract-${process.pid}-${Date.now()}`;
+let proxy;
+let proxyStderr = '';
+let currentStep = 'initialization';
+let observedFallbackReset = false;
+process.on('uncaughtException', (error) => {
+    if (currentStep === 'HTTP/1 fallback rejection' && error?.code === 'ECONNRESET') {
+        observedFallbackReset = true;
+        return;
+    }
+    process.stderr.write(`${currentStep}: ${error?.stack ?? error}\nHAProxy stderr:\n${proxyStderr}\n`);
+    process.exit(1);
+});
+
+try {
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', key, '-out', certificate, '-sha256', '-days', '1', '-nodes', '-subj', '/CN=contract.loopad.internal', '-addext', 'subjectAltName=DNS:contract.loopad.internal'], { stdio: 'ignore' });
+    writeFileSync(combined, Buffer.concat([readFileSync(certificate), readFileSync(key)]));
+    writeFileSync(configPath, renderHAProxyConfig({
+        backends: backendPorts.map((port) => ({ address: 'host.docker.internal', port })),
+        certificatePath: '/contract/combined.pem',
+    }));
+    for (const [index, port] of backendPorts.entries()) {
+        const server = http2.createServer();
+        server.on('session', (session) => session.on('error', () => {}));
+        server.on('error', () => {});
+        server.on('stream', (stream, headers) => {
+            stream.on('error', () => {});
+            const chunks = [];
+            stream.on('data', (chunk) => chunks.push(chunk));
+            stream.on('end', async () => {
+                const received = Buffer.concat(chunks);
+                const digest = createHash('sha256').update(received).digest('hex');
+                backendRequests.push({ index, path: headers[':path'], method: headers[':method'], digest, bytes: received.length });
+                if (headers[':path'] === '/health') {
+                    stream.respond({ ':status': 200 });
+                    stream.end('ok');
+                    return;
+                }
+                await delay(backendDelayMs);
+                stream.respond({ ':status': 202, 'x-loopad-body-sha256': digest, 'x-loopad-backend': String(index + 1) });
+                stream.end('accepted');
+            });
+        });
+        await new Promise((resolve, reject) => server.listen(port, '0.0.0.0', resolve).once('error', reject));
+        servers.push(server);
+    }
+    proxy = spawn('docker', ['run', '--rm', '--platform', 'linux/amd64', '--add-host', 'host.docker.internal:host-gateway', '-p', `${frontendPort}:8443`, '--name', containerName,
+        '-v', `${configPath}:/usr/local/etc/haproxy/haproxy.cfg:ro`, '-v', `${combined}:/contract/combined.pem:ro`,
+        image, 'haproxy', '-W', '-db', '-f', '/usr/local/etc/haproxy/haproxy.cfg'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    proxy.stderr.on('data', (chunk) => { proxyStderr += chunk; });
+    await waitForPort(frontendPort, 10_000, proxy, () => proxyStderr);
+
+    currentStep = 'HTTP/2 actual request';
+    const actual = await h2Request('/events', body);
+    const controlBackendCountBefore = backendRequests.filter((request) => request.path !== '/health').length;
+    currentStep = 'HTTP/2 proxy control request';
+    const control = await h2Request('/__proxy_control', body);
+    const controlBackendCountAfter = backendRequests.filter((request) => request.path !== '/health').length;
+    currentStep = 'HTTP/1 fallback rejection';
+    const h1 = await h1FallbackResult();
+    const checks = {
+        actualHttp2: actual.alpnProtocol === 'h2' && actual.status === 202,
+        bodyIntegrity: actual.headers['x-loopad-body-sha256'] === bodySha256 && backendRequests.some((request) => request.path === '/events' && request.digest === bodySha256 && request.bytes === body.length),
+        finalAckPreserved: actual.elapsedMs >= backendDelayMs * .9,
+        controlLocal: control.alpnProtocol === 'h2' && control.status === 202 && controlBackendCountAfter === controlBackendCountBefore,
+        http11FallbackRejected: h1.status === 421 || h1.reset === true,
+        fourH2cBackendsConfigured: (readFileSync(configPath, 'utf8').match(/server collector-/g) ?? []).length === 4,
+        noBufferingDirective: !readFileSync(configPath, 'utf8').includes('http-buffer-request'),
+    };
+    const result = { verifiedAt: new Date().toISOString(), image, frontend: 'TLS/H2', backend: 'h2c', backendAlgorithm: 'leastconn', backendDelayMs, bodySha256, actual, control, h1Fallback: h1, backendRequests, checks, passed: Object.values(checks).every(Boolean) };
+    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    if (output) writeFileSync(output, serialized);
+    process.stdout.write(serialized);
+    if (!result.passed) process.exitCode = 2;
+} catch (error) {
+    error.message = `${currentStep}: ${error.message}`;
+    throw error;
+} finally {
+    try { execFileSync('docker', ['rm', '-f', containerName], { stdio: 'ignore' }); } catch {}
+    if (proxy && proxy.exitCode === null) {
+        proxy.kill('SIGTERM');
+        await Promise.race([new Promise((resolve) => proxy.once('exit', resolve)), delay(5_000)]);
+        if (proxy.exitCode === null) proxy.kill('SIGKILL');
+    }
+    await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
+}
+
+async function h2Request(path, payload) {
+    const started = performance.now();
+    const client = http2.connect(`https://127.0.0.1:${frontendPort}`, { ca: readFileSync(certificate), servername: 'contract.loopad.internal', ALPNProtocols: ['h2'] });
+    client.on('error', () => {});
+    client.socket?.on('error', () => {});
+    await new Promise((resolve, reject) => client.once('connect', resolve).once('error', reject));
+    const request = client.request({ ':method': 'POST', ':path': path, ':authority': 'contract.loopad.internal', 'content-type': 'application/json' });
+    let headers;
+    const chunks = [];
+    request.on('response', (value) => { headers = value; });
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.end(payload);
+    await new Promise((resolve, reject) => request.once('end', resolve).once('error', reject));
+    client.close();
+    return { status: headers[':status'], headers, body: Buffer.concat(chunks).toString(), elapsedMs: performance.now() - started, alpnProtocol: client.alpnProtocol };
+}
+
+async function h1FallbackResult() {
+    const socket = tls.connect({ host: '127.0.0.1', port: frontendPort, ca: readFileSync(certificate), servername: 'contract.loopad.internal', ALPNProtocols: ['http/1.1'] });
+    const chunks = [];
+    let reset = false;
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.on('error', (error) => { if (error.code === 'ECONNRESET') reset = true; });
+    const connected = await new Promise((resolve) => {
+        socket.once('secureConnect', () => resolve(true));
+        socket.once('error', () => resolve(false));
+        socket.once('close', () => resolve(false));
+    });
+    if (!connected) return { status: null, reset, alpnProtocol: socket.alpnProtocol || null };
+    socket.write('POST /events HTTP/1.1\r\nHost: contract.loopad.internal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+    await new Promise((resolve) => { socket.once('end', resolve); socket.once('close', resolve); });
+    const response = Buffer.concat(chunks).toString();
+    return { status: Number(response.match(/^HTTP\/1\.1 (\d{3})/)?.[1]) || null, reset: reset || observedFallbackReset, alpnProtocol: socket.alpnProtocol || null };
+}
+
+async function waitForPort(port, timeoutMs, child, stderr) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (child.exitCode !== null) throw new Error(`HAProxy exited before readiness: ${stderr()}`);
+        const open = await new Promise((resolve) => {
+            const socket = net.connect({ host: '127.0.0.1', port });
+            socket.once('connect', () => { socket.destroy(); resolve(true); });
+            socket.once('error', () => resolve(false));
+        });
+        if (open && stderr().includes('Loading success')) return;
+        await delay(100);
+    }
+    throw new Error(`HAProxy did not listen within ${timeoutMs}ms: ${stderr()}`);
+}
+
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }

@@ -1,0 +1,192 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import {
+    classifyAwsObservationFailure,
+    runBoundedAwsObservation,
+} from './aws-observation-retry.mjs';
+
+function cliError(stderr, code = 255) {
+    const error = new Error(`aws exited ${code}`);
+    error.stderr = stderr;
+    error.code = code;
+    return error;
+}
+
+test('bounded observation retries only invocation visibility, network timeouts, and throttling', async () => {
+    let nowMs = Date.parse('2026-07-19T00:00:00Z');
+    const deadlineEpochMs = nowMs + 30_000;
+    const transientRetries = [];
+    const errors = [
+        cliError('An error occurred (InvocationDoesNotExist) when calling the GetCommandInvocation operation'),
+        Object.assign(new Error('spawnSync aws ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        cliError('An error occurred (ThrottlingException): Rate exceeded'),
+    ];
+    let calls = 0;
+    const result = await runBoundedAwsObservation({
+        operation: 'ssm:GetCommandInvocation',
+        deadlineEpochMs,
+        invocationMayNotExist: true,
+        transientRetries,
+        now: () => nowMs,
+        sleep: async (milliseconds) => { nowMs += milliseconds; },
+        random: () => 0,
+        action: () => {
+            calls += 1;
+            if (errors.length) throw errors.shift();
+            return { Status: 'Success' };
+        },
+    });
+
+    assert.deepEqual(result, { Status: 'Success' });
+    assert.equal(calls, 4);
+    assert.deepEqual(transientRetries.map(({ category, code, retryDelayMs, deadlineExhausted }) => ({
+        category, code, retryDelayMs, deadlineExhausted,
+    })), [
+        { category: 'invocation-not-visible', code: 'InvocationDoesNotExist', retryDelayMs: 250, deadlineExhausted: false },
+        { category: 'network-or-timeout', code: 'ETIMEDOUT', retryDelayMs: 500, deadlineExhausted: false },
+        { category: 'throttling', code: 'ThrottlingException', retryDelayMs: 1_000, deadlineExhausted: false },
+    ]);
+});
+
+test('credentials, authorization, validation, and unknown failures fail on the first call', async (t) => {
+    const immediateErrors = [
+        cliError('An error occurred (AccessDeniedException) when calling the GetCommandInvocation operation'),
+        cliError('An error occurred (ExpiredTokenException): The security token included in the request is expired'),
+        cliError('An error occurred (ValidationException): invalid command id'),
+        cliError('unexpected parser failure'),
+    ];
+    for (const originalError of immediateErrors) {
+        await t.test(originalError.stderr, async () => {
+            let calls = 0;
+            const transientRetries = [];
+            await assert.rejects(runBoundedAwsObservation({
+                operation: 'ssm:GetCommandInvocation',
+                deadlineEpochMs: Date.now() + 10_000,
+                invocationMayNotExist: true,
+                transientRetries,
+                action: () => {
+                    calls += 1;
+                    throw originalError;
+                },
+            }), (actualError) => actualError === originalError);
+            assert.equal(calls, 1);
+            assert.deepEqual(transientRetries, []);
+        });
+    }
+});
+
+test('an absolute deadline bounds transient observation retries', async () => {
+    let nowMs = Date.parse('2026-07-19T00:00:00Z');
+    const transientRetries = [];
+    let calls = 0;
+    await assert.rejects(runBoundedAwsObservation({
+        operation: 's3:GetObject-artifact-download',
+        deadlineEpochMs: nowMs + 100,
+        transientRetries,
+        now: () => nowMs,
+        sleep: async (milliseconds) => { nowMs += milliseconds; },
+        random: () => 0,
+        action: () => {
+            calls += 1;
+            throw Object.assign(new Error('Read timeout on endpoint URL'), { code: 'ETIMEDOUT' });
+        },
+    }), (error) => error.code === 'AWS_OBSERVATION_DEADLINE_EXCEEDED');
+    assert.equal(calls, 1);
+    assert.equal(transientRetries.length, 1);
+    assert.equal(transientRetries[0].deadlineExhausted, true);
+    assert.equal(transientRetries[0].retryDelayMs, null);
+});
+
+test('eight concurrent observers recover independently after connect or read timeout', async () => {
+    let releaseFirstWave;
+    const firstWave = new Promise((resolve) => { releaseFirstWave = resolve; });
+    let firstWaveArrivals = 0;
+    const callCounts = Array(8).fill(0);
+    const retryEvidence = Array.from({ length: 8 }, () => []);
+    const observers = callCounts.map((_, index) => runBoundedAwsObservation({
+        operation: 'ssm:GetCommandInvocation',
+        deadlineEpochMs: Date.now() + 5_000,
+        invocationMayNotExist: true,
+        transientRetries: retryEvidence[index],
+        sleep: async () => {},
+        random: () => 0,
+        action: async () => {
+            callCounts[index] += 1;
+            if (callCounts[index] === 1) {
+                firstWaveArrivals += 1;
+                if (firstWaveArrivals === 8) releaseFirstWave();
+                await firstWave;
+                throw Object.assign(new Error('Could not connect to the endpoint URL'), { code: 'ECONNREFUSED' });
+            }
+            if (callCounts[index] === 2) {
+                throw Object.assign(new Error('Read timeout on endpoint URL'), { code: 'ETIMEDOUT' });
+            }
+            return { observer: index, Status: 'Success' };
+        },
+    }));
+
+    const results = await Promise.all(observers);
+    assert.equal(firstWaveArrivals, 8);
+    assert.deepEqual(callCounts, Array(8).fill(3));
+    assert.deepEqual(results, Array.from({ length: 8 }, (_, observer) => ({ observer, Status: 'Success' })));
+    assert.equal(retryEvidence.every((entries) =>
+        entries.length === 2 &&
+        entries.every(({ category }) => category === 'network-or-timeout') &&
+        entries[0].code === 'ECONNREFUSED' && entries[1].code === 'ETIMEDOUT'), true);
+});
+
+test('read-only observation retries ServiceUnavailable and InternalServerError', async () => {
+    const transientRetries = [];
+    const errors = [
+        cliError('An error occurred (ServiceUnavailableException) when calling the GetCommandInvocation operation'),
+        cliError('An error occurred (InternalServerError) when calling the GetCommandInvocation operation'),
+    ];
+    const result = await runBoundedAwsObservation({
+        operation: 'ssm:GetCommandInvocation',
+        deadlineEpochMs: Date.now() + 5_000,
+        invocationMayNotExist: true,
+        transientRetries,
+        sleep: async () => {},
+        random: () => 0,
+        action: () => {
+            if (errors.length) throw errors.shift();
+            return { Status: 'Success' };
+        },
+    });
+    assert.deepEqual(result, { Status: 'Success' });
+    assert.deepEqual(transientRetries.map(({ category, code }) => ({ category, code })), [
+        { category: 'transient-service', code: 'ServiceUnavailableException' },
+        { category: 'transient-service', code: 'InternalServerError' },
+    ]);
+});
+
+test('InvocationDoesNotExist is retryable only for GetCommandInvocation observation', () => {
+    const error = cliError('An error occurred (InvocationDoesNotExist)');
+    assert.equal(classifyAwsObservationFailure(error).retryable, false);
+    assert.deepEqual(classifyAwsObservationFailure(error, { invocationMayNotExist: true }), {
+        retryable: true,
+        category: 'invocation-not-visible',
+        code: 'InvocationDoesNotExist',
+    });
+});
+
+test('oha invoker never retries SendCommand and restricts retry to observation and local artifact download', () => {
+    const source = readFileSync(new URL('./invoke-oha.mjs', import.meta.url), 'utf8');
+    assert.equal(source.match(/'ssm', 'send-command'/g)?.length, 1);
+    assert.match(source, /const sendResponse = awsJson\(\[/);
+    assert.doesNotMatch(source, /runBoundedAwsObservation\([\s\S]{0,300}send-command/);
+    assert.match(source, /function awsJson\(args, \{ timeout, shortCliTimeouts = false \} = \{\}\)/);
+    assert.match(source, /operation: 'ssm:GetCommandInvocation'/);
+    assert.match(source, /shortCliTimeouts: true/);
+    assert.match(source, /operation: 's3:GetObject-artifact-download'/);
+    assert.match(source, /source\.startsWith\('s3:\/\/'\)/);
+    assert.match(source, /destination !== join\(outputDir, 'artifacts\.tgz'\)/);
+    assert.match(source, /artifactS3Uri !== expectedArtifactS3Uri/);
+    assert.match(source, /--cli-connect-timeout', '5'/);
+    assert.match(source, /--cli-read-timeout', '10'/);
+    assert.match(source, /AWS_MAX_ATTEMPTS: '1'/);
+    assert.match(source, /TERMINAL_SSM_STATUSES = new Set\(\['Success', 'Cancelled', 'TimedOut', 'Failed'\]\)/);
+    assert.match(source, /observation,/);
+    assert.match(source, /artifactDownloadObservation/);
+});

@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { analyzeCapacityReplacement, analyzeCapacityTopology } from './capacity-topology.mjs';
+
+const digest = `sha256:${'ab'.repeat(32)}`;
+
+test('accepts exactly one healthy expected-digest task on each of four c6i.xlarge hosts', () => {
+    const result = analyzeCapacityTopology(fixture());
+    assert.equal(result.passed, true);
+    assert.equal(result.placements.length, 4);
+    assert.deepEqual(Object.values(result.checks), [true, true, true, true, true, true]);
+});
+
+test('accepts replacement only when the selected task exits gracefully and the other three remain', () => {
+    const before = analyzeCapacityTopology(fixture());
+    const afterFixture = fixture();
+    afterFixture.tasks[0].taskArn = 'arn:aws:ecs:ap-northeast-2:123456789012:task/cluster/task-replacement';
+    const after = analyzeCapacityTopology(afterFixture);
+    const result = analyzeCapacityReplacement({
+        before,
+        after,
+        originalTaskArn: before.placements[0].taskArn,
+        replacementObservation: { minimumRunningCount: 3 },
+        stoppedTask: { stoppedReason: 'Essential container in task exited', containers: [{ exitCode: 0, reason: null }] },
+    });
+    assert.equal(result.passed, true);
+    assert.equal(result.survivorTaskArns.length, 3);
+    assert.equal(result.replacementTaskArns.length, 1);
+});
+
+test('rejects OOM, loss of an unaffected task, and a drop below three tasks', () => {
+    const before = analyzeCapacityTopology(fixture());
+    const afterFixture = fixture();
+    afterFixture.tasks[0].taskArn = 'arn:aws:ecs:ap-northeast-2:123456789012:task/cluster/task-replacement';
+    afterFixture.tasks[1].taskArn = 'arn:aws:ecs:ap-northeast-2:123456789012:task/cluster/task-unexpected-second';
+    const result = analyzeCapacityReplacement({
+        before,
+        after: analyzeCapacityTopology(afterFixture),
+        originalTaskArn: before.placements[0].taskArn,
+        replacementObservation: { minimumRunningCount: 2 },
+        stoppedTask: { stoppedReason: 'OutOfMemoryError', containers: [{ exitCode: 137, reason: 'OOMKilled' }] },
+    });
+    assert.equal(result.passed, false);
+    assert.equal(result.checks.unaffectedThreeStayedPresent, false);
+    assert.equal(result.checks.neverDroppedBelowThreeRunning, false);
+    assert.equal(result.checks.noOomOrFatalStopReason, false);
+    assert.equal(result.checks.gracefulExitCode, false);
+});
+
+test('rejects a duplicate host, wrong instance type, and mixed image digest independently', () => {
+    const duplicate = fixture();
+    duplicate.tasks[3].containerInstanceArn = duplicate.tasks[2].containerInstanceArn;
+    assert.equal(analyzeCapacityTopology(duplicate).checks.exactlyFourDistinctHosts, false);
+
+    const wrongType = fixture();
+    wrongType.ec2Instances[1].InstanceType = 'c6i.2xlarge';
+    assert.equal(analyzeCapacityTopology(wrongType).checks.allHostsC6iXlarge, false);
+
+    const mixedDigest = fixture();
+    mixedDigest.tasks[0].containers[0].imageDigest = `sha256:${'cd'.repeat(32)}`;
+    assert.equal(analyzeCapacityTopology(mixedDigest).checks.allTasksUseExpectedDigest, false);
+});
+
+function fixture() {
+    return {
+        expectedDigest: digest,
+        tasks: Array.from({ length: 4 }, (_, index) => ({
+            taskArn: `arn:aws:ecs:ap-northeast-2:123456789012:task/cluster/task-${index}`,
+            containerInstanceArn: `arn:aws:ecs:ap-northeast-2:123456789012:container-instance/cluster/ci-${index}`,
+            lastStatus: 'RUNNING', healthStatus: 'HEALTHY',
+            containers: [{ name: 'collector', image: `repo@${digest}`, imageDigest: digest }],
+        })),
+        containerInstances: Array.from({ length: 4 }, (_, index) => ({
+            containerInstanceArn: `arn:aws:ecs:ap-northeast-2:123456789012:container-instance/cluster/ci-${index}`,
+            ec2InstanceId: `i-${index}`,
+        })),
+        ec2Instances: Array.from({ length: 4 }, (_, index) => ({
+            InstanceId: `i-${index}`, InstanceType: 'c6i.xlarge',
+            Placement: { AvailabilityZone: `ap-northeast-2${index % 2 === 0 ? 'a' : 'c'}` },
+        })),
+    };
+}

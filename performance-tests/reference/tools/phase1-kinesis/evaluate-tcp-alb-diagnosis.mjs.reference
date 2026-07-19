@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { evaluateDiagnosisStage, evaluateHypotheses } from './tcp-alb-diagnosis-contract.mjs';
+
+const inputPath = requiredOption('--input');
+const outputPath = requiredOption('--output');
+const input = JSON.parse(readFileSync(inputPath, 'utf8'));
+const stages = Object.fromEntries(Object.entries(input.stages ?? {}).map(([name, stage]) => [name, {
+    ...evaluateDiagnosisStage({ aggregate: stage.aggregate, safety: stage.safety ?? {} }),
+    sameInstanceFailure: stage.sameInstanceFailure ?? false,
+    repetitionResult: stage.repetitionResult ?? null,
+}]))
+const hypotheses = evaluateHypotheses({
+    A1: stages.A1, A2: stages.A2, A3: stages.A3, A3_CONTROL: stages.A3_CONTROL,
+    B1: stages.B1, B2: stages.B2,
+    matrix: input.matrix, ramp: input.ramp, replacement: input.replacement,
+});
+const result = {
+    evaluatedAt: new Date().toISOString(),
+    evidenceScope: input.evidenceScope ?? [],
+    stages,
+    hypotheses,
+    diagnosticComplete: Object.values(hypotheses).every((hypothesis) => ['supported', 'not-supported', 'inconclusive'].includes(hypothesis.verdict)),
+};
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

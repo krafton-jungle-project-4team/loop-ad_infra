@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { aggregateOha12k } from '../../phase1-kinesis/oha12k-aggregate.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const workerPath = resolve(here, '../../phase1-kinesis/run-ec2-oha-worker.sh');
+const runnerPath = resolve(here, '../aws/run_diagnostic_oha.mjs');
+
+test('Phase 7 uses exact-count QPS mode so HTTP/2 shutdown cannot manufacture deadline errors', () => {
+    const worker = readFileSync(workerPath, 'utf8');
+    const runner = readFileSync(runnerPath, 'utf8');
+    assert.match(worker, /if \[\[ "\$PHASE7_MODE" == 'true' \]\]; then[\s\S]*oha_limit_args=\(-n "\$per_process_request_count"\)/);
+    assert.match(worker, /--no-tui --output-format json "\$\{oha_limit_args\[@\]\}"/);
+    assert.match(runner, /completionMode: 'exact-request-count'/);
+    assert.match(runner, /requestedRequests: TARGET_RPS \* durationSeconds/);
+});
+
+test('Phase 7 aggregation binds every attempted request to qps times duration', () => {
+    const { manifest, nodes } = exactCountFixture();
+    const result = aggregateOha12k({ manifest, nodes });
+    assert.equal(result.passed, true);
+    assert.equal(result.completionMode, 'exact-request-count');
+    assert.equal(result.requestedRequests, 300);
+    assert.equal(result.attemptedRequests, 300);
+    assert.equal(result.checks.exactRequestedRequestCount, true);
+    assert.equal(result.checks.attemptedRequestsMatchExactRequestCount, true);
+    assert.equal(result.checks.durationDeadlineOptionAbsent, true);
+
+    const mismatched = structuredClone(nodes);
+    mismatched[0].processes[0].command.arguments[2] = '299';
+    const failed = aggregateOha12k({ manifest, nodes: mismatched });
+    assert.equal(failed.passed, false);
+    assert.equal(failed.checks.exactRequestedRequestCount, false);
+    assert.equal(failed.checks.commandsMatchManifest, false);
+});
+
+function exactCountFixture() {
+    const process = {
+        processIndex: 1,
+        processId: 'process-01',
+        offeredRps: 100,
+        connections: 12_000,
+        requestedRequests: 300,
+    };
+    const plan = {
+        nodeId: 'node-01',
+        instanceId: 'i-1',
+        startEpoch: 1_784_000_000,
+        offeredRps: 100,
+        connections: 12_000,
+        processesPerNode: 1,
+        processes: [process],
+    };
+    const summary = {
+        startedAt: '2026-07-19T00:00:00Z',
+        endedAt: '2026-07-19T00:00:03Z',
+        startEpoch: plan.startEpoch,
+        actualRps: 100,
+        completedRequests: 300,
+        attemptedRequests: 300,
+        transportErrors: 0,
+        firstByteMs: { average: 10, p50: 10, p95: 20, p99: 30 },
+        latencyCorrectedMs: { p50: 10, p95: 20, p99: 30 },
+        connectionObservation: { maxTcpInuse: 100, maxOhaEstablished: 100 },
+        processObservation: { maxOhaCpuPercent: 10, maxOhaRssKib: 1_024 },
+        statusCodeDistribution: { 202: 300 },
+        errorDistribution: {},
+    };
+    const report = {
+        firstByteHistogram: { '0.01': 300 },
+        responseTimeHistogram: { '0.02': 300 },
+    };
+    const command = { executable: 'docker', arguments: ['image', '-n', '300', '-q', '100', '-c', '12000'] };
+    return {
+        manifest: {
+            experimentMode: 'connection-path-crossover',
+            runId: 'run_20260719_000000_phase7_score',
+            nodeCount: 1,
+            processCount: 1,
+            processesPerNode: 1,
+            targetRps: 100,
+            durationSeconds: 3,
+            completionMode: 'exact-request-count',
+            requestedRequests: 300,
+            startEpoch: plan.startEpoch,
+            nodes: [plan],
+        },
+        nodes: [{
+            nodeId: plan.nodeId,
+            summary,
+            report,
+            command,
+            bootstrap: {},
+            telemetryTsv: 'timestamp_utc\trx_bytes\ttx_bytes\n2026-07-19T00:00:00Z\t0\t0\n2026-07-19T00:00:03Z\t1\t1\n',
+            enaBefore: {},
+            enaAfter: {},
+            processes: [{ processId: process.processId, summary, report, command }],
+        }],
+    };
+}

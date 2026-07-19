@@ -1,0 +1,47 @@
+export const PINNED_HAPROXY_IMAGE = 'haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d';
+export const DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE = 'sampled-202';
+
+export const CONNECTION_PATH_HAPROXY_PROFILES = Object.freeze({
+    'baseline-full': Object.freeze({ instanceType: 'c6in.xlarge', vcpus: 4, loggingPolicy: 'full', threadMode: 'explicit-4' }),
+    'sampled-202': Object.freeze({ instanceType: 'c6in.xlarge', vcpus: 4, loggingPolicy: 'normal-202-deterministic-0.1-percent', threadMode: 'automatic' }),
+    'sampled-202-capacity': Object.freeze({ instanceType: 'c6in.2xlarge', vcpus: 8, loggingPolicy: 'normal-202-deterministic-0.1-percent', threadMode: 'automatic' }),
+});
+
+export function parseHAProxyRuntimeOutput(value, instanceId) {
+    const lines = `${value ?? ''}`.trim().split('\n').filter(Boolean);
+    if (lines.length !== 1) return { instanceId, validOutput: false, error: 'expected exactly one runtime JSON line' };
+    try {
+        const parsed = JSON.parse(lines[0]);
+        return {
+            instanceId,
+            validOutput: Number.isInteger(parsed.runtimeThreadCount) && parsed.runtimeThreadCount > 0 &&
+                Number.isInteger(parsed.availableCpuCount) && parsed.availableCpuCount > 0 &&
+                /^[0-9a-f]{64}$/.test(parsed.configSha256 ?? '') && typeof parsed.configValid === 'boolean',
+            ...parsed,
+        };
+    } catch (error) {
+        return { instanceId, validOutput: false, error: `${error.message ?? error}` };
+    }
+}
+
+export function evaluateHAProxyRuntimeProfiles({ expectedProfileName, outputs, expectedInstanceIds, invocations }) {
+    const expectedProfile = CONNECTION_PATH_HAPROXY_PROFILES[expectedProfileName];
+    if (!expectedProfile) throw new Error(`unknown HAProxy profile: ${expectedProfileName}`);
+    const expectedIds = [...expectedInstanceIds].toSorted();
+    const actualIds = invocations.map((item) => item.instanceId).toSorted();
+    const checks = {
+        outputProfileMatches: outputs.Phase1ConnectionPathProxyProfile === expectedProfileName &&
+            outputs.Phase1ConnectionPathProxyInstanceType === expectedProfile.instanceType &&
+            outputs.Phase1ConnectionPathProxyVcpusPerInstance === `${expectedProfile.vcpus}` &&
+            outputs.Phase1ConnectionPathProxyThreadMode === expectedProfile.threadMode &&
+            outputs.Phase1ConnectionPathProxyLoggingPolicy === expectedProfile.loggingPolicy,
+        exactProxySet: expectedIds.length === 2 && JSON.stringify(actualIds) === JSON.stringify(expectedIds),
+        commandsSucceeded: invocations.length === 2 && invocations.every((item) => item.status === 'Success' && item.responseCode === 0 && item.validOutput === true),
+        runtimeThreadsMatchVcpus: invocations.length === 2 && invocations.every((item) =>
+            item.runtimeThreadCount === expectedProfile.vcpus && item.availableCpuCount === expectedProfile.vcpus),
+        runtimeConfigMatchesOutput: /^[0-9a-f]{64}$/.test(outputs.Phase1ConnectionPathProxyConfigSha256 ?? '') &&
+            invocations.length === 2 && invocations.every((item) => item.configValid === true &&
+                item.configSha256 === outputs.Phase1ConnectionPathProxyConfigSha256),
+    };
+    return { expectedProfileName, expectedProfile, expectedInstanceIds: expectedIds, invocations, checks, passed: Object.values(checks).every(Boolean) };
+}

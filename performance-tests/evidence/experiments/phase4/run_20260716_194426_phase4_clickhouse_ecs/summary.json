@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260716_194426_phase4_clickhouse_ecs",
+  "phase": "phase4",
+  "category": "experiment",
+  "executedAt": "2026-07-16T19:44:26",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.expectedFullLoadRecords",
+      "value": 15000000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.consumerTaskCpu",
+      "value": 1024,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.consumerTaskMemoryMiB",
+      "value": 2048,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.maxRecords",
+      "value": 1000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "contract.maxPendingProcessRecordsInput",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "costPolicy.newLoadStopUsd",
+      "value": 17,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "costPolicy.cleanupReserveUsd",
+      "value": 3,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "costPolicy.hardCapUsd",
+      "value": 20,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "verdict.status",
+      "value": "failed",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/run.json"
+    },
+    {
+      "name": "generatedAt",
+      "value": "2026-07-16T21:19:21Z",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "target.recordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "target.records",
+      "value": 15000000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.successfulRecords",
+      "value": 15000000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.successfulRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.failedRecords",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.partialFailureRecords",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.retryRecords",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.cloudWatchIncomingRecords",
+      "value": 15000000,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.writeThrottleRecords",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.hostCpuP95Percent",
+      "value": 45.739348,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "producer.hostMemoryMaxPercent",
+      "value": 7.730403,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.measurementWindowEventsFinal",
+      "value": 14999990,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.measurementWindowUniqueEvents",
+      "value": 14999990,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.measurementWindowPhysicalEvents",
+      "value": 14999990,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.measurementWindowRawEvents",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.strictWindowDifferenceRecords",
+      "value": 10,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.readThrottleRecords",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.checkpointError",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.leaseCount",
+      "value": 120,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.numericCheckpointCount",
+      "value": 120,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.taskCpuP95Percent",
+      "value": "not measured",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.taskMemoryP95Percent",
+      "value": "not measured",
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.hostCpuP95MaximumPercent",
+      "value": 50.308333,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "consumer.hostMemoryP95MaximumPercent",
+      "value": 54.311818,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "clickHouse.insertErrors",
+      "value": 0,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    },
+    {
+      "name": "cleanup.deterministicMaximumIncludingCleanupUsd",
+      "value": 14.634519,
+      "source": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "failed",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260716_194426_phase4_clickhouse_ecs"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/artifacts.md",
+      "bytes": 1950,
+      "sha256": "db49afcbd8222b31815b297064ec277ea1015f70d32ec993390a36e326a97bcf"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/commands.md",
+      "bytes": 4426,
+      "sha256": "ceca281468a27380a283350e0d03a14ede85a23bfa2c68770dac8f10a9d966fe"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/correctness-summary.json",
+      "bytes": 1410,
+      "sha256": "7179d581f22bf523187f2ad50004466ff1ac64ba624588e6e6701bd1e7b50e9d"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/cost-evidence.json",
+      "bytes": 1026,
+      "sha256": "cce04fa967a49eb7087bafb5b61aae8850cf8ab4ea8dc08b2752369a4d5c6081"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/cost-model-ecs.json",
+      "bytes": 8560,
+      "sha256": "0119a0c4db77c53a989699b6b4d0f47507391a3360d16a117407c4ba9090da81"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/infra.md",
+      "bytes": 2793,
+      "sha256": "fc8aee54f81db875fb297e77be52384f14746959a4f706ef84307a241c43b783"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/metrics-summary.json",
+      "bytes": 1874,
+      "sha256": "06cd23c6315a9bdb745cccae3e44a26f1cf0ff97f910604ab0c0de9e9ac20413"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/report.md",
+      "bytes": 3374,
+      "sha256": "54a4a3c3d994a7b7f50dc710757ee02f9d8785966749e60bff4d173c6cfb0d49"
+    },
+    {
+      "path": "run_20260716_194426_phase4_clickhouse_ecs/run.json",
+      "bytes": 2751,
+      "sha256": "e576a38e8cc49d3e490a8af722859d00233eb6dffe597fc984b62fa0adb7a1c8"
+    }
+  ]
+}

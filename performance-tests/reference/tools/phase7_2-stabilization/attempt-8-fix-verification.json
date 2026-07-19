@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 8,
+  "runId": "run_20260718_124510_phase7_integration",
+  "generatedAt": "2026-07-18T14:10:25Z",
+  "status": "passed",
+  "fix": {
+    "summary": "Accept exact Prometheus NaN, +Inf and -Inf sample tokens, preserve them in the parsed exposition, and require finiteness only for selected acceptance metrics. Reject all non-finite values in the pure final evaluator and use a fail-closed latency fallback.",
+    "fixCommit": "0dfcdbc22d3203ac7eb0c598847d7dc30affd7ab",
+    "files": [
+      "performance-tests/phase7-integration/aws/runtime_observability.py",
+      "performance-tests/phase7-integration/aws/evaluator.py",
+      "performance-tests/phase7-integration/tests/test_runtime_observability.py",
+      "performance-tests/phase7-integration/tests/test_final_evaluate.py"
+    ]
+  },
+  "regressions": {
+    "observedHaproxyNaNSampleAccepted": true,
+    "prometheusNaNAccepted": true,
+    "prometheusPositiveInfinityAccepted": true,
+    "prometheusNegativeInfinityAccepted": true,
+    "selectedAcceptanceMetricMustBeFinite": true,
+    "nonstandardSpecialSpellingsRejected": true,
+    "finalEvaluatorRejectsAllNonfiniteValues": true
+  },
+  "tests": {
+    "focusedRuntimeObservabilityTests": 10,
+    "focusedFinalEvaluateTests": 7,
+    "phase7JestTests": 13,
+    "phase7NodeTests": 27,
+    "phase7PythonTests": 137,
+    "npmRunTestPhase7": "passed",
+    "npmRunBuild": "passed"
+  },
+  "templateVerification": {
+    "exactContextSynth": "passed",
+    "runtimeTemplateSha256": "0106de330cacb447d8bd062b03856e13f1575de6c663d1291c2e574a447feb4d",
+    "templateUnchangedFromAttempt8": true,
+    "repositoryTemplateValidator": "passed",
+    "cfnLintVersion": "1.53.0",
+    "cfnLintRawExitCode": 6,
+    "acceptedE1022": 8,
+    "acceptedW3005": 3,
+    "unexpectedFindings": 0,
+    "loadGeneratorDecodedUserDataBytes": 15224,
+    "loadGeneratorMarginRemainingBytes": 136
+  },
+  "freshLocalHandoff": {
+    "path": "performance-tests/run_20260718_140243_phase7_1_local_integration/local-handoff.json",
+    "sha256": "dc812d718bd0b28e42a52cb44b6416b601f992fbf085effec67a01894bb03846",
+    "evidenceCommit": "f3993785d711ad4167c357fe2177c6cd6b3e08f6",
+    "gitHeadAtFinalization": "0dfcdbc22d3203ac7eb0c598847d7dc30affd7ab",
+    "implementationTreeSha256": "e119e98962d5d506568f79b7d815aa064df11a889d1faec19a53c2be9d44f95b",
+    "finalVerdict": "passed",
+    "awsReady": true,
+    "realAwsRequests": 0,
+    "dockerContainersZero": true,
+    "dockerNetworksZero": true,
+    "dockerVolumesZero": true
+  },
+  "failedLocalOnlyAttempt": {
+    "path": "performance-tests/run_20260718_140208_phase7_1_local_integration/local-handoff.json",
+    "sha256": "fd9928e2eeb7541f11e69ce4814b353447f2a05e160e1516c6206efdec51912e",
+    "reason": "run-local.sh does not implement --help; the invocation started a fresh local attempt and failed immediately when the sandbox denied collector Git worktree creation. It is preserved and never reused."
+  },
+  "phase5": "skipped"
+}

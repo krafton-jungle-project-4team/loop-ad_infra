@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { gzipSync } from 'node:zlib';
+import {
+    addAlbAccessLogRecord,
+    analyzeAlbAccessLogs,
+    createAlbAccessLogSummary,
+    finalizeAlbAccessLogSummary,
+    parseAlbAccessLogGzip,
+    parseAlbAccessLogLine,
+} from './alb-access-log.mjs';
+
+function line({ time, created, elb = 202, target = 202, targetAddress = '10.0.0.1:8080', request = 'POST http://internal-test/events HTTP/1.1', connection = 'T_conn', extra = '' }) {
+    return `http ${time} app/test/123 10.0.1.2:4567 ${targetAddress} 0.001 0.002 0.001 ${elb} ${target} 100 20 "${request}" "oha/1.10" - - arn:aws:elasticloadbalancing:ap-northeast-2:123456789012:targetgroup/test/1 Root=1-abc internal-test - 1 ${created} "forward" "-" "-" "${targetAddress}" "${target}" "-" "-" ${connection} "-" "-" "-"${extra}`;
+}
+
+test('parses all current fields and preserves appended fields', () => {
+    const record = parseAlbAccessLogLine(line({ time: '2026-07-12T18:00:11.000000Z', created: '2026-07-12T18:00:10.000000Z', extra: ' appended "future field"' }));
+    assert.equal(record.elbStatusCode, 202);
+    assert.equal(record.targetProcessingTime, 0.002);
+    assert.equal(record.connectionKey, 'T_conn');
+    assert.deepEqual(record.additionalFields, ['appended', 'future field']);
+});
+
+test('reads gzip and reports checked measurement distributions', () => {
+    const rows = [
+        line({ time: '2026-07-12T18:00:09.000000Z', created: '2026-07-12T18:00:08.000000Z' }),
+        line({ time: '2026-07-12T18:00:11.000000Z', created: '2026-07-12T18:00:10.500000Z', elb: 460, target: '-', targetAddress: '-', connection: '-' }),
+        line({ time: '2026-07-12T18:00:26.000000Z', created: '2026-07-12T18:00:25.500000Z', elb: 503, target: 503 }),
+    ];
+    const first = parseAlbAccessLogGzip(gzipSync(`${rows.join('\n')}\n`), 'test_10.0.0.1_a.log.gz');
+    const second = parseAlbAccessLogGzip(gzipSync(`${rows.join('\n')}\n`), 'test_10.0.0.2_b.log.gz');
+    const analysis = analyzeAlbAccessLogs({ records: [...first.records, ...second.records], measurementStart: '2026-07-12T18:00:10Z', measurementEnd: '2026-07-12T18:00:25Z', expectedNodeCount: 2 });
+    assert.equal(analysis.passed, true);
+    assert.equal(analysis.measurementWindow.elbStatusDistribution['460'], 2);
+    assert.equal(analysis.measurementWindow.targetMissing, 2);
+    assert.equal(analysis.full.elbStatusDistribution['5xx'], 2);
+});
+
+test('fails closed as access-log-inconclusive for parse or coverage gaps', () => {
+    const parsed = parseAlbAccessLogGzip(gzipSync(`${line({ time: '2026-07-12T18:00:11.000000Z', created: '2026-07-12T18:00:10.000000Z' })}\nbad\n`), 'test_10.0.0.1_a.log.gz');
+    const analysis = analyzeAlbAccessLogs({ records: parsed.records, parseErrors: parsed.errors, measurementStart: '2026-07-12T18:00:10Z', measurementEnd: '2026-07-12T18:00:25Z', expectedNodeCount: 2 });
+    assert.equal(analysis.passed, false);
+    assert.equal(analysis.completeness.status, 'access-log-inconclusive');
+    assert.equal(analysis.completeness.checks.zeroParseErrors, false);
+    assert.equal(analysis.completeness.checks.expectedNodesPresent, false);
+});
+
+test('incremental summaries match the in-memory analyzer', () => {
+    const rows = [
+        line({ time: '2026-07-12T18:00:11.000000Z', created: '2026-07-12T18:00:10.000000Z' }),
+        line({ time: '2026-07-12T18:00:12.000000Z', created: '2026-07-12T18:00:11.000000Z', elb: 500, target: 500 }),
+    ];
+    const records = parseAlbAccessLogGzip(gzipSync(`${rows.join('\n')}\n`), 'test_10.0.0.1_a.log.gz').records;
+    const incremental = createAlbAccessLogSummary();
+    for (const record of records) addAlbAccessLogRecord(incremental, record);
+    const expected = analyzeAlbAccessLogs({ records, measurementStart: '2026-07-12T18:00:09Z', measurementEnd: '2026-07-12T18:00:13Z', expectedNodeCount: 1 }).full;
+    assert.deepEqual(finalizeAlbAccessLogSummary(incremental), expected);
+});

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 19,
+  "attemptType": "aws-targeted-diagnostic",
+  "runId": "run_20260719_083356_phase7_archive_diagnostic",
+  "sessionId": "phase7-archive-diagnostic-20260719T083356Z",
+  "reconciledAt": "2026-07-19T09:13:54Z",
+  "paidRuntime": {
+    "imagePreparedAt": "2026-07-19T08:48:20.750Z",
+    "runtimeStackStartedAt": "2026-07-19T08:51:54Z",
+    "ec2LaunchAt": "2026-07-19T08:55:11Z",
+    "ec2TerminatedAt": "2026-07-19T09:01:25Z",
+    "cleanupStartedAt": "2026-07-19T09:00:46.004Z",
+    "cleanupFinishedAt": "2026-07-19T09:03:49.482Z",
+    "ec2ElapsedSeconds": 374,
+    "ecsContainerInstanceRegistered": true,
+    "ecsWorkloadTasksStarted": 0,
+    "seedStarted": false,
+    "archiveStarted": false,
+    "verifyStarted": false
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-19-cost-explorer-20260719.json",
+    "evidenceSha256": "5ccc1d3386a4af8430b082cff1b4df6efb6782bc3bff43772916a7755ff6f466",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "Delayed current-day zero is not treated as zero cost."
+  },
+  "priceEvidence": {
+    "path": "performance-tests/run_20260719_083356_phase7_2_targeted_archive_readiness/prices.json",
+    "asOf": "2026-07-19T08:42:15.850Z"
+  },
+  "modeledFailurePath": {
+    "billableResourceDurationCeilingHours": "0.25",
+    "actualEc2DurationBelowCeiling": true,
+    "components": [
+      {
+        "name": "clickHouseR7g2xlargeHour",
+        "upperBoundUsd": "0.129200"
+      },
+      {
+        "name": "publicIpv4Hour",
+        "upperBoundUsd": "0.001250"
+      },
+      {
+        "name": "ebsGp3GbMonth",
+        "upperBoundUsd": "0.015616438356"
+      },
+      {
+        "name": "ebsGp3ThroughputGibpsMonth",
+        "upperBoundUsd": "0.005856164384"
+      },
+      {
+        "name": "ecrStorage272Mb",
+        "upperBoundUsd": "0.000009315068"
+      },
+      {
+        "name": "secretsManagerSecretMonth",
+        "upperBoundUsd": "0.000136986301"
+      },
+      {
+        "name": "secretsManagerApiRequests",
+        "upperBoundUsd": "0.000250"
+      },
+      {
+        "name": "cloudWatchLogIngestAllowance50Mb",
+        "upperBoundUsd": "0.038000"
+      },
+      {
+        "name": "cloudWatchLogStorageAllowance50Mb",
+        "upperBoundUsd": "0.000000537671"
+      },
+      {
+        "name": "controlPlaneTransferRollbackAndDelayedMeteringReserve",
+        "upperBoundUsd": "0.750000"
+      }
+    ],
+    "rawTotalUsd": "0.940319441780",
+    "upperBoundUsd": "0.950000"
+  },
+  "roundingPolicy": "Round the 0.940319441780 USD failure-path upper bound upward to the next 0.05 USD; do not charge the unexecuted seed/archive/verify plan.",
+  "chargedUpperBoundUsd": "0.950000",
+  "budgetBeforeAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-18",
+    "activeEpochAccruedUpperBoundUsd": "0.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "budgetAfterAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-18",
+    "activeEpochAccruedUpperBoundUsd": "0.950000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "nextTargetedAndStrictGate": {
+    "priorActiveEpochAccruedUpperBoundUsd": "0.950000",
+    "nextTargetedOperationalUpperBoundUsd": "4.154001",
+    "strictAttemptOperationalUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingTargetedStrictAndCleanupUsd": "43.974719",
+    "remainingMarginUsd": "16.025281",
+    "passedAtCurrentPrices": true
+  }
+}

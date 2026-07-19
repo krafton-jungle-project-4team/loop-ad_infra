@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluatePersistentWarmupGate, parseTelemetryTsv } from './persistent-warmup-gate.mjs';
+
+function identity(nodeId, suffix = '') {
+    return { nodeId, processes: [1, 2].map((index) => ({ processId: `process-0${index}`, containerId: `${nodeId}-container-${index}${suffix}`, hostOhaPid: 100 + index, running: true })) };
+}
+function worker(nodeId, established = 5_950) {
+    const telemetry = Array.from({ length: 10 }, (_, index) => ({ timestamp_utc: `2026-07-12T18:00:${index.toString().padStart(2, '0')}Z`,
+        cpu_user: index * 10, cpu_nice: 0, cpu_system: index * 5, cpu_idle: index * 85, cpu_iowait: 0, cpu_irq: 0, cpu_softirq: 0, cpu_steal: 0,
+        mem_available_kib: 1_000_000, tcp_tw: 100 + index, tcp_orphan: 0, conntrack_count: 8_000,
+        oha_established: established, oha_syn_sent: 5, oha_open_fds: 6_100 }));
+    return { nodeId, telemetry, bootstrap: { conntrack: { max: 100_000 } }, identityStart: identity(nodeId), identityReady: identity(nodeId), identityGate: identity(nodeId),
+        enaBefore: { bw_out_allowance_exceeded: 0, pps_allowance_exceeded: 0, conntrack_allowance_exceeded: 0 },
+        enaGate: { bw_out_allowance_exceeded: 0, pps_allowance_exceeded: 0, conntrack_allowance_exceeded: 0 } };
+}
+function validInput() {
+    return { workers: [worker('node-01'), worker('node-02')], targetHealth: { TargetHealthDescriptions: Array.from({ length: 4 }, () => ({ TargetHealth: { State: 'healthy' } })) },
+        service: { desiredCount: 4, runningCount: 4, pendingCount: 0, deployments: [{ failedTasks: 0 }] },
+        taskState: { topology: { passed: true } },
+        cloudwatch: { rejectedConnectionCount: 0, targetConnectionErrorCount: 0, elb5xxCount: 0 },
+        debugVars: Array.from({ length: 4 }, () => ({ admission: { current_in_flight: 100, max_in_flight: 1024 }, kinesis: { put_records: { queue_depth: 10, sender_queue_depth: 5, outstanding_records: 10, queue_full: 0, failures: 0, timeouts: 0 } } })) };
+}
+
+test('parses one-second telemetry rows', () => {
+    const rows = parseTelemetryTsv('timestamp_utc\ttcp_inuse\toha_established\n2026-07-12T18:00:00Z\t6000\t5950\n');
+    assert.deepEqual(rows, [{ timestamp_utc: '2026-07-12T18:00:00Z', tcp_inuse: 6000, oha_established: 5950 }]);
+});
+test('passes only the exact stable 2x2 and 12k gate', () => {
+    const result = evaluatePersistentWarmupGate(validInput());
+    assert.equal(result.passed, true);
+    assert.equal(Math.min(...result.totalEstablished), 11_900);
+    assert.equal(result.checks.sameFourOhaProcesses, true);
+});
+test('fails closed for connection or identity instability', () => {
+    const input = validInput();
+    input.workers[0].telemetry.at(-1).oha_established = 5_000;
+    input.workers[1].identityGate = identity('node-02', '-restarted');
+    const result = evaluatePersistentWarmupGate(input);
+    assert.equal(result.passed, false);
+    assert.equal(result.checks.establishedStableAtLeast11880, false);
+    assert.equal(result.checks.sameFourOhaProcesses, false);
+});

@@ -1,0 +1,40 @@
+{
+  "clickHouseImage": "clickhouse/clickhouse-server:26.3.13.31",
+  "clickHouseImageDigest": "sha256:5bd484de66549257904479043cbd3b15397d94d85bfc8bbbbd2d66b09f7a06a2",
+  "clickHouseVersion": "26.3.13.31",
+  "completedAt": "2026-07-16T09:30:33+00:00",
+  "correctness": {
+    "countInvariantRight": 1005,
+    "duplicate": { "final": 1, "physical": 2 },
+    "emulator": "LocalStack Kinesis",
+    "emulatorInput": 1005,
+    "eventsFinal": 1001,
+    "eventsPhysical": 1001,
+    "eventsUnique": 1001,
+    "handlerConsumed": 1005,
+    "lateEventDropped": 1,
+    "propertiesJsonByteStringMatched": true,
+    "qualifiedProducerAccepted": 1000,
+    "rawEvents": 3,
+    "rawPayloadSha256Matched": true,
+    "retry": { "finalRows": 1, "initialFailures": 1 },
+    "status": "passed",
+    "streamShards": 4
+  },
+  "elapsedSeconds": 5.255455,
+  "fixedReceivedAt": "2026-07-16T12:00:00.000Z",
+  "kinesisEmulatorImage": "localstack/localstack:3.8.1",
+  "kinesisEmulatorImageDigest": "sha256:b279c01f4cfb8f985a482e4014cabc1e2697b9d7a6c8c8db2e40f4d9f93687c7",
+  "networkAudit": {
+    "localAwsSdkAttempts": 33,
+    "metadataDisabledForNodeHarness": true,
+    "realAwsApiAttempts": 0,
+    "sdkEndpointGuard": "loopback-only"
+  },
+  "payloadSha256": "93704c35ef7ca24c9c887a439dbea011c94a852f98e12b2d51b4bf6d4f3322b7",
+  "region": "ap-northeast-2",
+  "schemaVersion": 1,
+  "startedAt": "2026-07-16T09:30:28+00:00",
+  "status": "passed",
+  "suite": "correctness"
+}

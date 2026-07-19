@@ -1,0 +1,92 @@
+import {
+    GetSecretValueCommand,
+    SecretsManagerClient,
+} from '@aws-sdk/client-secrets-manager';
+import {
+    createClickHouseInserter,
+    createHandler,
+    type ClickHouseCredentials,
+} from './core';
+
+export * from './core';
+
+const secretsManager = new SecretsManagerClient({ maxAttempts: 2 });
+let cachedCredentials: ClickHouseCredentials | undefined;
+let pendingCredentials: Promise<ClickHouseCredentials> | undefined;
+
+async function loadClickHouseCredentials(): Promise<ClickHouseCredentials> {
+    if (cachedCredentials) return cachedCredentials;
+    if (!pendingCredentials) {
+        pendingCredentials = loadClickHouseCredentialsOnce().then(
+            (credentials) => {
+                cachedCredentials = credentials;
+                return credentials;
+            },
+            (error: unknown) => {
+                pendingCredentials = undefined;
+                throw error;
+            },
+        );
+    }
+    return pendingCredentials;
+}
+
+async function loadClickHouseCredentialsOnce(): Promise<ClickHouseCredentials> {
+    const response = await secretsManager.send(new GetSecretValueCommand({
+        SecretId: requiredEnvironment('CLICKHOUSE_SECRET_ARN'),
+    }));
+    if (!response.SecretString) throw new Error('SecretConfigurationError');
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(response.SecretString);
+    } catch {
+        throw new Error('SecretConfigurationError');
+    }
+    if (
+        !isRecord(parsed) ||
+        typeof parsed.username !== 'string' ||
+        parsed.username.length === 0 ||
+        typeof parsed.password !== 'string' ||
+        parsed.password.length === 0
+    ) {
+        throw new Error('SecretConfigurationError');
+    }
+    return { username: parsed.username, password: parsed.password };
+}
+
+function emitLateEventMetric(count: number, timestamp: Date): void {
+    console.log(JSON.stringify({
+        _aws: {
+            Timestamp: timestamp.getTime(),
+            CloudWatchMetrics: [{
+                Namespace: requiredEnvironment('METRIC_NAMESPACE'),
+                Dimensions: [['RunId']],
+                Metrics: [{ Name: 'LateEventDropped', Unit: 'Count' }],
+            }],
+        },
+        RunId: requiredEnvironment('RUN_ID'),
+        LateEventDropped: count,
+    }));
+}
+
+function requiredEnvironment(name: string): string {
+    const value = process.env[name];
+    if (!value) throw new Error('RuntimeConfigurationError');
+    return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export const handler = createHandler({
+    insertRows: createClickHouseInserter({
+        getBaseUrl: () => requiredEnvironment('CLICKHOUSE_HTTP_URL'),
+        getDatabase: () => requiredEnvironment('CLICKHOUSE_DATABASE'),
+        loadCredentials: loadClickHouseCredentials,
+    }),
+    now: () => new Date(),
+    emitLateEventMetric,
+    logSummary: (summary) => console.log(JSON.stringify(summary)),
+});

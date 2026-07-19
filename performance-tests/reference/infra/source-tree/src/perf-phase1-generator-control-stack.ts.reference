@@ -1,0 +1,134 @@
+import { CfnOutput, Duration, Fn, Stack, Tags, type StackProps } from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Construct } from 'constructs';
+import { DEV_VPC_AVAILABILITY_ZONES } from './dev-config';
+import { addLoadGeneratorUserData } from './perf-phase1-kinesis-stack';
+
+const SESSION_KEY = 'phase1SessionId';
+const RUN_KEY = 'phase1RunId';
+const NODE_COUNT_KEY = 'phase1LoadGeneratorCount';
+const ASG_NAME = 'perf-phase1-generator-control';
+const ROLE_NAME = 'loop-ad-phase1-generator-control';
+const ALB_NAME = 'perf-phase1-generator-control';
+
+export class LoopAdPerfPhase1GeneratorControlStack extends Stack {
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+        const sessionId = requiredString(this, SESSION_KEY);
+        const runId = requiredString(this, RUN_KEY);
+        const nodeCount = requiredInteger(this, NODE_COUNT_KEY);
+        if (!/^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) {
+            throw new Error(`${SESSION_KEY} must match the generator-diagnosis session contract.`);
+        }
+        if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) {
+            throw new Error(`${RUN_KEY} must match the immutable run ID contract.`);
+        }
+        if (![1, 2, 4].includes(nodeCount)) throw new Error(`${NODE_COUNT_KEY} must be 1, 2, or 4.`);
+
+        for (const [key, value] of Object.entries({
+            Project: 'loop-ad', Environment: 'perf-phase1-kinesis', SessionId: sessionId,
+            ComparisonSessionId: sessionId, RunId: runId, Phase: 'phase1-generator-diagnosis',
+            ManagedBy: 'codex', Owner: 'loop-ad', TargetKind: 'fast-control',
+        })) Tags.of(this).add(key, value);
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            vpcName: 'perf-phase1-generator-control-vpc',
+            availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
+            natGateways: 0,
+            restrictDefaultSecurityGroup: true,
+            subnetConfiguration: [{ name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 }],
+        });
+        const publicSubnets = vpc.selectSubnets({ subnetGroupName: 'public' });
+        const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+            vpc, allowAllOutbound: false, description: 'Phase 1 generator fast-control ALB.',
+        });
+        const generatorSecurityGroup = new ec2.SecurityGroup(this, 'GeneratorSecurityGroup', {
+            vpc, allowAllOutbound: false, description: 'Phase 1 generator-diagnosis oha nodes.',
+        });
+        albSecurityGroup.addIngressRule(generatorSecurityGroup, ec2.Port.tcp(80), 'oha nodes may reach fast-control ALB');
+        generatorSecurityGroup.addEgressRule(albSecurityGroup, ec2.Port.tcp(80), 'oha nodes may send control traffic');
+        generatorSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'SSM and pinned image HTTPS');
+        generatorSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.udp(53), 'DNS over UDP');
+        generatorSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(53), 'DNS over TCP');
+
+        const role = new iam.Role(this, 'GeneratorInstanceRole', {
+            roleName: ROLE_NAME,
+            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+            description: 'Temporary generator-control EC2 role limited to SSM management.',
+            managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')],
+        });
+        const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'GeneratorAutoScalingGroup', {
+            vpc,
+            vpcSubnets: { subnetGroupName: 'public' },
+            autoScalingGroupName: ASG_NAME,
+            minCapacity: nodeCount,
+            maxCapacity: nodeCount,
+            ignoreUnmodifiedSizeProperties: false,
+            instanceType: new ec2.InstanceType('c6in.large'),
+            machineImage: ecs.EcsOptimizedImage.amazonLinux2023(),
+            requireImdsv2: true,
+            role,
+            securityGroup: generatorSecurityGroup,
+            associatePublicIpAddress: true,
+            instanceMonitoring: autoscaling.Monitoring.DETAILED,
+            minHealthyPercentage: 0,
+            maxHealthyPercentage: 100,
+            updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+                minInstancesInService: 0,
+                maxBatchSize: nodeCount,
+                pauseTime: Duration.seconds(0),
+                waitOnResourceSignals: false,
+            }),
+        });
+        Tags.of(autoScalingGroup).add('Name', ASG_NAME, { applyToLaunchedInstances: true });
+        addLoadGeneratorUserData(autoScalingGroup);
+
+        const alb = new elbv2.ApplicationLoadBalancer(this, 'FastControlAlb', {
+            vpc,
+            vpcSubnets: { subnetGroupName: 'public' },
+            internetFacing: false,
+            securityGroup: albSecurityGroup,
+            loadBalancerName: ALB_NAME,
+            idleTimeout: Duration.seconds(60),
+        });
+        alb.addListener('HttpListener', {
+            port: 80,
+            protocol: elbv2.ApplicationProtocol.HTTP,
+            open: false,
+            defaultAction: elbv2.ListenerAction.fixedResponse(202, {
+                contentType: 'text/plain',
+                messageBody: 'generator-control',
+            }),
+        });
+
+        const outputs = {
+            Phase1ExperimentMode: 'generator-diagnosis', Phase1TargetKind: 'fast-control',
+            Phase1SessionId: sessionId, Phase1RunId: runId,
+            Phase1LoadGeneratorCount: nodeCount.toString(),
+            Phase1RequiredOnDemandVcpus: (nodeCount * 2).toString(),
+            Phase1TargetBaseUrl: `http://${alb.loadBalancerDnsName}`,
+            Phase1LoadBalancerArn: alb.loadBalancerArn,
+            Phase1LoadBalancerFullName: alb.loadBalancerFullName,
+            Phase1LoadGeneratorAutoScalingGroupName: autoScalingGroup.autoScalingGroupName,
+            Phase1LoadGeneratorInstanceRoleArn: role.roleArn,
+            Phase1PublicSubnetIds: Fn.join(',', publicSubnets.subnetIds),
+        };
+        for (const [outputId, value] of Object.entries(outputs)) new CfnOutput(this, outputId, { value });
+    }
+}
+
+function requiredString(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.trim() === '') throw new Error(`${key} is required.`);
+    return value.trim();
+}
+
+function requiredInteger(scope: Construct, key: string): number {
+    const value = Number(scope.node.tryGetContext(key));
+    if (!Number.isInteger(value)) throw new Error(`${key} must be an integer.`);
+    return value;
+}

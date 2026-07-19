@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
+
+const inputDir = requiredOption('--input-dir');
+const output = requiredOption('--output');
+const windowStartRaw = optionValue('--start-time');
+const windowEndRaw = optionValue('--end-time');
+if (Boolean(windowStartRaw) !== Boolean(windowEndRaw)) throw new Error('--start-time and --end-time must be supplied together');
+const windowStart = windowStartRaw ? Date.parse(windowStartRaw) : null;
+const windowEnd = windowEndRaw ? Date.parse(windowEndRaw) : null;
+if (windowStartRaw && (!Number.isFinite(windowStart) || !Number.isFinite(windowEnd) || windowStart >= windowEnd)) throw new Error('invalid scored telemetry window');
+const collectors = readdirSync(inputDir).filter((name) => /^collector-[0-9]{2}$/.test(name)).sort();
+if (![4, 6].includes(collectors.length)) throw new Error(`expected four or six collector directories, found ${collectors.length}`);
+
+const seconds = [];
+const windowSamplesByCollector = Object.fromEntries(collectors.map((collector) => [collector, 0]));
+for (const collector of collectors) {
+    const rows = readDebugVars(join(inputDir, collector)).trim().split('\n').filter(Boolean).map(JSON.parse);
+    for (let index = 1; index < rows.length; index += 1) {
+        const previous = rows[index - 1].snapshot;
+        const current = rows[index].snapshot;
+        const timestamp = rows[index].timestamp_utc;
+		const timestampEpoch = Date.parse(timestamp);
+		if (!Number.isFinite(timestampEpoch)) throw new Error(`invalid collector timestamp: ${timestamp}`);
+		if (windowStart !== null && (timestampEpoch <= windowStart || timestampEpoch > windowEnd)) continue;
+		windowSamplesByCollector[collector] += 1;
+        for (const [route, phases] of Object.entries(current.requests?.phases ?? {})) {
+            for (const [phase, histogram] of Object.entries(phases)) {
+                const before = previous.requests?.phases?.[route]?.[phase] ?? zeroHistogram(histogram);
+                seconds.push({ collector, timestamp, route, phase, ...histogramDelta(before, histogram),
+                    admissionCurrent: current.admission.current_in_flight,
+                    queueDepth: current.kinesis.put_records?.queue_depth ?? 0,
+                    senderQueueDepth: current.kinesis.put_records?.sender_queue_depth ?? 0,
+                    outstanding: current.kinesis.put_records?.outstanding_records ?? 0,
+                    apiInFlight: current.kinesis.put_records?.api_calls_in_flight ?? 0,
+                    traceDropped: current.trace?.dropped ?? 0,
+                });
+            }
+        }
+    }
+}
+
+seconds.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.collector.localeCompare(b.collector) || a.route.localeCompare(b.route) || a.phase.localeCompare(b.phase));
+const blocks = new Map();
+for (const row of seconds) {
+    const epoch = Math.floor(Date.parse(row.timestamp) / 10_000) * 10;
+    const key = `${epoch}\x00${row.route}\x00${row.phase}`;
+    const block = blocks.get(key) ?? { startEpoch: epoch, route: row.route, phase: row.phase, count: 0, totalNanoseconds: 0,
+        maxAdmissionCurrent: 0, maxQueueDepth: 0, maxSenderQueueDepth: 0, maxOutstanding: 0, maxApiInFlight: 0, maxTraceDropped: 0 };
+    block.count += row.count;
+    block.totalNanoseconds += row.totalNanoseconds;
+    for (const [source, target] of [['admissionCurrent', 'maxAdmissionCurrent'], ['queueDepth', 'maxQueueDepth'], ['senderQueueDepth', 'maxSenderQueueDepth'], ['outstanding', 'maxOutstanding'], ['apiInFlight', 'maxApiInFlight'], ['traceDropped', 'maxTraceDropped']]) block[target] = Math.max(block[target], row[source]);
+    blocks.set(key, block);
+}
+const tenSecondBlocks = [...blocks.values()].sort((a, b) => a.startEpoch - b.startEpoch || a.route.localeCompare(b.route) || a.phase.localeCompare(b.phase)).map((block) => ({
+    ...block, start: new Date(block.startEpoch * 1000).toISOString(), averageNanoseconds: block.count === 0 ? 0 : block.totalNanoseconds / block.count,
+}));
+const expectedWindowSeconds = windowStart === null ? null : Math.floor((windowEnd - windowStart) / 1_000);
+const minimumWindowSamples = expectedWindowSeconds === null ? null : Math.max(1, expectedWindowSeconds - 2);
+const result = { generatedAt: new Date().toISOString(), collectorCount: collectors.length, oneSecondBins: seconds, tenSecondBlocks,
+		window: windowStart === null ? null : { startTime: new Date(windowStart).toISOString(), endTime: new Date(windowEnd).toISOString(),
+			expectedSeconds: expectedWindowSeconds, minimumSamples: minimumWindowSamples, samplesByCollector: windowSamplesByCollector },
+	    checks: { samplesPresent: seconds.length > 0, traceDropZero: seconds.every((row) => row.traceDropped === 0),
+			windowCoverageComplete: windowStart === null || Object.values(windowSamplesByCollector).every((count) => count >= minimumWindowSamples),
+			histogramQuantilesFinite: seconds.every((row) => Number.isFinite(row.p95UpperNanoseconds) && typeof row.p95Overflow === 'boolean') } };
+result.passed = Object.values(result.checks).every(Boolean);
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, oneSecondBinCount: seconds.length, tenSecondBlockCount: tenSecondBlocks.length, passed: result.passed }, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function histogramDelta(before, after) {
+    const count = Math.max(0, after.count - before.count);
+    const totalNanoseconds = Math.max(0, after.total_nanoseconds - before.total_nanoseconds);
+    const buckets = Object.fromEntries(Object.entries(after.cumulative_buckets ?? {}).map(([key, value]) => [key, Math.max(0, value - (before.cumulative_buckets?.[key] ?? 0))]));
+	const p95 = quantileUpper(buckets, count, 0.95);
+	    return { count, totalNanoseconds, averageNanoseconds: count === 0 ? 0 : totalNanoseconds / count,
+		p95UpperNanoseconds: p95.upperNanoseconds, p95Overflow: p95.overflow };
+}
+function quantileUpper(buckets, count, quantile) {
+	    if (count === 0) return { upperNanoseconds: 0, overflow: false };
+	    const threshold = Math.ceil(count * quantile);
+	const ordered = Object.entries(buckets).map(([key, value]) => {
+		const match = /^le_([0-9]+)ns$/.exec(key);
+		return { upper: match ? Number(match[1]) : null, overflow: key === 'inf' || key === 'le_inf', value };
+	}).filter((item) => item.overflow || Number.isFinite(item.upper)).sort((a, b) => (a.overflow ? 1 : 0) - (b.overflow ? 1 : 0) || a.upper - b.upper);
+	const finiteMaximum = Math.max(0, ...ordered.filter((item) => !item.overflow).map((item) => item.upper));
+	const found = ordered.find((bucket) => bucket.value >= threshold);
+	return { upperNanoseconds: found?.overflow ? finiteMaximum : (found?.upper ?? finiteMaximum), overflow: found?.overflow ?? true };
+}
+function zeroHistogram(example) { return { count: 0, total_nanoseconds: 0, cumulative_buckets: Object.fromEntries(Object.keys(example.cumulative_buckets ?? {}).map((key) => [key, 0])) }; }
+function readDebugVars(directory) {
+    const compressed = join(directory, 'debug-vars.ndjson.gz');
+    if (existsSync(compressed)) return gunzipSync(readFileSync(compressed)).toString('utf8');
+    return readFileSync(join(directory, 'debug-vars.ndjson'), 'utf8');
+}
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }

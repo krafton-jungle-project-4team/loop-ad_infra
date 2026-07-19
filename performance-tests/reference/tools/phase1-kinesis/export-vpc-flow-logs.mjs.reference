@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { parseVpcFlowLogText, summarizeVpcFlowLogs } from './vpc-flow-log.mjs';
+
+const REGION = 'ap-northeast-2';
+const logGroupName = requiredOption('--log-group-name');
+const startTime = requiredDate('--start-time');
+const endTime = requiredDate('--end-time');
+const outputDir = requiredOption('--output-dir');
+if (!logGroupName.startsWith('/loop-ad/perf-phase1/tcp-alb-path/')) throw new Error('invalid run-scoped Flow Log group');
+if (endTime <= startTime) throw new Error('invalid Flow Log interval');
+mkdirSync(outputDir, { recursive: true });
+
+const raw = aws(['logs', 'filter-log-events', '--region', REGION,
+    '--log-group-name', logGroupName,
+    '--start-time', String(startTime.getTime()),
+    '--end-time', String(endTime.getTime()),
+    '--no-interleaved']);
+writeJson(join(outputDir, 'raw-events.json'), raw);
+const text = (raw.events ?? []).map((event) => event.message).join('\n');
+writeFileSync(join(outputDir, 'raw-flow-logs.txt'), text ? `${text}\n` : '');
+const parsed = parseVpcFlowLogText(text);
+writeJson(join(outputDir, 'parse-errors.json'), parsed.errors);
+const summary = {
+    exportedAt: new Date().toISOString(),
+    region: REGION,
+    logGroupName,
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+    eventCount: raw.events?.length ?? 0,
+    parseErrorCount: parsed.errors.length,
+    ...summarizeVpcFlowLogs(parsed.records),
+    passed: (raw.events?.length ?? 0) > 0 && parsed.errors.length === 0,
+};
+writeJson(join(outputDir, 'summary.json'), summary);
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+if (!summary.passed) process.exitCode = 2;
+
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function requiredDate(name) { const value = new Date(requiredOption(name)); if (!Number.isFinite(value.getTime())) throw new Error(`${name} must be an ISO timestamp`); return value; }

@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_190153_phase0_alb_smoke",
+  "phase": "phase0",
+  "category": "smoke",
+  "executedAt": "2026-07-09T19:01:53",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "target_rps",
+      "value": 10,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 30,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    }
+  ],
+  "sourceRevision": "6f6863f",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "target_rps",
+      "value": 10,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "event_per_request",
+      "value": 1,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 30,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "load_generator.cpu",
+      "value": 1,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "load_generator.memory_gib",
+      "value": 2,
+      "source": "run_20260709_190153_phase0_alb_smoke/run.json"
+    },
+    {
+      "name": "status",
+      "value": "success",
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "target_rps",
+      "value": 10,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "actual_request_rate",
+      "value": "10/sec",
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "http_requests",
+      "value": 300,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "failed_request_rate",
+      "value": 0,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "latency_ms.p50",
+      "value": 0,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "latency_ms.p95",
+      "value": 1,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "latency_ms.p99",
+      "value": 1,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "session_length_ms.p50",
+      "value": 2.9,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "session_length_ms.p95",
+      "value": 4.3,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    },
+    {
+      "name": "session_length_ms.p99",
+      "value": 7.2,
+      "source": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_190153_phase0_alb_smoke"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/artifacts.md",
+      "bytes": 410,
+      "sha256": "61dbf1fc719f39241ed13015978d1b738c7b2be9f102cd36d4bde064c4271520"
+    },
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/commands.md",
+      "bytes": 2601,
+      "sha256": "ea31af4335de1e15363a1a7171c9fec20fae63cf001fd3edccc7f39e1aead16b"
+    },
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/infra.md",
+      "bytes": 1519,
+      "sha256": "e432b812f2143c945e05f28029649145472eeda4a5f9cb3fb8a1de7d2b0e8615"
+    },
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/metrics-summary.json",
+      "bytes": 1036,
+      "sha256": "ea5b4166954161999fa303400e68fbb0af7ae06c2f4cc4edd9f76f23cff31621"
+    },
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/report.md",
+      "bytes": 1594,
+      "sha256": "68263a30addd273e6ccacad288d6cac0144e67272fac558f285ba3457f59a9d0"
+    },
+    {
+      "path": "run_20260709_190153_phase0_alb_smoke/run.json",
+      "bytes": 897,
+      "sha256": "51afa9fa9d4aa8e531ca147e50ef9776b0d05fb4442d9354a57cdf751d5d282b"
+    }
+  ]
+}

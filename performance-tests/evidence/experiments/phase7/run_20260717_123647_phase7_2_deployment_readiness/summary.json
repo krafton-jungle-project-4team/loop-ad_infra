@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_123647_phase7_2_deployment_readiness",
+  "phase": "phase7",
+  "category": "deployment_readiness",
+  "executedAt": "2026-07-17T12:36:47",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_123647_phase7_2_deployment_readiness/run.json"
+    },
+    {
+      "name": "retainedImageCount",
+      "value": 3,
+      "source": "run_20260717_123647_phase7_2_deployment_readiness/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "deployment-ready",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_123647_phase7_2_deployment_readiness/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "deployment-ready",
+      "source": "run_20260717_123647_phase7_2_deployment_readiness/run.json"
+    },
+    {
+      "name": "retainedImageCount",
+      "value": 3,
+      "source": "run_20260717_123647_phase7_2_deployment_readiness/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "passed",
+  "cleanupStatus": "unknown",
+  "conclusion": "deployment-ready",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260717-123647"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_123647_phase7_2_deployment_readiness"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_123647_phase7_2_deployment_readiness/commands.md",
+      "bytes": 1373,
+      "sha256": "c43f96ba1987a35cd25e056b828a64fd1b8620d497e7bd1c51192c8322a6c12d"
+    },
+    {
+      "path": "run_20260717_123647_phase7_2_deployment_readiness/cost-model.json",
+      "bytes": 7438,
+      "sha256": "5802984825cf7bf55772c471c0fa2a597976793e357ac532060be0e502dda1b8"
+    },
+    {
+      "path": "run_20260717_123647_phase7_2_deployment_readiness/report.md",
+      "bytes": 1688,
+      "sha256": "a6577fcd7d6be42038f3f6f7fc13e03364df0a8d6d57348181ecdf6cc89586e2"
+    },
+    {
+      "path": "run_20260717_123647_phase7_2_deployment_readiness/run.json",
+      "bytes": 738,
+      "sha256": "17bc1b4c1fc3ee3f975a582327ca5a7f09ab788036f3e3f33c4e4e9f77e08e67"
+    }
+  ]
+}

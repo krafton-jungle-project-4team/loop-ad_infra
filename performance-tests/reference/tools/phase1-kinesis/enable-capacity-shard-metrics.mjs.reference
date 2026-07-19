@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const STREAM = 'perf-phase1-loop-ad-events';
+const METRICS = ['IncomingBytes', 'IncomingRecords', 'WriteProvisionedThroughputExceeded'];
+const sessionId = requiredOption('--session-id');
+const output = requiredOption('--output');
+const scout = /^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId);
+const oha12k = /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId);
+const generatorDiagnosis = /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId);
+const albWarmup = /^phase1-kinesis-alb-warmup-[0-9]{8}T[0-9]{6}Z$/.test(sessionId);
+if (!scout && !oha12k && !generatorDiagnosis && !albWarmup && !/^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+
+const tags = awsJson(['kinesis', 'list-tags-for-stream', '--region', REGION, '--stream-name', STREAM]).Tags ?? [];
+const tagMap = Object.fromEntries(tags.map((tag) => [tag.Key, tag.Value]));
+const ownershipSafe = tagMap.SessionId === sessionId && tagMap.Phase === (scout ? 'phase1-capacity-scout' : oha12k ? 'phase1-capacity-oha12k' : generatorDiagnosis ? 'phase1-generator-diagnosis' : albWarmup ? 'phase1-alb-warmup' : 'phase1-capacity') &&
+    tagMap.ManagedBy === 'codex' && tagMap.Owner === 'loop-ad';
+if (!ownershipSafe) throw new Error('refusing to mutate shard metrics on a stream not owned by this capacity session');
+
+const response = awsJson(['kinesis', 'enable-enhanced-monitoring', '--region', REGION,
+    '--stream-name', STREAM, '--shard-level-metrics', ...METRICS]);
+const desired = [...(response.DesiredShardLevelMetrics ?? [])].sort();
+const result = {
+    enabledAt: new Date().toISOString(), sessionId, streamName: STREAM, metrics: METRICS,
+    ownershipSafe, response,
+    passed: METRICS.every((metric) => desired.includes(metric)),
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+    GENERATOR_DIAGNOSIS_TOPOLOGIES,
+    generatorDiagnosisTopologyPlan,
+    nextGeneratorDiagnosisTopology,
+} from './generator-diagnosis-contract.mjs';
+
+test('process/node plans preserve exact aggregate load and 12000 connections', () => {
+    for (const topology of GENERATOR_DIAGNOSIS_TOPOLOGIES) {
+        for (const targetRps of [30_000, 50_000]) {
+            const plan = generatorDiagnosisTopologyPlan({ ...topology, targetRps });
+            assert.equal(plan.totalOfferedRps, targetRps);
+            assert.equal(plan.totalConnections, 12_000);
+            assert.equal(plan.nodes.length, topology.nodeCount);
+            assert.equal(plan.processCount, topology.nodeCount * topology.processesPerNode);
+            assert.equal(plan.nodes.flatMap((node) => node.processes).length, plan.processCount);
+            assert.equal(plan.nodes.flatMap((node) => node.processes)
+                .reduce((sum, process) => sum + process.offeredRps, 0), targetRps);
+            assert.equal(plan.nodes.flatMap((node) => node.processes)
+                .reduce((sum, process) => sum + process.connections, 0), 12_000);
+        }
+    }
+});
+
+test('qualification order scales processes on one node before adding nodes', () => {
+    assert.deepEqual(nextGeneratorDiagnosisTopology({ nodeCount: 1, processesPerNode: 1 }), {
+        nodeCount: 1,
+        processesPerNode: 2,
+    });
+    assert.equal(nextGeneratorDiagnosisTopology({ nodeCount: 4, processesPerNode: 1 }), null);
+});

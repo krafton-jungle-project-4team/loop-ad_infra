@@ -1,0 +1,38 @@
+#!/usr/bin/env node
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const minimumWorkSeconds = { deploy: 1_200, profileUpdate: 1_200, stage: 900, cleanup: 0 };
+const sessionId = required('--session-id');
+const session = JSON.parse(readFileSync(required('--session'), 'utf8'));
+const action = required('--action');
+const output = option('--output');
+const now = new Date(option('--now') ?? Date.now());
+if (!Object.hasOwn(minimumWorkSeconds, action)) throw new Error('invalid action');
+if (!/^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!Number.isFinite(now.getTime())) throw new Error('invalid now');
+const estimatedWorkSeconds = integer('--estimated-work-seconds', minimumWorkSeconds[action]);
+const newWorkDeadline = new Date(session.hardLimits.newWorkDeadlineUtc);
+const cleanupDeadline = new Date(session.hardLimits.cleanupStartDeadlineUtc);
+const hardDeadline = new Date(session.hardLimits.hardDeadlineUtc);
+const cost = action === 'cleanup' ? null : JSON.parse(readFileSync(required('--cost'), 'utf8'));
+const checks = {
+    identity: session.sessionId === sessionId && session.region === 'ap-northeast-2' && session.candidate === 'go-batch',
+    deadlineOrder: newWorkDeadline <= cleanupDeadline && cleanupDeadline < hardDeadline,
+    beforeHardDeadline: action === 'cleanup' || now < hardDeadline,
+    beforeNewWorkDeadline: action === 'cleanup' || now < newWorkDeadline,
+    finishBeforeCleanup: action === 'cleanup' || new Date(now.getTime() + estimatedWorkSeconds * 1_000) < cleanupDeadline,
+    accruedBelowStop: action === 'cleanup' || cost.projectedCumulativeUpperBoundUsd < 24,
+    reserveProtected: action === 'cleanup' || cost.projectedCumulativeUpperBoundUsd + 4 < 30,
+    costModelAllows: action === 'cleanup' || cost.budget?.mayStart === true,
+};
+const result = { checkedAt: now.toISOString(), sessionId, action, estimatedWorkSeconds,
+    deadlines: { newWork: newWorkDeadline.toISOString(), cleanupStart: cleanupDeadline.toISOString(), hard: hardDeadline.toISOString() },
+    cost: cost ? { projectedCumulativeUpperBoundUsd: cost.projectedCumulativeUpperBoundUsd, cleanupReserveUsd: 4 } : null,
+    checks, passed: Object.values(checks).every(Boolean) };
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (output) writeFileSync(output, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.passed) process.exitCode = 2;
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function required(name) { const value = option(name); if (!value) throw new Error(`${name} is required`); return value; }
+function integer(name, fallback) { const raw = option(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }

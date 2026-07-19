@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { validateGeneratorPlacement } from './tcp-alb-diagnosis-contract.mjs';
+
+const REGION = 'ap-northeast-2';
+const asgNames = requiredOption('--asg-names').split(',').filter(Boolean);
+const output = requiredOption('--output');
+const expectedCount = integerOption('--expected-count', 4);
+if (asgNames.length !== 2 || !asgNames.every((name) => /^perf-phase1-loop-ad-load-generator-2[ac]$/.test(name))) {
+    throw new Error('exact 2a and 2c load-generator ASG names are required');
+}
+const groups = aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+    '--auto-scaling-group-names', ...asgNames]).AutoScalingGroups ?? [];
+const instanceIds = groups.flatMap((group) => group.Instances ?? [])
+    .filter((instance) => instance.LifecycleState === 'InService' && instance.HealthStatus === 'Healthy')
+    .map((instance) => instance.InstanceId);
+const descriptions = instanceIds.length === 0 ? [] : aws(['ec2', 'describe-instances', '--region', REGION,
+    '--instance-ids', ...instanceIds]).Reservations.flatMap((reservation) => reservation.Instances);
+const instances = descriptions.map((instance) => ({
+    instanceId: instance.InstanceId,
+    instanceType: instance.InstanceType,
+    availabilityZone: instance.Placement.AvailabilityZone,
+    subnetId: instance.SubnetId,
+    privateIp: instance.PrivateIpAddress,
+    eniId: instance.NetworkInterfaces.find((eni) => eni.Attachment?.DeviceIndex === 0)?.NetworkInterfaceId,
+    state: instance.State.Name,
+    asgName: tag(instance.Tags, 'aws:autoscaling:groupName'),
+    sessionId: tag(instance.Tags, 'SessionId'),
+    runId: tag(instance.Tags, 'RunId'),
+}));
+const validation = validateGeneratorPlacement(instances, expectedCount);
+const ownershipByInstanceId = new Map(instances.map((instance) => [instance.instanceId, {
+    state: instance.state,
+    asgName: instance.asgName,
+    sessionId: instance.sessionId,
+    runId: instance.runId,
+}]));
+const result = {
+    collectedAt: new Date().toISOString(),
+    region: REGION,
+    asgNames,
+    groups,
+    ...validation,
+    instances: validation.instances.map((instance) => ({
+        ...instance,
+        ...ownershipByInstanceId.get(instance.instanceId),
+    })),
+};
+mkdirSync(dirname(output), { recursive: true });
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function tag(tags, key) { return tags?.find((item) => item.Key === key)?.Value ?? null; }
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }
+function integerOption(name, fallback) { const index = process.argv.indexOf(name); const value = Number(index < 0 ? fallback : process.argv[index + 1]); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }

@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260718_225218_phase7_2_aws_integration",
+  "phase": "phase7",
+  "category": "experiment",
+  "executedAt": "2026-07-18T22:52:18",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "finalized",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "costModelSha256",
+      "value": "f15ad615ed01a1252240173b0f930706c6f216c20125fad8168bffce0401fd3f",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "finalEvaluation.verdict",
+      "value": "failed",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[0].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[1].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[2].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[3].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[4].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[5].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[6].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[7].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[8].status",
+      "value": "finished",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "status",
+      "value": "finalized",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260718_225218_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "generatedAt",
+      "value": "2026-07-19T00:27:54Z",
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "warmup.actualRps",
+      "value": 50035.67091265394,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "warmup.transportErrors",
+      "value": 8587,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "warmup.correctedP95Ms",
+      "value": 97.28036730000001,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "warmup.strictAcceptancePassed",
+      "value": false,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.actualRps",
+      "value": 50021.91623103401,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.transportErrors",
+      "value": 8824,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.correctedP50Ms",
+      "value": 93.7038446,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.correctedP95Ms",
+      "value": 134.5373408,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.correctedP99Ms",
+      "value": 186.5704792,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "score.strictAcceptancePassed",
+      "value": false,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "observability.cloudWatchArchiveErrorCapturedLive",
+      "value": true,
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    },
+    {
+      "name": "attemptVerdict",
+      "value": "failed",
+      "source": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260718-225218"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260718_225218_phase7_2_aws_integration"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/cleanup-verification.json",
+      "bytes": 1282,
+      "sha256": "0b054caee21a19ba9161b8f5218f6e08d41d5ade68f756f268df2fb42408ef7f"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/commands.md",
+      "bytes": 1017,
+      "sha256": "89fc18f9327c6adae28a473e0f3033bd7ed3eef9ee6ca1334eb3340e4de9023f"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/correctness-summary.json",
+      "bytes": 2459,
+      "sha256": "bc5cdea4ed312fcb06c201c156bf64aed4c7a77129f83e98193abff35368251f"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/cost-status.json",
+      "bytes": 750,
+      "sha256": "b09a51df34b91f58cd196ec6c5193623108b20e991e453d66107ca1e60d5ecbd"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/infra.md",
+      "bytes": 1697,
+      "sha256": "36ded7ac9bc1eef1ad2d8bb9470de24ee28f68be11133f319d52640399fd29db"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/metrics-summary.json",
+      "bytes": 984,
+      "sha256": "d305f97643a985066fe8f110a520af59ea272cdb7dc16af5ec05e827f3adf55b"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/report.md",
+      "bytes": 2505,
+      "sha256": "a3d03cef9b482f97be6e623f256b9113bcbd4e50e53244324d2020774671c84a"
+    },
+    {
+      "path": "run_20260718_225218_phase7_2_aws_integration/run.json",
+      "bytes": 5288,
+      "sha256": "17ed87913d327dc831b731044822ab338b428a22633e1e185e8f5c25df0cbb7c"
+    }
+  ]
+}

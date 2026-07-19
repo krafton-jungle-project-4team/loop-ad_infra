@@ -1,0 +1,70 @@
+import * as logs from 'aws-cdk-lib/aws-logs';
+import type { Construct } from 'constructs';
+
+export const PHASE4_RUN_ID_CONTEXT_KEY = 'phase4RunId';
+export const PHASE4_SESSION_ID_CONTEXT_KEY = 'phase4SessionId';
+
+export const PHASE4_REGION = 'ap-northeast-2';
+export const PHASE4_AVAILABILITY_ZONE = 'ap-northeast-2a';
+export const PHASE4_VPC_CIDR = '10.44.0.0/16';
+export const PHASE4_CLICKHOUSE_DATABASE = 'loopad';
+export const PHASE4_CLICKHOUSE_HTTP_PORT = 8123;
+export const PHASE4_CLICKHOUSE_IMAGE = 'clickhouse/clickhouse-server:26.3.13.31';
+export const PHASE4_CLICKHOUSE_INSTANCE_TYPE = 'r7g.2xlarge';
+export const PHASE4_CLICKHOUSE_VOLUME_GIB = 500;
+export const PHASE4_CLICKHOUSE_VOLUME_IOPS = 3_000;
+export const PHASE4_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS = 500;
+export const PHASE4_AL2023_ARM64_AMI_SSM_PARAMETER =
+    '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64';
+
+export const PHASE4_KINESIS_SHARD_COUNT = 120;
+export const PHASE4_KINESIS_RETENTION_HOURS = 24;
+
+export const PHASE4_LAMBDA_MEMORY_MIB = 2_048;
+export const PHASE4_LAMBDA_TIMEOUT_SECONDS = 30;
+export const PHASE4_LAMBDA_RESERVED_CONCURRENCY = 120;
+export const PHASE4_CLICKHOUSE_REQUEST_TIMEOUT_MS = 20_000;
+export const PHASE4_ESM_BATCH_SIZE = 10_000;
+export const PHASE4_ESM_BATCHING_WINDOW_SECONDS = 2;
+export const PHASE4_ESM_PARALLELIZATION_FACTOR = 1;
+export const PHASE4_ESM_MAX_RETRY_ATTEMPTS = 5;
+export const PHASE4_ESM_MAX_RECORD_AGE_SECONDS = 3_600;
+
+export const PHASE4_LOG_RETENTION = logs.RetentionDays.ONE_WEEK;
+export const PHASE4_LATE_EVENT_NAMESPACE = 'LoopAd/Phase4';
+export const PHASE4_LATE_EVENT_METRIC_NAME = 'LateEventDropped';
+export const PHASE4_ARCHIVE_PREFIX = 'loopad/events/';
+export const PHASE4_COST_HARD_CAP_USD = 15;
+export const PHASE4_COST_NEW_LOAD_STOP_USD = 12;
+
+export interface PerfPhase4ClickHouseConfig {
+    readonly runId: string;
+    readonly sessionId: string;
+}
+
+export function readPerfPhase4ClickHouseConfig(scope: Construct): PerfPhase4ClickHouseConfig {
+    const runId = readContextString(scope, PHASE4_RUN_ID_CONTEXT_KEY);
+    const sessionId = readContextString(scope, PHASE4_SESSION_ID_CONTEXT_KEY);
+
+    if (!/^run_\d{8}_\d{6}_phase4_clickhouse_lambda$/.test(runId)) {
+        throw new Error(
+            `${PHASE4_RUN_ID_CONTEXT_KEY} must match ` +
+            'run_YYYYMMDD_HHMMSS_phase4_clickhouse_lambda.',
+        );
+    }
+    if (!/^phase4-clickhouse-\d{8}T\d{6}Z$/.test(sessionId)) {
+        throw new Error(
+            `${PHASE4_SESSION_ID_CONTEXT_KEY} must match phase4-clickhouse-YYYYMMDDTHHMMSSZ.`,
+        );
+    }
+
+    return { runId, sessionId };
+}
+
+function readContextString(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.trim() !== value || value.length === 0) {
+        throw new Error(`Missing or invalid CDK context "${key}".`);
+    }
+    return value;
+}

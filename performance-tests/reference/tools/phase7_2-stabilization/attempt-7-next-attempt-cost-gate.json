@@ -1,0 +1,262 @@
+{
+  "accruedUpperBoundUsd": "20.000000",
+  "calculatedAt": "2026-07-18T12:03:02.923Z",
+  "checks": {
+    "cleanupReserveAtLeastFiveUsd": true,
+    "haproxyLogVolumeAtOrBelowFiveGiB": true,
+    "maximumIncludingCleanupAtOrBelowHardCap": true,
+    "operationalMaximumBelowNewLoadStop": true
+  },
+  "cleanupReserveUsd": "5.000000",
+  "components": [
+    {
+      "costUsd": "3.456000",
+      "name": "collector c6i.xlarge",
+      "note": "Six fixed collector hosts for the three-hour hard window.",
+      "quantity": "18",
+      "unit": "instance-hour",
+      "unitPriceUsd": "0.192"
+    },
+    {
+      "costUsd": "1.537200",
+      "name": "HAProxy c6in.xlarge",
+      "note": "Two fixed proxy hosts.",
+      "quantity": "6",
+      "unit": "instance-hour",
+      "unitPriceUsd": "0.2562"
+    },
+    {
+      "costUsd": "3.074400",
+      "name": "load generator c6in.large",
+      "note": "Eight fixed generators.",
+      "quantity": "24",
+      "unit": "instance-hour",
+      "unitPriceUsd": "0.1281"
+    },
+    {
+      "costUsd": "0.489600",
+      "name": "consumer c7g.large",
+      "note": "Two native Java KCL hosts.",
+      "quantity": "6",
+      "unit": "instance-hour",
+      "unitPriceUsd": "0.0816"
+    },
+    {
+      "costUsd": "1.550400",
+      "name": "ClickHouse r7g.2xlarge",
+      "note": "One private ClickHouse host.",
+      "quantity": "3",
+      "unit": "instance-hour",
+      "unitPriceUsd": "0.5168"
+    },
+    {
+      "costUsd": "6.660000",
+      "name": "Kinesis provisioned shards",
+      "note": "120 shards for the complete paid window.",
+      "quantity": "360",
+      "unit": "shard-hour",
+      "unitPriceUsd": "0.0185"
+    },
+    {
+      "costUsd": "0.489641",
+      "name": "Kinesis PUT payload units",
+      "note": "Score, worst-case warmup, correctness, and replacement allowance.",
+      "quantity": "24002000",
+      "unit": "25-KiB unit",
+      "unitPriceUsd": "0.0000000204"
+    },
+    {
+      "costUsd": "0.202500",
+      "name": "three Network Load Balancers",
+      "note": "Protocol, collector, and ClickHouse NLBs.",
+      "quantity": "9",
+      "unit": "NLB-hour",
+      "unitPriceUsd": "0.0225"
+    },
+    {
+      "costUsd": "1.800000",
+      "name": "NLB capacity units",
+      "note": "100 aggregate NLCUs for three hours across the three load balancers.",
+      "quantity": "300",
+      "unit": "NLCU-hour",
+      "unitPriceUsd": "0.006"
+    },
+    {
+      "costUsd": "0.177000",
+      "name": "single NAT gateway",
+      "note": "One NAT gateway for the complete window.",
+      "quantity": "3",
+      "unit": "gateway-hour",
+      "unitPriceUsd": "0.059"
+    },
+    {
+      "costUsd": "0.590000",
+      "name": "NAT processed data",
+      "note": "Image/control/log traffic upper bound; payload, S3, and DynamoDB paths stay private or use gateway endpoints.",
+      "quantity": "10",
+      "unit": "GiB",
+      "unitPriceUsd": "0.059"
+    },
+    {
+      "costUsd": "0.015000",
+      "name": "NAT gateway public IPv4 address",
+      "note": "The single NAT gateway owns one in-use public IPv4 address.",
+      "quantity": "3",
+      "unit": "IPv4-hour",
+      "unitPriceUsd": "0.005"
+    },
+    {
+      "costUsd": "0.389786",
+      "name": "gp3 capacity",
+      "note": "Eighteen 30-GiB roots plus one 500-GiB ClickHouse root.",
+      "quantity": "4.273972602739726027397260274",
+      "unit": "GB-month",
+      "unitPriceUsd": "0.0912"
+    },
+    {
+      "costUsd": "0.070274",
+      "name": "gp3 extra throughput",
+      "note": "ClickHouse 500 MiB/s minus included 125 MiB/s.",
+      "quantity": "0.001504976455479452054794520548",
+      "unit": "GiB/s-month",
+      "unitPriceUsd": "46.6944"
+    },
+    {
+      "costUsd": "0.001644",
+      "name": "Secrets Manager secret",
+      "note": "One generated run-owned secret.",
+      "quantity": "0.00410958904109589041095890411",
+      "unit": "secret-month",
+      "unitPriceUsd": "0.4"
+    },
+    {
+      "costUsd": "0.010000",
+      "name": "Secrets Manager API",
+      "note": "Task starts and replacement allowance.",
+      "quantity": "2000",
+      "unit": "API request",
+      "unitPriceUsd": "0.000005"
+    },
+    {
+      "costUsd": "5.547945",
+      "name": "CloudWatch custom metrics",
+      "note": "KCL DETAILED, Container Insights, and host evidence series.",
+      "quantity": "18.4931506849315068493150685",
+      "unit": "metric-month",
+      "unitPriceUsd": "0.3"
+    },
+    {
+      "costUsd": "3.800000",
+      "name": "CloudWatch log ingestion",
+      "note": "Successful HAProxy 202 responses are sampled 1:1000; errors are always logged.",
+      "quantity": "5",
+      "unit": "GiB",
+      "unitPriceUsd": "0.76"
+    },
+    {
+      "costUsd": "0.000645",
+      "name": "CloudWatch log storage",
+      "note": "Seven-day retention is bounded by run cleanup.",
+      "quantity": "0.02054794520547945205479452055",
+      "unit": "GiB-month",
+      "unitPriceUsd": "0.0314"
+    },
+    {
+      "costUsd": "1.000000",
+      "name": "CloudWatch GetMetricData",
+      "note": "Control-plane evidence allowance with batched queries.",
+      "quantity": "100000",
+      "unit": "requested metric",
+      "unitPriceUsd": "0.00001"
+    },
+    {
+      "costUsd": "0.001233",
+      "name": "ECR image storage",
+      "note": "Three run-owned images, 1 GiB each.",
+      "quantity": "0.01232876712328767123287671233",
+      "unit": "GiB-month",
+      "unitPriceUsd": "0.1"
+    },
+    {
+      "costUsd": "0.271000",
+      "name": "DynamoDB on-demand reads",
+      "note": "Three KCL metadata tables.",
+      "quantity": "2000000",
+      "unit": "read unit",
+      "unitPriceUsd": "0.0000001355"
+    },
+    {
+      "costUsd": "0.680000",
+      "name": "DynamoDB on-demand writes",
+      "note": "Lease/checkpoint upper bound.",
+      "quantity": "1000000",
+      "unit": "write unit",
+      "unitPriceUsd": "0.00000068"
+    },
+    {
+      "costUsd": "0.000334",
+      "name": "DynamoDB storage",
+      "note": "Run-owned metadata only.",
+      "quantity": "0.001232876712328767123287671233",
+      "unit": "GB-month",
+      "unitPriceUsd": "0.27075"
+    },
+    {
+      "costUsd": "0.000616",
+      "name": "S3 standard storage",
+      "note": "Archive, failure, and evidence objects.",
+      "quantity": "0.02465753424657534246575342466",
+      "unit": "GB-month",
+      "unitPriceUsd": "0.025"
+    },
+    {
+      "costUsd": "0.045000",
+      "name": "S3 write/list requests",
+      "note": "Archive multipart and evidence writes.",
+      "quantity": "10000",
+      "unit": "request",
+      "unitPriceUsd": "0.0000045"
+    },
+    {
+      "costUsd": "0.010500",
+      "name": "S3 read requests",
+      "note": "Validation and direct-query reads.",
+      "quantity": "30000",
+      "unit": "request",
+      "unitPriceUsd": "0.00000035"
+    },
+    {
+      "costUsd": "1.500000",
+      "name": "evidence and transfer reserve",
+      "note": "Unmodeled regional transfer and evidence retrieval.",
+      "quantity": "1",
+      "unit": "fixed reserve",
+      "unitPriceUsd": "1.5"
+    },
+    {
+      "costUsd": "0.500000",
+      "name": "failure-path reserve",
+      "note": "Rollback and delayed metering uncertainty.",
+      "quantity": "1",
+      "unit": "fixed reserve",
+      "unitPriceUsd": "0.5"
+    }
+  ],
+  "limits": {
+    "hardCapUsd": "60.000000",
+    "newLoadStopUsd": "55.000000"
+  },
+  "logPolicy": {
+    "allErrorsLogged": true,
+    "ingestUpperBoundGiB": "5",
+    "successful202SampleRate": "1/1000"
+  },
+  "maximumIncludingCleanupUsd": "58.870718",
+  "operationalMaximumUsd": "53.870718",
+  "paidWallClockHours": "3",
+  "passed": true,
+  "priceAsOf": "2026-07-18T12:02:53.167Z",
+  "region": "ap-northeast-2",
+  "schemaVersion": 1,
+  "workload": "phase7-end-to-end-integration"
+}

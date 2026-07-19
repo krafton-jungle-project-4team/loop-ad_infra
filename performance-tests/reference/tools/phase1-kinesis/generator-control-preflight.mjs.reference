@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: '.env', quiet: true });
+const REGION = 'ap-northeast-2';
+const STACK = 'LoopAdPerfPhase1KinesisGeneratorControlStack';
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const nodeCount = requiredInteger('--node-count');
+const phase = requiredOption('--phase');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (![1, 2, 4].includes(nodeCount)) throw new Error('node count must be 1, 2, or 4');
+if (!['before-deploy', 'before-destroy'].includes(phase)) throw new Error('invalid phase');
+const expectedAccount = process.env.CDK_DEFAULT_ACCOUNT;
+if (!expectedAccount || process.env.LOOP_AD_REGION !== REGION) throw new Error('configured account/region required');
+
+const identity = aws(['sts', 'get-caller-identity']);
+const stack = maybe(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', STACK], ['does not exist'])?.Stacks?.[0];
+const quota = Number(aws(['service-quotas', 'get-service-quota', '--region', REGION, '--service-code', 'ec2', '--quota-code', 'L-1216C47A']).Quota.Value);
+const instances = aws(['ec2', 'describe-instances', '--region', REGION, '--filters', 'Name=instance-state-name,Values=pending,running',
+    '--query', 'Reservations[].Instances[].{type:InstanceType,tags:Tags}']);
+const types = [...new Set(instances.filter((instance) => isStandard(instance.type)).map((instance) => instance.type))];
+const details = types.length === 0 ? [] : aws(['ec2', 'describe-instance-types', '--region', REGION, '--instance-types', ...types,
+    '--query', 'InstanceTypes[].{type:InstanceType,vcpus:VCpuInfo.DefaultVCpus}']);
+const vcpus = new Map(details.map((detail) => [detail.type, detail.vcpus]));
+const runningVcpus = instances.filter((instance) => isStandard(instance.type))
+    .reduce((sum, instance) => sum + (vcpus.get(instance.type) ?? 0), 0);
+const expectedTags = { Project: 'loop-ad', Environment: 'perf-phase1-kinesis', SessionId: sessionId,
+    ComparisonSessionId: sessionId, RunId: runId, Phase: 'phase1-generator-diagnosis', ManagedBy: 'codex',
+    Owner: 'loop-ad', TargetKind: 'fast-control' };
+const collisions = namedResources();
+const outputs = Object.fromEntries((stack?.Outputs ?? []).map((item) => [item.OutputKey, item.OutputValue]));
+const resourceOwnership = stack ? ownedResources(outputs) : null;
+const stackOwned = Boolean(stack && outputs.Phase1SessionId === sessionId && outputs.Phase1RunId === runId &&
+    outputs.Phase1ExperimentMode === 'generator-diagnosis' && outputs.Phase1TargetKind === 'fast-control' &&
+    resourceOwnership && Object.values(resourceOwnership).every(Boolean));
+const checks = {
+    accountMatches: identity.Account === expectedAccount,
+    quotaAllowsTopology: runningVcpus + nodeCount * 2 + 2 <= quota,
+    stackStateSafe: phase === 'before-deploy' ? !stack : stackOwned && ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.StackStatus),
+    namedResourcesSafe: phase === 'before-deploy' ? collisions.length === 0 : stackOwned,
+};
+const result = { checkedAt: new Date().toISOString(), phase, sessionId, runId, nodeCount,
+    identity: { accountMatches: checks.accountMatches }, quota: { appliedStandardVcpus: quota, runningVcpus,
+        topologyVcpus: nodeCount * 2, reserveVcpus: 2 }, stack: stack ? { status: stack.StackStatus, owned: stackOwned } : { exists: false },
+    collisions, resourceOwnership, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function namedResources() {
+    const result = [];
+    if (aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION, '--auto-scaling-group-names', 'perf-phase1-generator-control']).AutoScalingGroups.length) result.push('asg');
+    if (maybe(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-generator-control'], ['LoadBalancerNotFound'])) result.push('alb');
+    if (aws(['ec2', 'describe-vpcs', '--region', REGION, '--filters', 'Name=tag:Name,Values=perf-phase1-generator-control-vpc']).Vpcs.length) result.push('vpc');
+    if (maybe(['iam', 'get-role', '--role-name', 'loop-ad-phase1-generator-control'], ['NoSuchEntity'])) result.push('iam-role');
+    return result;
+}
+function ownedResources(outputs) {
+    const asg = aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+        '--auto-scaling-group-names', 'perf-phase1-generator-control']).AutoScalingGroups[0];
+    const vpc = aws(['ec2', 'describe-vpcs', '--region', REGION, '--filters',
+        'Name=tag:Name,Values=perf-phase1-generator-control-vpc']).Vpcs[0];
+    const role = maybe(['iam', 'list-role-tags', '--role-name', 'loop-ad-phase1-generator-control'], ['NoSuchEntity']);
+    const alb = outputs.Phase1LoadBalancerArn
+        ? maybe(['elbv2', 'describe-tags', '--region', REGION, '--resource-arns', outputs.Phase1LoadBalancerArn], ['LoadBalancerNotFound'])
+        : undefined;
+    return {
+        asg: Boolean(asg && tagsMatch(asg.Tags, expectedTags)),
+        vpc: Boolean(vpc && tagsMatch(vpc.Tags, expectedTags)),
+        role: Boolean(role && tagsMatch(role.Tags, expectedTags)),
+        alb: Boolean(alb?.TagDescriptions?.[0] && tagsMatch(alb.TagDescriptions[0].Tags, expectedTags)),
+    };
+}
+function isStandard(type) { return /^(a|c|d|h|i|m|r|t|z)[0-9]/.test(type) && !type.startsWith('mac'); }
+function tagsMatch(tags, expected) { const actual = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value])); return Object.entries(expected).every(([key, value]) => actual[key] === value); }
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })); }
+function maybe(args, patterns) { const result = spawnSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' }); if (result.status === 0) return JSON.parse(result.stdout); const text = `${result.stdout}\n${result.stderr}`; if (patterns.some((pattern) => text.includes(pattern))) return undefined; throw new Error(result.stderr); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} integer required`); return value; }

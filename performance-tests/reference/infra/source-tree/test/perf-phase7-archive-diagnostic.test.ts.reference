@@ -1,0 +1,231 @@
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import {
+    LoopAdPerfPhase7ArchiveDiagnosticImageStack,
+    LoopAdPerfPhase7ArchiveDiagnosticStack,
+    PHASE7_ARCHIVE_DIAGNOSTIC_QUERY_MEMORY_BYTES,
+    PHASE7_ARCHIVE_DIAGNOSTIC_VOLUME_GIB,
+} from '../src/perf-phase7-archive-diagnostic-stack';
+import {
+    PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB,
+    PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES,
+} from '../src/perf-phase7-integration-stack';
+import { PHASE7_HOST_INSTANCE_TYPES, PHASE7_REGION } from '../src/perf-phase7-integration-config';
+
+const CONTEXT = {
+    '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig': true,
+    phase7ArchiveDiagnosticRunId: 'run_20260719_120000_phase7_archive_diagnostic',
+    phase7ArchiveDiagnosticSessionId: 'phase7-archive-diagnostic-20260719T120000Z',
+    phase7ArchiveDiagnosticImageDigest: `sha256:${'7'.repeat(64)}`,
+    phase7ArchiveDiagnosticArmEcsAmiId: 'ami-0123456789abcdef0',
+};
+
+function stacks(): {
+    image: LoopAdPerfPhase7ArchiveDiagnosticImageStack;
+    runtime: LoopAdPerfPhase7ArchiveDiagnosticStack;
+} {
+    const app = new cdk.App({ context: CONTEXT });
+    const env = { account: '742711170910', region: PHASE7_REGION };
+    const image = new LoopAdPerfPhase7ArchiveDiagnosticImageStack(app, 'Image', { env });
+    const runtime = new LoopAdPerfPhase7ArchiveDiagnosticStack(app, 'Runtime', {
+        env,
+        archiveRepository: image.archiveRepository,
+    });
+    return { image, runtime };
+}
+
+function decodedUserDataByteUpperBound(userData: unknown): number {
+    const encoded = (userData as any)?.['Fn::Base64'];
+    if (typeof encoded === 'string') {
+        return Buffer.byteLength(encoded, 'utf8');
+    }
+    const join = encoded?.['Fn::Join'];
+    if (!Array.isArray(join) || typeof join[0] !== 'string' || !Array.isArray(join[1])) {
+        throw new Error(`Unsupported synthesized Instance UserData: ${JSON.stringify(userData)}`);
+    }
+    const separatorBytes = Buffer.byteLength(join[0], 'utf8');
+    return join[1].reduce((total: number, part: unknown, index: number) => {
+        const valueBytes = typeof part === 'string' ? Buffer.byteLength(part, 'utf8') : 1_024;
+        return total + valueBytes + (index === 0 ? 0 : separatorBytes);
+    }, 0);
+}
+
+function containers(template: Record<string, any>): any[] {
+    return Object.values(template.Resources)
+        .filter((resource: any) => resource.Type === 'AWS::ECS::TaskDefinition')
+        .flatMap((resource: any) => resource.Properties.ContainerDefinitions);
+}
+
+function environment(container: any): Record<string, string> {
+    return Object.fromEntries((container.Environment ?? []).map((entry: any) => [entry.Name, entry.Value]));
+}
+
+describe('Phase 7 targeted archive diagnostic stacks', () => {
+    it('owns exactly one immutable run-scoped archive repository', () => {
+        const { image } = stacks();
+        const template = Template.fromStack(image);
+        expect(image.tags.tagValues()).toMatchObject({
+            RunId: CONTEXT.phase7ArchiveDiagnosticRunId,
+            SessionId: CONTEXT.phase7ArchiveDiagnosticSessionId,
+            AttemptType: 'aws-targeted-diagnostic',
+            PromotionEligible: 'false',
+        });
+        template.resourceCountIs('AWS::ECR::Repository', 1);
+        template.hasResourceProperties('AWS::ECR::Repository', {
+            RepositoryName: `loop-ad/perf-phase7-targeted/${CONTEXT.phase7ArchiveDiagnosticRunId}/archive`,
+            ImageScanningConfiguration: { ScanOnPush: true },
+            ImageTagMutability: 'IMMUTABLE',
+            EmptyOnDelete: false,
+        });
+    });
+
+    it('contains only the isolated archive data path and one exact EC2 host', () => {
+        const { runtime } = stacks();
+        const template = Template.fromStack(runtime);
+        template.resourceCountIs('AWS::EC2::VPC', 1);
+        template.resourceCountIs('AWS::EC2::Instance', 0);
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+        template.resourceCountIs('AWS::EC2::LaunchTemplate', 1);
+        template.resourceCountIs('AWS::ECS::Cluster', 1);
+        template.resourceCountIs('AWS::ECS::Service', 1);
+        template.resourceCountIs('AWS::ECS::TaskDefinition', 3);
+        template.resourceCountIs('AWS::CloudFormation::WaitCondition', 1);
+        template.resourceCountIs('AWS::CloudFormation::WaitConditionHandle', 1);
+        template.resourceCountIs('AWS::S3::Bucket', 1);
+        template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+        for (const absent of [
+            'AWS::EC2::NatGateway',
+            'AWS::ElasticLoadBalancingV2::LoadBalancer',
+            'AWS::Kinesis::Stream',
+            'AWS::DynamoDB::Table',
+            'AWS::Lambda::Function',
+        ]) {
+            template.resourceCountIs(absent, 0);
+        }
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            MinSize: '1',
+            MaxSize: '1',
+            DesiredCapacity: '1',
+        });
+        const resources = Template.fromStack(runtime).toJSON().Resources as Record<string, any>;
+        const launchTemplate = Object.values(resources)
+            .find((resource) => resource.Type === 'AWS::EC2::LaunchTemplate');
+        expect(launchTemplate.Properties.LaunchTemplateData.InstanceType)
+            .toBe(PHASE7_HOST_INSTANCE_TYPES.clickHouse);
+        expect(launchTemplate.Properties.LaunchTemplateData.MetadataOptions.HttpTokens).toBe('required');
+        expect(launchTemplate.Properties.LaunchTemplateData.BlockDeviceMappings).toEqual([{
+            DeviceName: '/dev/xvda',
+            Ebs: {
+                DeleteOnTermination: true,
+                Encrypted: true,
+                Iops: 3_000,
+                Throughput: 500,
+                VolumeSize: PHASE7_ARCHIVE_DIAGNOSTIC_VOLUME_GIB,
+                VolumeType: 'gp3',
+            },
+        }]);
+        expect(decodedUserDataByteUpperBound(launchTemplate.Properties.LaunchTemplateData.UserData))
+            .toBeLessThanOrEqual(15_360);
+    });
+
+    it('waits for exact ECS registration without restarting ECS from cloud-final', () => {
+        const { runtime } = stacks();
+        const resources = Template.fromStack(runtime).toJSON().Resources as Record<string, any>;
+        const entries = Object.entries(resources);
+        const [serviceEntry] = entries.filter(([, resource]) =>
+            resource.Type === 'AWS::ECS::Service');
+        const [associationEntry] = entries.filter(([, resource]) =>
+            resource.Type === 'AWS::ECS::ClusterCapacityProviderAssociations');
+        const [conditionEntry] = entries.filter(([, resource]) =>
+            resource.Type === 'AWS::CloudFormation::WaitCondition');
+        const [asgEntry] = entries.filter(([, resource]) =>
+            resource.Type === 'AWS::AutoScaling::AutoScalingGroup');
+        const [launchTemplateEntry] = entries.filter(([, resource]) =>
+            resource.Type === 'AWS::EC2::LaunchTemplate');
+        expect(serviceEntry).toBeDefined();
+        expect(associationEntry).toBeDefined();
+        expect(conditionEntry).toBeDefined();
+        expect(asgEntry).toBeDefined();
+        expect(launchTemplateEntry).toBeDefined();
+
+        const dependencies = Array.isArray(serviceEntry![1].DependsOn)
+            ? serviceEntry![1].DependsOn
+            : [serviceEntry![1].DependsOn].filter(Boolean);
+        const conditionDependencies = Array.isArray(conditionEntry![1].DependsOn)
+            ? conditionEntry![1].DependsOn
+            : [conditionEntry![1].DependsOn].filter(Boolean);
+        expect(dependencies).toEqual(expect.arrayContaining([
+            associationEntry![0],
+            conditionEntry![0],
+            asgEntry![0],
+        ]));
+        expect(conditionDependencies).toContain(associationEntry![0]);
+        expect(asgEntry![1].CreationPolicy).toEqual({
+            ResourceSignal: { Count: 1, Timeout: 'PT10M' },
+        });
+
+        const userData = JSON.stringify(
+            launchTemplateEntry![1].Properties.LaunchTemplateData.UserData,
+        );
+        const awsCliBootstrap = userData.indexOf('yum install -y awscli');
+        const readinessSignal = userData.indexOf('aws cloudformation signal-resource');
+        const registrationCheck = userData.indexOf('aws ecs describe-container-instances');
+        expect(userData).not.toContain('systemctl restart ecs');
+        expect(awsCliBootstrap).toBeGreaterThanOrEqual(0);
+        expect(readinessSignal).toBeGreaterThan(awsCliBootstrap);
+        expect(registrationCheck).toBeGreaterThan(awsCliBootstrap);
+        expect(userData).toContain('command -v aws >/dev/null 2>&1');
+        expect(userData).toContain('http://127.0.0.1:51678/v1/metadata');
+        expect(userData).toContain('ecs describe-container-instances');
+        expect(userData).toContain('agentConnected,status,capacityProviderName');
+        expect(userData).toContain('signal_wait_condition SUCCESS');
+
+        const readinessStatements = entries
+            .filter(([, resource]) => resource.Type === 'AWS::IAM::Policy')
+            .flatMap(([, resource]) => resource.Properties.PolicyDocument.Statement)
+            .filter((statement) => statement.Action === 'ecs:DescribeContainerInstances');
+        expect(readinessStatements).toHaveLength(1);
+        expect(readinessStatements[0]!.Resource).not.toBe('*');
+        expect(JSON.stringify(readinessStatements[0]!.Resource)).toContain(
+            'container-instance/',
+        );
+    });
+
+    it('pins the fixed memory limits and enables source retention only for the diagnostic task', () => {
+        const { runtime } = stacks();
+        const synthesized = Template.fromStack(runtime).toJSON() as Record<string, any>;
+        const allContainers = containers(synthesized);
+        const clickHouse = allContainers.find((container) => container.Name === 'clickhouse');
+        const seed = allContainers.find((container) => container.Name === 'seed');
+        const archive = allContainers.find((container) => container.Name === 'archive');
+        expect(clickHouse.Memory).toBe(PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB);
+        expect(seed.EntryPoint).toEqual(['python', '/opt/loopad/archive/targeted_seed.py']);
+        expect(environment(archive)).toMatchObject({
+            ARCHIVE_EXPECTED_ROWS: '15000000',
+            ARCHIVE_ROWS_PER_PART: '5000000',
+            ARCHIVE_PART_COUNT: '3',
+            ARCHIVE_RETAIN_SOURCE_AFTER_COMMIT: 'true',
+            ARCHIVE_IMAGE_DIGEST: CONTEXT.phase7ArchiveDiagnosticImageDigest,
+        });
+        expect(PHASE7_ARCHIVE_DIAGNOSTIC_QUERY_MEMORY_BYTES).toBe(5 * 1024 ** 3);
+        expect(PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES).toBe(7 * 1024 ** 3);
+        expect(PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB * 1024 ** 2
+            - PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES).toBeGreaterThanOrEqual(1024 ** 3);
+        expect(JSON.stringify(synthesized)).toContain(
+            `<max_server_memory_usage>${PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES}</max_server_memory_usage>`,
+        );
+    });
+
+    it('has no source-delete permission or hidden promotion path', () => {
+        const { runtime } = stacks();
+        const synthesized = Template.fromStack(runtime).toJSON() as Record<string, any>;
+        const text = JSON.stringify(synthesized);
+        expect(runtime.tags.tagValues()).toMatchObject({
+            AttemptType: 'aws-targeted-diagnostic',
+            PromotionEligible: 'false',
+        });
+        expect(text).not.toContain('s3:DeleteObject');
+        expect(text).not.toContain('cloudformation:UpdateStack');
+        expect(text).not.toContain('cloudformation:DeleteStack');
+    });
+});

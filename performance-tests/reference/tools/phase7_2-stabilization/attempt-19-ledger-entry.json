@@ -1,0 +1,159 @@
+{
+  "attemptType": "aws-targeted-diagnostic",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "terminalResidualCleanup": 1,
+      "authoritativeInventory": 2
+    },
+    "deadline": "2026-07-19T11:28:20.750Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/cleanup-verification.json",
+        "sha256": "3dff6fb06cb9c0eb945b38456dadce619854f690a7e43222e28d99d9de851363"
+      },
+      {
+        "path": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/post-cleanup-global-inventory.json",
+        "sha256": "706606fa0930d32383cbc7229b152f2da843b9d0059a25c75f8bd2da4620b72e"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 15,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": true,
+      "taggingApiRunIdResidualArns": [],
+      "taggingApiSessionIdResidualArns": [],
+      "taggingApiResidualsZero": true,
+      "globalRunOwnedTaggingApiResidualArns": [],
+      "globalRunOwnedTaggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-19T09:03:49.482Z",
+    "startToAuthoritativeZeroSeconds": "183.478000"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "0.950000",
+    "campaignChargedUpperBoundUsd": "0.950000",
+    "chargedUpperBoundUsd": "0.950000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-19-cost-explorer-20260719.json",
+    "costExplorerEvidenceSha256": "5ccc1d3386a4af8430b082cff1b4df6efb6782bc3bff43772916a7755ff6f466",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "132.900000",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "0.940319441780",
+    "plannedOperationalUpperBoundUsd": "4.154001",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-19-cost-reconciliation.json",
+    "reconciliationSha256": "08f0c7e187613df74f6a4d4971f725fdaa954babf65f2de9d14502aac510a178"
+  },
+  "evidenceCommit": "b05f7c9113617d90b99271e4ccf3b0f1e122f12e",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic",
+    "deploymentReadiness": "performance-tests/run_20260719_083356_phase7_2_targeted_archive_readiness",
+    "localHandoff": null,
+    "localHandoffPolicy": "AWS-first promotion-ineligible targeted diagnostic; whole Phase 7-1 handoff remains deferred until the real-AWS focused archive path passes.",
+    "preAttemptHistoricalResidualInventory": "performance-tests/phase7_2-stabilization/pre-attempt19-orphan-inventory-20260719T0843Z.json",
+    "preAttemptHistoricalResidualCleanup": "performance-tests/phase7_2-stabilization/pre-attempt19-orphan-cleanup-final-20260719T0845Z.json"
+  },
+  "failure": {
+    "diagnosis": "The Amazon Linux 2 ECS-optimized ARM64 AMI did not expose an aws executable. Both shared Phase 7 host readiness scripts assumed AWS CLI was present. The first script reached exact ECS registration, then failed CloudFormation SignalResource with exit status 127; the dependent capacity-provider registration signal did not start.",
+    "diagnosisEvidencePath": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/readiness-failure-diagnostic.json",
+    "diagnosisEvidenceSha256": "5db04318f96bf907bbf06154fc2d270b4d01bcce4549fc02ea6942c7b53d3df0",
+    "firstFailingGate": "runtime-deploy-readiness",
+    "rawAwsError": "/usr/local/sbin/phase7-clickhousearchivediagnostic-ecs-readiness-signal: line 13: aws: command not found",
+    "rawAwsErrorSource": {
+      "capturedBeforeCleanup": true,
+      "instanceId": "i-0e535c22d81851c3b",
+      "journalSsmCommandId": "f956fb41-7e47-4fca-a387-5e99f96c91fa",
+      "launchTime": "2026-07-19T08:55:11Z",
+      "statusSsmCommandId": "09389151-243a-442f-97f7-1128c94b9315",
+      "terminationTime": "2026-07-19T09:01:25Z"
+    },
+    "rawRunnerError": "KeyboardInterrupt while cdk deploy was waiting for an impossible readiness signal; process exit 130 after the hard stop",
+    "runnerEvidencePath": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/failure.json",
+    "runnerEvidenceSha256": "e6f96a49241c75fd3796f9f3e0eed5731a3c4044f3098b3c86d6b07aeef99155",
+    "successfulManualSignalSent": false,
+    "sourceDropExecuted": false
+  },
+  "fix": {
+    "applied": "Fail closed before enabling any shared Phase 7 readiness unit unless aws is already available or yum install -y awscli succeeds; validate that bootstrap precedes both AWS calls. Catch KeyboardInterrupt as a failed verdict while retaining cleanup.",
+    "fixCommit": "7c46d73000c86769862fb2c710f9dbde61ccd617",
+    "verification": {
+      "awsRequests": 0,
+      "build": "passed",
+      "cfnLintAcceptedAssemblyOnlyFindings": 6,
+      "cfnLintUnexpectedFindings": 0,
+      "decodedUserDataByteUpperBound": 8681,
+      "pythonTargetedTests": 9,
+      "status": "passed",
+      "targetedAndStrictCdkTests": 21,
+      "wholeLocalDeferred": true
+    },
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-19-fix-verification.json",
+    "verificationSha256": "af307f2bb609bd839daabfb65aa84d8bb8aeb4c5cec36e01672585ed454068fa"
+  },
+  "gitCommit": "c6908353b69b19ee3738e72e3d87d5296b6fef29",
+  "imageDigests": {
+    "archive": "sha256:50abdfb9053a7f06d1e3e39008451313b9d48d1e327fb70d4c1e9af9e9b73466"
+  },
+  "imageSourceHashes": {
+    "archive": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "eb02ad09fcfc68f86513057b6e4c5a846f8e4bcf70aab9e58c316925b346d494",
+    "cfnLint": "1f047d549428666bc11768bf7d7c4b446a05f758e864b30c2484d4e5a65246c2",
+    "commandSetFile": "d88aabc9268663f34f8b2ca480ee2621f6e0dc11bbe66e378f7fc335e3935cd2",
+    "costModel": "af3d3682e6f197fe739106b353be861080cd72c5185f89485be9307e89df656e",
+    "imageManifest": "f73a132010e1a8edde6481e9a4264a42c439fd3db1753221f0271be827fd85b6",
+    "localHandoff": null,
+    "preparedPreflight": "85ed992fcf5aba3e7f08d33f2d97809a83d7cebd5021e0d61bde5c3735eddb3e",
+    "runtimeTemplate": "47079211fde83af045ae8439924cac6cd15e49c3e34aee03aa8a65b2ab3e7467",
+    "templateValidation": "3934193376a944826034e87f04b6a88f28596a9fe190891200e9b0f9b0ef046c"
+  },
+  "implementationGitTree": "2437e787e961b353b4aaecac9d8cd45c5a34940b",
+  "implementationSourceClosureSha256": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378",
+  "ordinal": 19,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T11:28:20.750Z",
+    "deadlineBreached": false,
+    "elapsedSeconds": "928.732000",
+    "endedAt": "2026-07-19T09:03:49.482Z",
+    "hardDeadline": "2026-07-19T11:48:20.750Z",
+    "imagePaidStartedAt": "2026-07-19T08:48:20.750Z",
+    "runtimeDeployFailedAt": "2026-07-19T09:00:46.004Z",
+    "startedAt": "2026-07-19T08:48:20.750Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "947b463d99ff9e7c623d68cb89780a6537f1701924b7d84040d0ed61327f4d6c",
+  "promotionEligible": false,
+  "runId": "run_20260719_083356_phase7_archive_diagnostic",
+  "runnerFinalVerdict": "failed",
+  "sealedCommandSetSha256": "2e7756abab92b78990b1c69742703f87344ea2e731e6b3fcfbfa484fcd7762a3",
+  "sessionId": "phase7-archive-diagnostic-20260719T083356Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "imagePreparation": 1,
+    "imageStackDeploy": 1,
+    "independentInventory": 2,
+    "postArchiveVerify": 0,
+    "runtimeDeploy": 1,
+    "seed15M": 0
+  },
+  "terminalEvidenceHashes": {
+    "budgetReset": "eedc2bdf691664dfa3878633dd5acccaad2c23d7f19fa69f776529315cd71f6b",
+    "cleanupVerification": "3dff6fb06cb9c0eb945b38456dadce619854f690a7e43222e28d99d9de851363",
+    "commands": "65da7ed37aac7f69d9cc641a2f81545561422508b43e3b42d61b61796d55c3f7",
+    "costReconciliation": "08f0c7e187613df74f6a4d4971f725fdaa954babf65f2de9d14502aac510a178",
+    "diagnosis": "5db04318f96bf907bbf06154fc2d270b4d01bcce4549fc02ea6942c7b53d3df0",
+    "failure": "e6f96a49241c75fd3796f9f3e0eed5731a3c4044f3098b3c86d6b07aeef99155",
+    "fixVerification": "af307f2bb609bd839daabfb65aa84d8bb8aeb4c5cec36e01672585ed454068fa",
+    "globalCleanup": "706606fa0930d32383cbc7229b152f2da843b9d0059a25c75f8bd2da4620b72e",
+    "report": "d79aa66f86985eb2d6e7afd66570594255cbb9bf81aead60fa74e60338195cfa",
+    "run": "2a05d5c5224218464dd9b2e77c23069f1bf2b54f9735550e5359616bcfe9cd9d",
+    "terminalManifest": "d4345e76093dcc6588432dc85dbe056babeb18cf7b9cbd62d9bd7f8a9d7f8bbd"
+  },
+  "verdict": "failed",
+  "entrySha256": "b4ad86786aae89f9668697c245e4f83853309f3277af2888f0415c7614353e67"
+}

@@ -1,0 +1,96 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const CHUNK_BYTES = 18_000;
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const instanceIds = requiredOption('--instance-ids').split(',');
+const output = requiredOption('--output');
+const expectedCount = instanceIds.length;
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId) ||
+    !/^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid run or session ID');
+if (![4, 8].includes(expectedCount) || new Set(instanceIds).size !== expectedCount || instanceIds.some((id) => !/^i-[0-9a-f]+$/.test(id))) {
+    throw new Error('exactly four or eight unique generator instance IDs are required');
+}
+
+const instances = aws(['ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...instanceIds])
+    .Reservations.flatMap((reservation) => reservation.Instances ?? []);
+if (instances.length !== expectedCount || instances.some((instance) => instance.State?.Name !== 'running' ||
+    !['perf-phase1-loop-ad-load-generator-2a', 'perf-phase1-loop-ad-load-generator-2c'].includes(tag(instance, 'Name')) ||
+    tag(instance, 'RunId') !== runId || tag(instance, 'ComparisonSessionId') !== sessionId)) {
+    throw new Error('generator instance ownership does not match the exact run and session');
+}
+
+const worker = readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url));
+const sha256 = createHash('sha256').update(worker).digest('hex');
+const encoded = worker.toString('base64');
+const chunks = encoded.match(new RegExp(`.{1,${CHUNK_BYTES}}`, 'g')) ?? [];
+const encodedPath = `/tmp/${runId}-oha-worker.b64`;
+const temporaryPath = `/tmp/${runId}-oha-worker.sh`;
+const remotePath = '/opt/loop-ad-phase1/run-ec2-oha-worker.sh';
+const steps = [
+    `set -euo pipefail; umask 077; : > '${encodedPath}'`,
+    ...chunks.map((chunk) => `set -euo pipefail; printf '%s' '${chunk}' >> '${encodedPath}'`),
+    `set -euo pipefail; base64 -d '${encodedPath}' > '${temporaryPath}'; printf '${sha256}  ${temporaryPath}\\n' | sha256sum -c -; sudo -n install -m 0755 '${temporaryPath}' '${remotePath}'; rm -f '${encodedPath}' '${temporaryPath}'; printf '${sha256}  ${remotePath}\\n' | sha256sum -c -; printf 'WORKER_SHA256=${sha256}\\n'`,
+];
+
+const results = [];
+try {
+    for (const [index, command] of steps.entries()) {
+        const sent = aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+            '--instance-ids', ...instanceIds, '--parameters', JSON.stringify({ commands: [command], executionTimeout: ['90'] }),
+            '--timeout-seconds', '90', '--comment', `${runId} install oha worker step ${index + 1}/${steps.length}`]);
+        const invocations = await waitInvocations(sent.Command.CommandId);
+        results.push({ step: index + 1, commandId: sent.Command.CommandId,
+            invocations: invocations.map((item) => ({ instanceId: item.InstanceId, status: item.Status,
+                responseCode: item.CommandPlugins?.[0]?.ResponseCode })) });
+        if (invocations.length !== expectedCount || invocations.some((item) => item.Status !== 'Success')) {
+            throw new Error(`oha worker install step ${index + 1} failed`);
+        }
+    }
+} catch (error) {
+    cleanupTemporaryFiles();
+    throw error;
+}
+
+const result = {
+    installedAt: new Date().toISOString(), region: REGION, runId, sessionId, instanceIds, remotePath,
+    sha256, sourceBytes: worker.length, encodedBytes: encoded.length, chunkBytes: CHUNK_BYTES,
+    chunkCount: chunks.length, results, passed: results.length === steps.length,
+};
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+async function waitInvocations(commandId) {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        const values = aws(['ssm', 'list-command-invocations', '--region', REGION, '--command-id', commandId, '--details']).CommandInvocations ?? [];
+        if (values.length === expectedCount && values.every((item) => !['Pending', 'InProgress', 'Delayed'].includes(item.Status))) return values;
+    }
+    throw new Error(`SSM command ${commandId} timed out`);
+}
+
+function cleanupTemporaryFiles() {
+    try {
+        aws(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', ...instanceIds,
+            '--parameters', JSON.stringify({ commands: [`rm -f '${encodedPath}' '${temporaryPath}'`] }), '--timeout-seconds', '30',
+            '--comment', `${runId} clean failed oha worker install`]);
+    } catch { /* Preserve the original installation error. */ }
+}
+function tag(instance, key) { return (instance.Tags ?? []).find((item) => item.Key === key)?.Value; }
+function aws(args) {
+    const text = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    return JSON.parse(text);
+}
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index < 0 ? undefined : process.argv[index + 1];
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}

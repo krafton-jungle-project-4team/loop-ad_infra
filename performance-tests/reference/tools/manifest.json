@@ -1,0 +1,3943 @@
+{
+  "schemaVersion": 1,
+  "purpose": "restorable performance-infrastructure reference; not an active build target",
+  "source": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "branch": "codex/aws-perf-test-plan",
+    "head": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "workingTreeState": "dirty",
+    "scope": "retired deployment, cleanup, load, collection, and one-off diagnostic tools"
+  },
+  "fileCount": 491,
+  "files": [
+    {
+      "originalPath": "README.md",
+      "storedPath": "README.md",
+      "restorePath": "README.md",
+      "storageTransform": "none",
+      "bytes": 899,
+      "sha256": "1fad43bec1f7e24ce4ce2bb11104d8811c3eb96bda9c5defa63659df1c992629"
+    },
+    {
+      "originalPath": "phase0/README.md",
+      "storedPath": "phase0/README.md",
+      "restorePath": "phase0/README.md",
+      "storageTransform": "none",
+      "bytes": 8365,
+      "sha256": "c36809e40711684022252e25fdace049ad4c1a9128a574178a99e7e627c8a26d"
+    },
+    {
+      "originalPath": "phase0/alb-fixed-response-keepalive.yml",
+      "storedPath": "phase0/alb-fixed-response-keepalive.yml",
+      "restorePath": "phase0/alb-fixed-response-keepalive.yml",
+      "storageTransform": "none",
+      "bytes": 729,
+      "sha256": "4da061e0c3a8763c3b1a8e9ae87de1f280c71920b7660af8851ea9c8702da4d3"
+    },
+    {
+      "originalPath": "phase0/alb-fixed-response-smoke.yml",
+      "storedPath": "phase0/alb-fixed-response-smoke.yml",
+      "restorePath": "phase0/alb-fixed-response-smoke.yml",
+      "storageTransform": "none",
+      "bytes": 609,
+      "sha256": "6c2995a97dde08ceeb65fade6fc37f27851c1af35f24b71cec0dfe436a31ed9f"
+    },
+    {
+      "originalPath": "phase0/alb-fixed-response.yml",
+      "storedPath": "phase0/alb-fixed-response.yml",
+      "restorePath": "phase0/alb-fixed-response.yml",
+      "storageTransform": "none",
+      "bytes": 631,
+      "sha256": "7625e4b560ca98ebff6a447a67e817aac4326ff6b97adebb28a913406ee0c8b9"
+    },
+    {
+      "originalPath": "phase0/alb-ramp.yml",
+      "storedPath": "phase0/alb-ramp.yml",
+      "restorePath": "phase0/alb-ramp.yml",
+      "storageTransform": "none",
+      "bytes": 967,
+      "sha256": "579a3d8e643f40579e0cede20138a64c40cf6d81ad011817bda63b2bea21d876"
+    },
+    {
+      "originalPath": "phase0/generate-oha-body-pool.mjs",
+      "storedPath": "phase0/generate-oha-body-pool.mjs.reference",
+      "restorePath": "phase0/generate-oha-body-pool.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2635,
+      "sha256": "5151be0357df9a3110165ab7c3aa1dbb6deacd48c20638589ba412def8201db7"
+    },
+    {
+      "originalPath": "phase0/generate-sdk-compatible-event-bodies.mjs",
+      "storedPath": "phase0/generate-sdk-compatible-event-bodies.mjs.reference",
+      "restorePath": "phase0/generate-sdk-compatible-event-bodies.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1839,
+      "sha256": "fe52d84d6ef4a4d70e76cb995bc6d7ffeaf5f09ac37b4511a7178ff03f5f2c9a"
+    },
+    {
+      "originalPath": "phase0/payloads/oha-body-pool-12.manifest.json",
+      "storedPath": "phase0/payloads/oha-body-pool-12.manifest.json",
+      "restorePath": "phase0/payloads/oha-body-pool-12.manifest.json",
+      "storageTransform": "none",
+      "bytes": 2820,
+      "sha256": "60d7ed14271c1921446ef1364d7790d71156a85a8fe590ef9f1900548024f6d0"
+    },
+    {
+      "originalPath": "phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh",
+      "storedPath": "phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh",
+      "restorePath": "phase0/run-ec2-artillery-keepalive-multiprocess-worker.sh",
+      "storageTransform": "none",
+      "bytes": 6772,
+      "sha256": "d4b3c3d609868ece1e78c9c74438145d0112d88dcdc6151b8b085888f7167f39"
+    },
+    {
+      "originalPath": "phase0/run-ec2-artillery-keepalive-worker.sh",
+      "storedPath": "phase0/run-ec2-artillery-keepalive-worker.sh",
+      "restorePath": "phase0/run-ec2-artillery-keepalive-worker.sh",
+      "storageTransform": "none",
+      "bytes": 4839,
+      "sha256": "2401e019f1cbb2a530267f44fe4c3ca575e525ec7b9da87defd4325500a51d38"
+    },
+    {
+      "originalPath": "phase0/run-ec2-artillery-sweep.sh",
+      "storedPath": "phase0/run-ec2-artillery-sweep.sh",
+      "restorePath": "phase0/run-ec2-artillery-sweep.sh",
+      "storageTransform": "none",
+      "bytes": 5950,
+      "sha256": "58e586cf4b6881397b1fe2ac48968b09225409d7893026fd9ecb57116247b771"
+    },
+    {
+      "originalPath": "phase0/run-ec2-oha-worker.sh",
+      "storedPath": "phase0/run-ec2-oha-worker.sh",
+      "restorePath": "phase0/run-ec2-oha-worker.sh",
+      "storageTransform": "none",
+      "bytes": 10597,
+      "sha256": "82526ad217c5eca82a372a0572c614f994a44083b14e92c747ab23a7f20c718d"
+    },
+    {
+      "originalPath": "phase0/summarize-host-telemetry.mjs",
+      "storedPath": "phase0/summarize-host-telemetry.mjs.reference",
+      "restorePath": "phase0/summarize-host-telemetry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8204,
+      "sha256": "eb02492b0a86463cd3f0a604563c66f5b6a2d047733e54d6509029717a5c695e"
+    },
+    {
+      "originalPath": "phase1-kinesis/README.md",
+      "storedPath": "phase1-kinesis/README.md",
+      "restorePath": "phase1-kinesis/README.md",
+      "storageTransform": "none",
+      "bytes": 9393,
+      "sha256": "667f2befec1f861202b3dfa2a316b65fd86be6bac3bc2e56d07dc902399a76be"
+    },
+    {
+      "originalPath": "phase1-kinesis/admission-scaleout-contract.mjs",
+      "storedPath": "phase1-kinesis/admission-scaleout-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/admission-scaleout-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7078,
+      "sha256": "d9de25702eeeaf8413d95b5c9207ec57da84580c22c23621672fcdadf2efbf0b"
+    },
+    {
+      "originalPath": "phase1-kinesis/admission-scaleout-contract.test.mjs",
+      "storedPath": "phase1-kinesis/admission-scaleout-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/admission-scaleout-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3594,
+      "sha256": "a79696032e256f657ef11366cebbb589ebc9e0c2707d6e9eb12ce2e1a2de11ee"
+    },
+    {
+      "originalPath": "phase1-kinesis/admission-scaleout-start-gate.mjs",
+      "storedPath": "phase1-kinesis/admission-scaleout-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/admission-scaleout-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2918,
+      "sha256": "a76bd306c3a07a5590577b9836e533fda62d9c505a0222658594bd30d1fc4c8a"
+    },
+    {
+      "originalPath": "phase1-kinesis/admission-scaleout-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/admission-scaleout-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/admission-scaleout-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1542,
+      "sha256": "9eda15ecca73b1ec8b47de2e7d026cfeb22624296bf38ba52aea22037ddd947c"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-access-log.mjs",
+      "storedPath": "phase1-kinesis/alb-access-log.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-access-log.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7727,
+      "sha256": "6cf5c6e70f70bd5bb8a3116c8fb8bd91e874a74fed3f4ac0a8123aec945d7f8c"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-access-log.test.mjs",
+      "storedPath": "phase1-kinesis/alb-access-log.test.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-access-log.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3967,
+      "sha256": "a29ec08e37e925227dfb16f57ffc3b34b7ae4d06988d81e32441f1b54c6069fe"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-frontend-map.mjs",
+      "storedPath": "phase1-kinesis/alb-frontend-map.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-frontend-map.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1219,
+      "sha256": "a8ffc07b111511f3755164d4269dc6502145a4e76ef888587417e4a737995fb8"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-frontend-map.test.mjs",
+      "storedPath": "phase1-kinesis/alb-frontend-map.test.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-frontend-map.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1227,
+      "sha256": "ba6f99dcf7e42ab7105a072b8f22e0cf3f7929a121ddb9256a3fa39f8a3fda77"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-warmup-cleanup.mjs",
+      "storedPath": "phase1-kinesis/alb-warmup-cleanup.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-warmup-cleanup.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1384,
+      "sha256": "6f1c00b4961b28354bf83edec29d6e77277d87d9a00eecdf84784a60291a3abb"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-warmup-cleanup.test.mjs",
+      "storedPath": "phase1-kinesis/alb-warmup-cleanup.test.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-warmup-cleanup.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1019,
+      "sha256": "3cb290651400f31abf4b3a1e4b231fda9050004522d4c88b33ee15b476ea26f5"
+    },
+    {
+      "originalPath": "phase1-kinesis/alb-warmup-preflight.mjs",
+      "storedPath": "phase1-kinesis/alb-warmup-preflight.mjs.reference",
+      "restorePath": "phase1-kinesis/alb-warmup-preflight.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3180,
+      "sha256": "22dba5fc717f39afdd3808f4d2394e01314156de1807e50486a13ac9fec655b1"
+    },
+    {
+      "originalPath": "phase1-kinesis/aligned-final-ack-accounting.mjs",
+      "storedPath": "phase1-kinesis/aligned-final-ack-accounting.mjs.reference",
+      "restorePath": "phase1-kinesis/aligned-final-ack-accounting.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5855,
+      "sha256": "4c7bf98c6286d2e6976c19a47d6ad89d5e8b1cf91b247cdf4b69b59a861621f4"
+    },
+    {
+      "originalPath": "phase1-kinesis/aligned-final-ack-accounting.test.mjs",
+      "storedPath": "phase1-kinesis/aligned-final-ack-accounting.test.mjs.reference",
+      "restorePath": "phase1-kinesis/aligned-final-ack-accounting.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3102,
+      "sha256": "97a97e8659fc9e4adc3f47ca8aa4b1c4dd565051a23799f49d96a17bb024db07"
+    },
+    {
+      "originalPath": "phase1-kinesis/analyze-alb-access-logs-streaming.mjs",
+      "storedPath": "phase1-kinesis/analyze-alb-access-logs-streaming.mjs.reference",
+      "restorePath": "phase1-kinesis/analyze-alb-access-logs-streaming.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4977,
+      "sha256": "761df29ead96716e5e7f411edc9548a859ee19388a9a6bb77b96bd7a0ca95757"
+    },
+    {
+      "originalPath": "phase1-kinesis/analyze-alb-access-logs.mjs",
+      "storedPath": "phase1-kinesis/analyze-alb-access-logs.mjs.reference",
+      "restorePath": "phase1-kinesis/analyze-alb-access-logs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1590,
+      "sha256": "9ca3e2265bd8cc7765a9f0f9db321b756a6a29261126f32e375d6a3cf09d5c40"
+    },
+    {
+      "originalPath": "phase1-kinesis/analyze-prehandler-connection-wave.mjs",
+      "storedPath": "phase1-kinesis/analyze-prehandler-connection-wave.mjs.reference",
+      "restorePath": "phase1-kinesis/analyze-prehandler-connection-wave.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 20566,
+      "sha256": "7d923c711e770c30659f399eed4d6186b66227db833a163d2c418cbc76e55efe"
+    },
+    {
+      "originalPath": "phase1-kinesis/analyze-prehandler-connection-wave.test.mjs",
+      "storedPath": "phase1-kinesis/analyze-prehandler-connection-wave.test.mjs.reference",
+      "restorePath": "phase1-kinesis/analyze-prehandler-connection-wave.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2782,
+      "sha256": "719493ccc4bc280065c778854c45b92b1d2f401f134a86de21217f0d4ea1ddda"
+    },
+    {
+      "originalPath": "phase1-kinesis/aws-observation-retry.mjs",
+      "storedPath": "phase1-kinesis/aws-observation-retry.mjs.reference",
+      "restorePath": "phase1-kinesis/aws-observation-retry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5169,
+      "sha256": "dfa6861e9baf5c6976f088a212bc871776f9c316c1b82dbe042761aa6895b157"
+    },
+    {
+      "originalPath": "phase1-kinesis/aws-observation-retry.test.mjs",
+      "storedPath": "phase1-kinesis/aws-observation-retry.test.mjs.reference",
+      "restorePath": "phase1-kinesis/aws-observation-retry.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8778,
+      "sha256": "df958a17aec4fee151a53271a3d71a3f2af7dad58025ab67ea08a6c450f1d3b9"
+    },
+    {
+      "originalPath": "phase1-kinesis/aws-producer-comparison-summary.json",
+      "storedPath": "phase1-kinesis/aws-producer-comparison-summary.json",
+      "restorePath": "phase1-kinesis/aws-producer-comparison-summary.json",
+      "storageTransform": "none",
+      "bytes": 27769,
+      "sha256": "9140c3047a6ea95e715715f725a15ad48e588900fad85aec56952ba6b9480df0"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-evidence-manifest.mjs",
+      "storedPath": "phase1-kinesis/build-evidence-manifest.mjs.reference",
+      "restorePath": "phase1-kinesis/build-evidence-manifest.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2541,
+      "sha256": "4248d38932669d8ad92a9234c250287024b3140ca3c3504ddd5b53baf064ddc5"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-evidence-manifest.test.mjs",
+      "storedPath": "phase1-kinesis/build-evidence-manifest.test.mjs.reference",
+      "restorePath": "phase1-kinesis/build-evidence-manifest.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1215,
+      "sha256": "59425a4c315d3f07da49c1a2313bbe8fdd5f19e6737d5f61715aa36b95206779"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-fanout-evaluator-input.mjs",
+      "storedPath": "phase1-kinesis/build-fanout-evaluator-input.mjs.reference",
+      "restorePath": "phase1-kinesis/build-fanout-evaluator-input.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8368,
+      "sha256": "1ec35e695bff79f3e73200f95111b5f544838adfdfc08edac218f8c4133824ba"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-fanout-evaluator-input.test.mjs",
+      "storedPath": "phase1-kinesis/build-fanout-evaluator-input.test.mjs.reference",
+      "restorePath": "phase1-kinesis/build-fanout-evaluator-input.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3029,
+      "sha256": "a02b12ce26a3df48423034d3c29a0d8ae6da3f45b12470b14941a2424d935264"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-protocol-crossover-evaluator-input.mjs",
+      "storedPath": "phase1-kinesis/build-protocol-crossover-evaluator-input.mjs.reference",
+      "restorePath": "phase1-kinesis/build-protocol-crossover-evaluator-input.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6251,
+      "sha256": "8ba35b9479e464d717ead945700528e5d194063cc190abbdc76ab15800c6a025"
+    },
+    {
+      "originalPath": "phase1-kinesis/build-reference-driver.sh",
+      "storedPath": "phase1-kinesis/build-reference-driver.sh",
+      "restorePath": "phase1-kinesis/build-reference-driver.sh",
+      "storageTransform": "none",
+      "bytes": 521,
+      "sha256": "24c27ed7b4dd5e6157adb0803ba652b0bcf41baaf65cedb87f055e0a04a5ee96"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-admission-scaleout-cost.mjs",
+      "storedPath": "phase1-kinesis/calculate-admission-scaleout-cost.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-admission-scaleout-cost.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5602,
+      "sha256": "19af9bf8159045726d0b20a71b863e4d4d8bd8bc46b3ecd3f3b3e0880811874f"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-admission-scaleout-cost.test.mjs",
+      "storedPath": "phase1-kinesis/calculate-admission-scaleout-cost.test.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-admission-scaleout-cost.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1821,
+      "sha256": "f991228a3a73f6b0e1744c9280b8059f39e4b8615f8dd9d41ad1e0966dcac29e"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-capacity-cost.test.mjs",
+      "storedPath": "phase1-kinesis/calculate-capacity-cost.test.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-capacity-cost.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3856,
+      "sha256": "3a027ed4d1ec8789741a22e1cdd3eeb9bb6464ced61ae300dd90b56f00e87fa7"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-connection-path-cost.mjs",
+      "storedPath": "phase1-kinesis/calculate-connection-path-cost.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-connection-path-cost.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8566,
+      "sha256": "8c721ef611b496938ba2261b149a19d1545a6d36ecbd772be901af2d90186263"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-connection-path-cost.test.mjs",
+      "storedPath": "phase1-kinesis/calculate-connection-path-cost.test.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-connection-path-cost.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3073,
+      "sha256": "836d9acd702153161e634668bf97bc685d2979ba796e10b3bdca0788a297a051"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-cost.mjs",
+      "storedPath": "phase1-kinesis/calculate-cost.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-cost.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8348,
+      "sha256": "d45ca634313329b723569ebf6d5106764c261d7e3e70d128743cdbd612a9730b"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-protocol-crossover-cost.mjs",
+      "storedPath": "phase1-kinesis/calculate-protocol-crossover-cost.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-protocol-crossover-cost.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4734,
+      "sha256": "d7b2b0fc111e15fc0b683f10658700d2d95751213c5c3bb556e4cad2a23638e5"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-protocol-crossover-cost.test.mjs",
+      "storedPath": "phase1-kinesis/calculate-protocol-crossover-cost.test.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-protocol-crossover-cost.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 622,
+      "sha256": "b0a9574c50cdf442cdd6b246b5fe85b741353e8bd0c56cd8db88834a74b56255"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-t3-e2e-cost.mjs",
+      "storedPath": "phase1-kinesis/calculate-t3-e2e-cost.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-t3-e2e-cost.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3271,
+      "sha256": "1d0992e8e0ab40eaed893e30928b1a0b6a22e3491db4dcbff74183a78fe319b4"
+    },
+    {
+      "originalPath": "phase1-kinesis/calculate-t3-e2e-cost.test.mjs",
+      "storedPath": "phase1-kinesis/calculate-t3-e2e-cost.test.mjs.reference",
+      "restorePath": "phase1-kinesis/calculate-t3-e2e-cost.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1608,
+      "sha256": "056a2118071bd33cf9fa08c83d5f6e669bc5af8953f378786cf7cd66903438cd"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-evaluator.mjs",
+      "storedPath": "phase1-kinesis/capacity-evaluator.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-evaluator.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10110,
+      "sha256": "c31f9c3b6211738cacb53f88ef984fa2fd5cdbd8273f17b8fd79434e4dc1415f"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-evaluator.test.mjs",
+      "storedPath": "phase1-kinesis/capacity-evaluator.test.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-evaluator.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4267,
+      "sha256": "3d4d6479bb0887bc8d64e70328589a52ebe05197b052b7ae2de376dcb8ff562a"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-local-verification.json",
+      "storedPath": "phase1-kinesis/capacity-local-verification.json",
+      "restorePath": "phase1-kinesis/capacity-local-verification.json",
+      "storageTransform": "none",
+      "bytes": 2450,
+      "sha256": "5ba09864779f8d6a22a252abf1f4ebf262eeebe9ed5030d3aefa67c6b0b5fa7b"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-run-contract.mjs",
+      "storedPath": "phase1-kinesis/capacity-run-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-run-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1077,
+      "sha256": "56b84807387eaa9669f038304aa4c17caf59720315116d8be1ee64cbb2052d6d"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-run-contract.test.mjs",
+      "storedPath": "phase1-kinesis/capacity-run-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-run-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 781,
+      "sha256": "790e3b8c2653c1216850f7f2d005e1d488ebfabbb425a123723302f74c4a4739"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-start-gate.mjs",
+      "storedPath": "phase1-kinesis/capacity-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5802,
+      "sha256": "ec58c7b5d54c7848b3e9b2c9d0d395bee69ab704a72ba3729601d3538d676825"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/capacity-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4037,
+      "sha256": "12cbea595046c041f1d4891c7fa5dbcc5e00c1a019f646b2bd7f71ee78fceee1"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-topology.mjs",
+      "storedPath": "phase1-kinesis/capacity-topology.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-topology.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4109,
+      "sha256": "5f3b58f844e7a2db16167ac525b731102d1e69dd86c8a16f0e749953953fc007"
+    },
+    {
+      "originalPath": "phase1-kinesis/capacity-topology.test.mjs",
+      "storedPath": "phase1-kinesis/capacity-topology.test.mjs.reference",
+      "restorePath": "phase1-kinesis/capacity-topology.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4147,
+      "sha256": "c24f65beae1e24a101ff29118cb27433342a4b4879fcde9090c3f862058c233e"
+    },
+    {
+      "originalPath": "phase1-kinesis/capture-protocol-cleanup-inventory.mjs",
+      "storedPath": "phase1-kinesis/capture-protocol-cleanup-inventory.mjs.reference",
+      "restorePath": "phase1-kinesis/capture-protocol-cleanup-inventory.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2609,
+      "sha256": "73ebfb1e890aefb504c3e66d24262bf1bd37a6025597d84b8c0a50cba64a62e0"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-alb-access-logs.mjs",
+      "storedPath": "phase1-kinesis/collect-alb-access-logs.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-alb-access-logs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3435,
+      "sha256": "e2629116a4bcd54f14a24a0eeb0b56730577108dbf09aede47f5dac6307945bd"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-capacity-task-state.mjs",
+      "storedPath": "phase1-kinesis/collect-capacity-task-state.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-capacity-task-state.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5604,
+      "sha256": "c43b8c69af727b605825c7979e0e2ac58f7aa1d879ddad2a3ebf55fffa5dcd67"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-debug-vars.mjs",
+      "storedPath": "phase1-kinesis/collect-debug-vars.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-debug-vars.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6718,
+      "sha256": "c54586c92c68803e2961c37601767a29155c967574b78ec0d7231b10e61cd8e2"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-generator-control-metrics.mjs",
+      "storedPath": "phase1-kinesis/collect-generator-control-metrics.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-generator-control-metrics.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2310,
+      "sha256": "c9d5724bac8cee44b2b74492e3d2a1e277a525057f4e84e1c7f9366660542177"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-generator-placement.mjs",
+      "storedPath": "phase1-kinesis/collect-generator-placement.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-generator-placement.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3289,
+      "sha256": "047167518cb17b12150999663afbf99979a7fe3fe1fb2bb605177ea720b228cc"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-haproxy-telemetry.mjs",
+      "storedPath": "phase1-kinesis/collect-haproxy-telemetry.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-haproxy-telemetry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15295,
+      "sha256": "e796cabc31bc684924764ada3cebb8a4bc00f93d310f9438fea31b8eb1964ed4"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-latency-root-cause-telemetry.mjs",
+      "storedPath": "phase1-kinesis/collect-latency-root-cause-telemetry.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-latency-root-cause-telemetry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 13659,
+      "sha256": "8eef95dae09d608f89b55b16d3fbde8905bea3b689bb3fa565f4dfc545fb3153"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-logs.mjs",
+      "storedPath": "phase1-kinesis/collect-logs.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-logs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4377,
+      "sha256": "f7fb92c9705c9f79e08185dff7e5c05f7d69afc0a5c93a81efcb05bc2f4b199d"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-metrics.mjs",
+      "storedPath": "phase1-kinesis/collect-metrics.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-metrics.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12821,
+      "sha256": "b69364d715b86224d653eee1b33f501f2a1ae4fd824e3d361cdd7382bc09e409"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-pprof.mjs",
+      "storedPath": "phase1-kinesis/collect-pprof.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-pprof.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7771,
+      "sha256": "ce66dd5aa6a652e7ba37959b575bfabf06d70c72cb05a1530a4a45df7127edbe"
+    },
+    {
+      "originalPath": "phase1-kinesis/collect-runtime-state.mjs",
+      "storedPath": "phase1-kinesis/collect-runtime-state.mjs.reference",
+      "restorePath": "phase1-kinesis/collect-runtime-state.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4986,
+      "sha256": "1b171338496ca228356a745be929b44996f1d5fb0850e953b3393119438e25d6"
+    },
+    {
+      "originalPath": "phase1-kinesis/combine-capacity-costs.mjs",
+      "storedPath": "phase1-kinesis/combine-capacity-costs.mjs.reference",
+      "restorePath": "phase1-kinesis/combine-capacity-costs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1389,
+      "sha256": "7fc1bd1086ad091ca037cc20b4ab3c220facbd45b2db3a20a6825cf3d9219e58"
+    },
+    {
+      "originalPath": "phase1-kinesis/combine-capacity-costs.test.mjs",
+      "storedPath": "phase1-kinesis/combine-capacity-costs.test.mjs.reference",
+      "restorePath": "phase1-kinesis/combine-capacity-costs.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1460,
+      "sha256": "7cac2394faecbf2d5e20aebf38442dc6e153a343cbd41ff0b6274fb55277336a"
+    },
+    {
+      "originalPath": "phase1-kinesis/compare-aws-producers.mjs",
+      "storedPath": "phase1-kinesis/compare-aws-producers.mjs.reference",
+      "restorePath": "phase1-kinesis/compare-aws-producers.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15872,
+      "sha256": "4dd04894071cbff05f477266774b27f9813cf217094a399e897f6b5ca8092d42"
+    },
+    {
+      "originalPath": "phase1-kinesis/compare-instrumentation-overhead.mjs",
+      "storedPath": "phase1-kinesis/compare-instrumentation-overhead.mjs.reference",
+      "restorePath": "phase1-kinesis/compare-instrumentation-overhead.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1634,
+      "sha256": "cbb2c2da4da1ab0a25e0d4a05251385d7d151fc8948d413090dc37c67bf75c45"
+    },
+    {
+      "originalPath": "phase1-kinesis/comparison-start-gate.mjs",
+      "storedPath": "phase1-kinesis/comparison-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/comparison-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4376,
+      "sha256": "644bec9a059140a5519beddf4885b418655c0d84470a677a2ca4196214246820"
+    },
+    {
+      "originalPath": "phase1-kinesis/comparison-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/comparison-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/comparison-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3435,
+      "sha256": "970adee0028b0097c210063949e450128b233e28761d7a0d9f28981946f556e4"
+    },
+    {
+      "originalPath": "phase1-kinesis/configure-direct-target-access.mjs",
+      "storedPath": "phase1-kinesis/configure-direct-target-access.mjs.reference",
+      "restorePath": "phase1-kinesis/configure-direct-target-access.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3961,
+      "sha256": "d01002e74dac43e762724e6965b56e1acb1d5946533e96ca3f789e1eedbb26d3"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-crossover-contract.mjs",
+      "storedPath": "phase1-kinesis/connection-path-crossover-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-crossover-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5369,
+      "sha256": "46cc676d412c820aeea13eef68d5ac08db7e6aee07d95a418c7d6debe0eb4902"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-crossover-contract.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-crossover-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-crossover-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 17990,
+      "sha256": "60a678c84cc54386bb39974615d1af48bc81382ef4821d2e7f1c8581cc242614"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-deadline-gate.mjs",
+      "storedPath": "phase1-kinesis/connection-path-deadline-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-deadline-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3527,
+      "sha256": "f2e8749965f1a53db6a1eb67d91c7a13fe5e07c94d0e15dfa2d27725b13a5a52"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-deadline-gate.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-deadline-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-deadline-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3324,
+      "sha256": "993e370411394fa7549964665777a351c8efc9501acf28c5036e92b41f7fc3b1"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-destination.mjs",
+      "storedPath": "phase1-kinesis/connection-path-destination.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-destination.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1518,
+      "sha256": "d4f5d10d74b055dea3753039d5d30638b33c6195cefbda145ac527845e011edf"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-haproxy-profile.mjs",
+      "storedPath": "phase1-kinesis/connection-path-haproxy-profile.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-haproxy-profile.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3402,
+      "sha256": "01c552828e82c65cd57f1818a4ad6bdd5d5b91aad7bbe5d52bde6d3c6ff9f204"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-haproxy-profile.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-haproxy-profile.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-haproxy-profile.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2647,
+      "sha256": "c822fc364b23a5f3269a6a9210d0d338e5732cc3b7062259ccbd5429d859d3a9"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-performance-baseline.json",
+      "storedPath": "phase1-kinesis/connection-path-performance-baseline.json",
+      "restorePath": "phase1-kinesis/connection-path-performance-baseline.json",
+      "storageTransform": "none",
+      "bytes": 3438,
+      "sha256": "718a5d2faa4b79cdd78ff509dd99b98c3fcce082d65a7a0e522eaef517d048b4"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-performance-baseline.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-performance-baseline.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-performance-baseline.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5402,
+      "sha256": "aed85601a2749261b762074df477767f946fdff5fe26b55ae4de858100897e23"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-readiness.mjs",
+      "storedPath": "phase1-kinesis/connection-path-readiness.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-readiness.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8803,
+      "sha256": "6d9dc6b2b2ad9f96813ad1b8b85ac9b958dbf8ac1e2977b3b7c2e4ebcc6e42e4"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-readiness.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-readiness.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-readiness.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6471,
+      "sha256": "fa1820f73de8a8476671df6a491e1533f02eac06564f4081fe0399c122cd04c8"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-reference-manifest.json",
+      "storedPath": "phase1-kinesis/connection-path-reference-manifest.json",
+      "restorePath": "phase1-kinesis/connection-path-reference-manifest.json",
+      "storageTransform": "none",
+      "bytes": 1694,
+      "sha256": "9c28c757545db2c9f84bff1492b170d188cae72cbbfd2850d8155fd8226b3f72"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-safety-evaluator.mjs",
+      "storedPath": "phase1-kinesis/connection-path-safety-evaluator.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-safety-evaluator.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7273,
+      "sha256": "df378dc5601c37e711e1059da05c6e104bacaeec72eb8fbdbea08fc41128bb79"
+    },
+    {
+      "originalPath": "phase1-kinesis/connection-path-safety-evaluator.test.mjs",
+      "storedPath": "phase1-kinesis/connection-path-safety-evaluator.test.mjs.reference",
+      "restorePath": "phase1-kinesis/connection-path-safety-evaluator.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5425,
+      "sha256": "a3e53c868e3b16ad908690dafc42d39817342196f4d6392fb1a74e5d3cca0f35"
+    },
+    {
+      "originalPath": "phase1-kinesis/delete-collector-image.sh",
+      "storedPath": "phase1-kinesis/delete-collector-image.sh",
+      "restorePath": "phase1-kinesis/delete-collector-image.sh",
+      "storageTransform": "none",
+      "bytes": 3325,
+      "sha256": "7503e2426a93c106c08f48eda25599d4f6df8a3507305b5e7d602c9308df8c22"
+    },
+    {
+      "originalPath": "phase1-kinesis/delete-protocol-tls-material.mjs",
+      "storedPath": "phase1-kinesis/delete-protocol-tls-material.mjs.reference",
+      "restorePath": "phase1-kinesis/delete-protocol-tls-material.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2351,
+      "sha256": "414dd550f5f645fbda8c96a0c0432433f8ae97746bccc976fb6be8df0867223a"
+    },
+    {
+      "originalPath": "phase1-kinesis/enable-capacity-shard-metrics.mjs",
+      "storedPath": "phase1-kinesis/enable-capacity-shard-metrics.mjs.reference",
+      "restorePath": "phase1-kinesis/enable-capacity-shard-metrics.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2517,
+      "sha256": "a22f9306c106f485b0ca8f35543d72e6f9f3078b1cb0d008952f008fa10ee52d"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-admission-scaleout.mjs",
+      "storedPath": "phase1-kinesis/evaluate-admission-scaleout.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-admission-scaleout.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 641,
+      "sha256": "89dd96c05f9af0fdb8d84e791e7d4b4facc75653bfe1066522e4f7e054e666de"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.mjs",
+      "storedPath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3013,
+      "sha256": "fb6a3c3a1cd8bc5ce863a434fbb780c7f27cc661de105aff9fde286b55fcbcbf"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.test.mjs",
+      "storedPath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.test.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-connection-instrumentation-overhead.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 725,
+      "sha256": "e54f25153e0c8927f6f05034c203cfcc7c4e3be1f85dbfa4bcd3484da613c6bc"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-connection-path-crossover.mjs",
+      "storedPath": "phase1-kinesis/evaluate-connection-path-crossover.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-connection-path-crossover.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 11785,
+      "sha256": "7734838ca99078f3039db0a53749a3eb861bcfe36f6a6714755273f4c4207c57"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-connection-path-crossover.test.mjs",
+      "storedPath": "phase1-kinesis/evaluate-connection-path-crossover.test.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-connection-path-crossover.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3890,
+      "sha256": "972c8b51416e52e88d9b71fad7bce3bb441c6db97cfe5e900edf1652529ec5f6"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-fanout-crossover.mjs",
+      "storedPath": "phase1-kinesis/evaluate-fanout-crossover.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-fanout-crossover.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 11781,
+      "sha256": "911c491afdf8ef5a485f3249e421227a470f1acebbbef3b171bc4721820146fa"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-fanout-crossover.test.mjs",
+      "storedPath": "phase1-kinesis/evaluate-fanout-crossover.test.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-fanout-crossover.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2949,
+      "sha256": "ad4f1e94761732a348713a9a4884bf10fea3f0b92a7ac1a168cc4969514e91f5"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-latency-root-cause.mjs",
+      "storedPath": "phase1-kinesis/evaluate-latency-root-cause.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-latency-root-cause.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 22451,
+      "sha256": "77a76789da3211822ec977368d4370b8fe5d281c3cde245cf736437cfe74fffc"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-protocol-crossover.mjs",
+      "storedPath": "phase1-kinesis/evaluate-protocol-crossover.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-protocol-crossover.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12639,
+      "sha256": "51bd0fb3243294f609c984da839fb34e18908f11736c578374998a138018ab7c"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-protocol-crossover.test.mjs",
+      "storedPath": "phase1-kinesis/evaluate-protocol-crossover.test.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-protocol-crossover.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4184,
+      "sha256": "8f3e82119b0e8f91e80fcffd3f9dfa5e6fbf2147601ea8e3ef1d1c86ba28fa4b"
+    },
+    {
+      "originalPath": "phase1-kinesis/evaluate-tcp-alb-diagnosis.mjs",
+      "storedPath": "phase1-kinesis/evaluate-tcp-alb-diagnosis.mjs.reference",
+      "restorePath": "phase1-kinesis/evaluate-tcp-alb-diagnosis.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1491,
+      "sha256": "aa26b621fa29adc97d2ab5655214a3cf1d7a2c73cda6dfd551e7ced099e85820"
+    },
+    {
+      "originalPath": "phase1-kinesis/export-vpc-flow-logs.mjs",
+      "storedPath": "phase1-kinesis/export-vpc-flow-logs.mjs.reference",
+      "restorePath": "phase1-kinesis/export-vpc-flow-logs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2487,
+      "sha256": "eea6f094a9c942967bf505317a0364090cae2bd6c705ea8d35aa54ea999a499d"
+    },
+    {
+      "originalPath": "phase1-kinesis/fanout-crossover-contract.mjs",
+      "storedPath": "phase1-kinesis/fanout-crossover-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/fanout-crossover-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2046,
+      "sha256": "e79114e23baeaa8c810bf57a3b0468dd56d6995e1200b546c81e8a5c63614a55"
+    },
+    {
+      "originalPath": "phase1-kinesis/fanout-crossover-contract.test.mjs",
+      "storedPath": "phase1-kinesis/fanout-crossover-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/fanout-crossover-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1889,
+      "sha256": "0bc5e7b9110d2865b9ac68dc27b2f49a5a9a1417f0ca6510142ddb6141f2f774"
+    },
+    {
+      "originalPath": "phase1-kinesis/final-cleanup-verification.json",
+      "storedPath": "phase1-kinesis/final-cleanup-verification.json",
+      "restorePath": "phase1-kinesis/final-cleanup-verification.json",
+      "storageTransform": "none",
+      "bytes": 1597,
+      "sha256": "97ed29866522b2f261eff7003d58dd20be27b031a3e1b07fbfebeff57f146787"
+    },
+    {
+      "originalPath": "phase1-kinesis/finalize-recovered-reference-stage.mjs",
+      "storedPath": "phase1-kinesis/finalize-recovered-reference-stage.mjs.reference",
+      "restorePath": "phase1-kinesis/finalize-recovered-reference-stage.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10221,
+      "sha256": "7400c94cf0f14b567422f2d80bca9cf2ed7194aa10d2a3a583df77cf5f59ae0a"
+    },
+    {
+      "originalPath": "phase1-kinesis/finalize-recovered-reference-stage.test.mjs",
+      "storedPath": "phase1-kinesis/finalize-recovered-reference-stage.test.mjs.reference",
+      "restorePath": "phase1-kinesis/finalize-recovered-reference-stage.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5860,
+      "sha256": "9d887894e8fc1c0e9881d5eb89135e60762966d9920f66c7bc97561cdab87790"
+    },
+    {
+      "originalPath": "phase1-kinesis/generate-payload-pool.mjs",
+      "storedPath": "phase1-kinesis/generate-payload-pool.mjs.reference",
+      "restorePath": "phase1-kinesis/generate-payload-pool.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12363,
+      "sha256": "87633a62a7d7d6a2319c6de674356d90acae9cc985513b483d14e920e1ec29df"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-control-evaluator.mjs",
+      "storedPath": "phase1-kinesis/generator-control-evaluator.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-control-evaluator.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3259,
+      "sha256": "df975e47626942b6cb663c9f8675775dc1a84f4cb513f7572d64b2a23f4cf2ba"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-control-evaluator.test.mjs",
+      "storedPath": "phase1-kinesis/generator-control-evaluator.test.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-control-evaluator.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2122,
+      "sha256": "44198873881aa28b790e283938f697cb3a8f9149306a27cab364adc62bb55f42"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-control-preflight.mjs",
+      "storedPath": "phase1-kinesis/generator-control-preflight.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-control-preflight.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6911,
+      "sha256": "6bbf96c0deffdc60eb11a139ef242de88461998b70b0bf5e121a21a4c72eeef8"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-diagnosis-contract.mjs",
+      "storedPath": "phase1-kinesis/generator-diagnosis-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-diagnosis-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1461,
+      "sha256": "2b65badfd2fb42e2c48787233b745a9ee17522048b8a7ceb21373183075dbd5e"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-diagnosis-contract.test.mjs",
+      "storedPath": "phase1-kinesis/generator-diagnosis-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-diagnosis-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1555,
+      "sha256": "baa4e1b41d0913f19a2db551dbdd5e574dc04c05bc42d2280b181410fbdd4514"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-diagnosis-start-gate.mjs",
+      "storedPath": "phase1-kinesis/generator-diagnosis-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-diagnosis-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4532,
+      "sha256": "a9c802b2346412838533b5ba69a9ce174b8669ae705621d20badc26155f37218"
+    },
+    {
+      "originalPath": "phase1-kinesis/generator-diagnosis-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/generator-diagnosis-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/generator-diagnosis-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1825,
+      "sha256": "f4802c6a8974c431037099582b5b7a622ca6795725d71137f3f7ab4bcd176869"
+    },
+    {
+      "originalPath": "phase1-kinesis/import-protocol-certificate.mjs",
+      "storedPath": "phase1-kinesis/import-protocol-certificate.mjs.reference",
+      "restorePath": "phase1-kinesis/import-protocol-certificate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5368,
+      "sha256": "5578eb84aac5c6deeea67bb1f7dc5a65103900d8d58fd3e7377442dc5d2edc72"
+    },
+    {
+      "originalPath": "phase1-kinesis/import-protocol-certificate.test.mjs",
+      "storedPath": "phase1-kinesis/import-protocol-certificate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/import-protocol-certificate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 802,
+      "sha256": "843bb7f1fad1c77f0d8d2180bbb6369d2fef86dae8e4b3867a142915bfb0c351"
+    },
+    {
+      "originalPath": "phase1-kinesis/install-oha-worker.mjs",
+      "storedPath": "phase1-kinesis/install-oha-worker.mjs.reference",
+      "restorePath": "phase1-kinesis/install-oha-worker.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5463,
+      "sha256": "2c6ce2acb90c2d60982f97271cc3bafa94f4f9e601e55d1e6b6cac02eb84944a"
+    },
+    {
+      "originalPath": "phase1-kinesis/install-protocol-reference-worker.mjs",
+      "storedPath": "phase1-kinesis/install-protocol-reference-worker.mjs.reference",
+      "restorePath": "phase1-kinesis/install-protocol-reference-worker.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3585,
+      "sha256": "ad305c8244701a6c220c3da0ccde90f9c635c89381bc9157422445ffc12bec39"
+    },
+    {
+      "originalPath": "phase1-kinesis/invoke-oha.mjs",
+      "storedPath": "phase1-kinesis/invoke-oha.mjs.reference",
+      "restorePath": "phase1-kinesis/invoke-oha.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 19900,
+      "sha256": "360653b4a205a4144228bf9464fa4cd0714557ad18d7f8ac8f330fdfff0a6695"
+    },
+    {
+      "originalPath": "phase1-kinesis/invoke-reference-driver.mjs",
+      "storedPath": "phase1-kinesis/invoke-reference-driver.mjs.reference",
+      "restorePath": "phase1-kinesis/invoke-reference-driver.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 9981,
+      "sha256": "1e933a1c70a4da93cfb8df809d02ebcdce49901267b035372cdf4b227831a366"
+    },
+    {
+      "originalPath": "phase1-kinesis/join-request-traces-alb.mjs",
+      "storedPath": "phase1-kinesis/join-request-traces-alb.mjs.reference",
+      "restorePath": "phase1-kinesis/join-request-traces-alb.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8112,
+      "sha256": "71ab374d8af1ca75d145f007f02d6739219f0e53cc731ad997c28eb1f4438841"
+    },
+    {
+      "originalPath": "phase1-kinesis/latency-root-cause-contract.test.mjs",
+      "storedPath": "phase1-kinesis/latency-root-cause-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/latency-root-cause-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 14155,
+      "sha256": "5480fb686ffa8a52c7b7b9acc725c529fdb5cae9337e07e405c93c154b397eba"
+    },
+    {
+      "originalPath": "phase1-kinesis/live-progress-histogram.mjs",
+      "storedPath": "phase1-kinesis/live-progress-histogram.mjs.reference",
+      "restorePath": "phase1-kinesis/live-progress-histogram.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2291,
+      "sha256": "e5356bb815b280bb793bb97127d81a435e3c65bf0a8c453d49dec10c45f38a87"
+    },
+    {
+      "originalPath": "phase1-kinesis/live-progress-histogram.test.mjs",
+      "storedPath": "phase1-kinesis/live-progress-histogram.test.mjs.reference",
+      "restorePath": "phase1-kinesis/live-progress-histogram.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1952,
+      "sha256": "1ba0b1a8c263388525343877dd9e60b3f7395c830ded45b0b4f6510ceb8824db"
+    },
+    {
+      "originalPath": "phase1-kinesis/lookup-prices.mjs",
+      "storedPath": "phase1-kinesis/lookup-prices.mjs.reference",
+      "restorePath": "phase1-kinesis/lookup-prices.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5874,
+      "sha256": "9e432d559446dd71558a98a9097f2393a82b909a0d20960c018a657ad1a300d1"
+    },
+    {
+      "originalPath": "phase1-kinesis/merge-fixed-latency-histograms.mjs",
+      "storedPath": "phase1-kinesis/merge-fixed-latency-histograms.mjs.reference",
+      "restorePath": "phase1-kinesis/merge-fixed-latency-histograms.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1895,
+      "sha256": "b61c1e749ef820b086a9145d798f5da5ddd96c7d933824c271c09aea5cb9b585"
+    },
+    {
+      "originalPath": "phase1-kinesis/merge-fixed-latency-histograms.test.mjs",
+      "storedPath": "phase1-kinesis/merge-fixed-latency-histograms.test.mjs.reference",
+      "restorePath": "phase1-kinesis/merge-fixed-latency-histograms.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1193,
+      "sha256": "442a5f9e30ae72a9d649604bb860aab911c34c3ee8f7b0e32af1468d089d806a"
+    },
+    {
+      "originalPath": "phase1-kinesis/monitor-connection-path-safety.mjs",
+      "storedPath": "phase1-kinesis/monitor-connection-path-safety.mjs.reference",
+      "restorePath": "phase1-kinesis/monitor-connection-path-safety.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 21536,
+      "sha256": "b506ac2d6717cfad5bbaeb3d0dcac26bbf4631dfd11f62c7a907b2b48fe14572"
+    },
+    {
+      "originalPath": "phase1-kinesis/monitor-oha-connection-path-safety.mjs",
+      "storedPath": "phase1-kinesis/monitor-oha-connection-path-safety.mjs.reference",
+      "restorePath": "phase1-kinesis/monitor-oha-connection-path-safety.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 23084,
+      "sha256": "2946c2d4b098d9fec91cf7601e45f93ece55cc5e5813d00a067bae5d9713e5bd"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha-load-contract.mjs",
+      "storedPath": "phase1-kinesis/oha-load-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/oha-load-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2066,
+      "sha256": "929414481738c6c12c0cf3d9566f24538f7c131aa22b78709b0f0c31aac4c6e3"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha-load-contract.test.mjs",
+      "storedPath": "phase1-kinesis/oha-load-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha-load-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3321,
+      "sha256": "d6933c2a9f555c10aa2c902e4dc35df250b7de3c80ec2d20765e9a7896d2d41f"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-aggregate.mjs",
+      "storedPath": "phase1-kinesis/oha12k-aggregate.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-aggregate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15450,
+      "sha256": "e686fa84d637234e2cf843a3c259ae774a8e711e68cb069d5970a6b48e76cb69"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-aggregate.test.mjs",
+      "storedPath": "phase1-kinesis/oha12k-aggregate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-aggregate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5847,
+      "sha256": "63501ca0128c6cb06b5c4cf99768dd4c56349ff54d095f61c5750c1ecc360772"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-contract.mjs",
+      "storedPath": "phase1-kinesis/oha12k-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3699,
+      "sha256": "ab4197435e562decfa9a8e314c18f8c0470baaea6831cdccb0f79c09b6445dfa"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-contract.test.mjs",
+      "storedPath": "phase1-kinesis/oha12k-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1686,
+      "sha256": "7755356507148fcc228db0eedab8bf4179dea4cc52c96abd0a0996265326ab37"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-decision.mjs",
+      "storedPath": "phase1-kinesis/oha12k-decision.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-decision.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6029,
+      "sha256": "c90dcaef971105499bc801864613832edf9da533060ff43103bdeb32fa5ed656"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-decision.test.mjs",
+      "storedPath": "phase1-kinesis/oha12k-decision.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-decision.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1683,
+      "sha256": "b1d82d4c8e4e0e2f0c52df80247b9795fabffb1aed54f32cf30652e3d65da0d0"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-evaluator.mjs",
+      "storedPath": "phase1-kinesis/oha12k-evaluator.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-evaluator.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6159,
+      "sha256": "9863580759281db342404b6bfe2ce1e1458bb22f9de5d1f4de89687b175b8946"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-evaluator.test.mjs",
+      "storedPath": "phase1-kinesis/oha12k-evaluator.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-evaluator.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3117,
+      "sha256": "938eaed3bdaf7ea3971534b1cf6c641f5f0dc80691f47ec3cd8f2a2fa55138ea"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-start-gate.mjs",
+      "storedPath": "phase1-kinesis/oha12k-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5464,
+      "sha256": "62d3c22db59565ff8ce1cd868079adfb00bda1859ae84ade1c66c91376c11edd"
+    },
+    {
+      "originalPath": "phase1-kinesis/oha12k-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/oha12k-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/oha12k-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3389,
+      "sha256": "def822580d8c7e870f16e0d4a757896ff9b35343cda1fc9a9b049c91df7e7dac"
+    },
+    {
+      "originalPath": "phase1-kinesis/p95-goal-contract.mjs",
+      "storedPath": "phase1-kinesis/p95-goal-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/p95-goal-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3558,
+      "sha256": "1ea16fed73a6d669981d73bb85b4b309732e6fafb4d421d8c44f7eea293068ca"
+    },
+    {
+      "originalPath": "phase1-kinesis/p95-goal-contract.test.mjs",
+      "storedPath": "phase1-kinesis/p95-goal-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/p95-goal-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5502,
+      "sha256": "15e0399f614bb64bb3552263e141ee4522cf31731fe8430f8677b06e1fdbd2f3"
+    },
+    {
+      "originalPath": "phase1-kinesis/payloads/sdk-compatible-event-bodies.manifest.json",
+      "storedPath": "phase1-kinesis/payloads/sdk-compatible-event-bodies.manifest.json",
+      "restorePath": "phase1-kinesis/payloads/sdk-compatible-event-bodies.manifest.json",
+      "storageTransform": "none",
+      "bytes": 62665,
+      "sha256": "a1b6603009f84767a47018349e7f5c1bf989dc8d005dccc5a0fd36a39f59c881"
+    },
+    {
+      "originalPath": "phase1-kinesis/persistent-measurement-evaluator.mjs",
+      "storedPath": "phase1-kinesis/persistent-measurement-evaluator.mjs.reference",
+      "restorePath": "phase1-kinesis/persistent-measurement-evaluator.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3143,
+      "sha256": "b88fa98c6fe80b9c8abe417dedd8a3fb716b2989ca42f587d68877523e348aff"
+    },
+    {
+      "originalPath": "phase1-kinesis/persistent-measurement-evaluator.test.mjs",
+      "storedPath": "phase1-kinesis/persistent-measurement-evaluator.test.mjs.reference",
+      "restorePath": "phase1-kinesis/persistent-measurement-evaluator.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 1940,
+      "sha256": "0f0b92dd0f7a2a73c59fa42ee418246a4768507ef226a3a4bfd48fa906bbe86b"
+    },
+    {
+      "originalPath": "phase1-kinesis/persistent-warmup-gate.mjs",
+      "storedPath": "phase1-kinesis/persistent-warmup-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/persistent-warmup-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7823,
+      "sha256": "1fc85f6c492cf4d013fb1ee9e3aaa35f3889bceebf4d9ad792612eb42a159868"
+    },
+    {
+      "originalPath": "phase1-kinesis/persistent-warmup-gate.test.mjs",
+      "storedPath": "phase1-kinesis/persistent-warmup-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/persistent-warmup-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3072,
+      "sha256": "9c0822f2b1a0c84627ae4462a3e449cff95c79baf12222ea75f88a1d45b54a8b"
+    },
+    {
+      "originalPath": "phase1-kinesis/preflight.mjs",
+      "storedPath": "phase1-kinesis/preflight.mjs.reference",
+      "restorePath": "phase1-kinesis/preflight.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 31364,
+      "sha256": "e6976e6d39ec07a1965444522aedb30f0ba157945521149596d9880dbf5cce5a"
+    },
+    {
+      "originalPath": "phase1-kinesis/prepare-collector-image.sh",
+      "storedPath": "phase1-kinesis/prepare-collector-image.sh",
+      "restorePath": "phase1-kinesis/prepare-collector-image.sh",
+      "storageTransform": "none",
+      "bytes": 8295,
+      "sha256": "52abaf3a67c558e39b47274fa1503043d7c45f45ab285470246c49579b2a5f91"
+    },
+    {
+      "originalPath": "phase1-kinesis/protocol-crossover-contract.mjs",
+      "storedPath": "phase1-kinesis/protocol-crossover-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/protocol-crossover-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2598,
+      "sha256": "b89468fc8a5352ba9bba6429deded3835620d7b419706e6058d049e0a9f932cf"
+    },
+    {
+      "originalPath": "phase1-kinesis/protocol-crossover-contract.test.mjs",
+      "storedPath": "phase1-kinesis/protocol-crossover-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/protocol-crossover-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5315,
+      "sha256": "44b5e89a9810d041b853729e7c494d6dd19943f84c882c08b4cae80445cd1f57"
+    },
+    {
+      "originalPath": "phase1-kinesis/protocol-load-balancer-url.mjs",
+      "storedPath": "phase1-kinesis/protocol-load-balancer-url.mjs.reference",
+      "restorePath": "phase1-kinesis/protocol-load-balancer-url.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 332,
+      "sha256": "e0969db2465b2fb31b088292dab4181249e890ff1b5a206083a6295ea21b11d1"
+    },
+    {
+      "originalPath": "phase1-kinesis/query-cost-explorer.mjs",
+      "storedPath": "phase1-kinesis/query-cost-explorer.mjs.reference",
+      "restorePath": "phase1-kinesis/query-cost-explorer.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2602,
+      "sha256": "af963d10d352c16f44c481a07ed810b836df3dc7dc9c639b02d4c1389d47f749"
+    },
+    {
+      "originalPath": "phase1-kinesis/recover-interrupted-connection-path-stage.mjs",
+      "storedPath": "phase1-kinesis/recover-interrupted-connection-path-stage.mjs.reference",
+      "restorePath": "phase1-kinesis/recover-interrupted-connection-path-stage.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6900,
+      "sha256": "e474f607d4e9ed8c1a762a1c0631ee69724a4fc7e8ad2ab50a2378f4ea90cb1e"
+    },
+    {
+      "originalPath": "phase1-kinesis/reference-driver/main.go",
+      "storedPath": "phase1-kinesis/reference-driver/main.go",
+      "restorePath": "phase1-kinesis/reference-driver/main.go",
+      "storageTransform": "none",
+      "bytes": 64230,
+      "sha256": "dfdf82d6b9bb29d00872f5ad01f7a986afe1e8c6b8d048915e550893957aab11"
+    },
+    {
+      "originalPath": "phase1-kinesis/reference-driver/main_test.go",
+      "storedPath": "phase1-kinesis/reference-driver/main_test.go",
+      "restorePath": "phase1-kinesis/reference-driver/main_test.go",
+      "storageTransform": "none",
+      "bytes": 24125,
+      "sha256": "e68fba92bd7d5f2e9d4511361b55b753d1722ec739db799c8089423a203bbac5"
+    },
+    {
+      "originalPath": "phase1-kinesis/reference_aws_producer_comparison_contract.md",
+      "storedPath": "phase1-kinesis/reference_aws_producer_comparison_contract.md",
+      "restorePath": "phase1-kinesis/reference_aws_producer_comparison_contract.md",
+      "storageTransform": "none",
+      "bytes": 7954,
+      "sha256": "765c5b60c84ef00c10186e66c2f98bce69fea0d52d54f98d9ad40abc48d8bcea"
+    },
+    {
+      "originalPath": "phase1-kinesis/reference_phase1_kinesis_capacity_contract.md",
+      "storedPath": "phase1-kinesis/reference_phase1_kinesis_capacity_contract.md",
+      "restorePath": "phase1-kinesis/reference_phase1_kinesis_capacity_contract.md",
+      "storageTransform": "none",
+      "bytes": 7894,
+      "sha256": "6106c833ef846f6e66276d3589695228b11c7f4dd8a8c0441b2cf459c89229a8"
+    },
+    {
+      "originalPath": "phase1-kinesis/reference_phase1_kinesis_capacity_scout_contract.md",
+      "storedPath": "phase1-kinesis/reference_phase1_kinesis_capacity_scout_contract.md",
+      "restorePath": "phase1-kinesis/reference_phase1_kinesis_capacity_scout_contract.md",
+      "storageTransform": "none",
+      "bytes": 2184,
+      "sha256": "a6190ad9baac29121e37cc595a03d2d993e8266d0dc89e693d47f879028a86ba"
+    },
+    {
+      "originalPath": "phase1-kinesis/register-quic-targets.mjs",
+      "storedPath": "phase1-kinesis/register-quic-targets.mjs.reference",
+      "restorePath": "phase1-kinesis/register-quic-targets.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4679,
+      "sha256": "a2ce722734f43730ea3ce08a39fa96aae94d9c411bcfdd661be5638c99be593e"
+    },
+    {
+      "originalPath": "phase1-kinesis/register-quic-targets.test.mjs",
+      "storedPath": "phase1-kinesis/register-quic-targets.test.mjs.reference",
+      "restorePath": "phase1-kinesis/register-quic-targets.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 623,
+      "sha256": "ff04d4c2b19366d79d729402a6d4ac0762f28b26c1f42f900ad2e0c2a36d258c"
+    },
+    {
+      "originalPath": "phase1-kinesis/render-haproxy-config.mjs",
+      "storedPath": "phase1-kinesis/render-haproxy-config.mjs.reference",
+      "restorePath": "phase1-kinesis/render-haproxy-config.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5775,
+      "sha256": "329910acbe3e4990afe7bf72871954b8711f845b2bdbfba27ac6b75de56995c7"
+    },
+    {
+      "originalPath": "phase1-kinesis/render-run-record.mjs",
+      "storedPath": "phase1-kinesis/render-run-record.mjs.reference",
+      "restorePath": "phase1-kinesis/render-run-record.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8344,
+      "sha256": "a141dfbd51dfc5a91e1c9c532737cd8bc364356db7c51f3f516eb83349339188"
+    },
+    {
+      "originalPath": "phase1-kinesis/resolve-alb-frontends.mjs",
+      "storedPath": "phase1-kinesis/resolve-alb-frontends.mjs.reference",
+      "restorePath": "phase1-kinesis/resolve-alb-frontends.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2972,
+      "sha256": "54c9542d4032de0fd12e1a5464eb370d6ae2576988ef32ed4a8a172401defb86"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-capacity-stages.mjs",
+      "storedPath": "phase1-kinesis/run-capacity-stages.mjs.reference",
+      "restorePath": "phase1-kinesis/run-capacity-stages.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 13776,
+      "sha256": "858b542e8ee44f19d3a97f7b5a9f49ef742c0fc0049fab34c8a85a8df0d5d486"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-comparison-repetitions.mjs",
+      "storedPath": "phase1-kinesis/run-comparison-repetitions.mjs.reference",
+      "restorePath": "phase1-kinesis/run-comparison-repetitions.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5523,
+      "sha256": "c36602ec4a7e380b06a408e802bc207d1e9b9b9216d281cb62c0ae7bbf6c1a9f"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-ec2-oha-worker.sh",
+      "storedPath": "phase1-kinesis/run-ec2-oha-worker.sh",
+      "restorePath": "phase1-kinesis/run-ec2-oha-worker.sh",
+      "storageTransform": "none",
+      "bytes": 48725,
+      "sha256": "04b5dabf6095b9bd458573420948f7cd4ba4d04b7f683b70d03352533d417179"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-ec2-reference-worker.sh",
+      "storedPath": "phase1-kinesis/run-ec2-reference-worker.sh",
+      "restorePath": "phase1-kinesis/run-ec2-reference-worker.sh",
+      "storageTransform": "none",
+      "bytes": 12444,
+      "sha256": "94b47e22c27f523da7e94d8aa3900cb2b4f16075034b60bceab1237fbc1ff9e4"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-latency-root-cause-stage.mjs",
+      "storedPath": "phase1-kinesis/run-latency-root-cause-stage.mjs.reference",
+      "restorePath": "phase1-kinesis/run-latency-root-cause-stage.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 54875,
+      "sha256": "b4dac363fc2a70ae3efbe3abf5c3569da631e521ccad8e2784d2ee6b5747e927"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-oha12k-load.mjs",
+      "storedPath": "phase1-kinesis/run-oha12k-load.mjs.reference",
+      "restorePath": "phase1-kinesis/run-oha12k-load.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7804,
+      "sha256": "7558b84314d50d2ae37be11162dcd2e00b3b1c0530b69e2a090ee39d49a4939e"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-oha12k-probe.mjs",
+      "storedPath": "phase1-kinesis/run-oha12k-probe.mjs.reference",
+      "restorePath": "phase1-kinesis/run-oha12k-probe.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 10560,
+      "sha256": "3ff7947712874bd39c8c18bfdb5f6ae2060300700ec43b610cd77ded21a764ce"
+    },
+    {
+      "originalPath": "phase1-kinesis/run-persistent-oha-load.mjs",
+      "storedPath": "phase1-kinesis/run-persistent-oha-load.mjs.reference",
+      "restorePath": "phase1-kinesis/run-persistent-oha-load.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 18147,
+      "sha256": "3ca775f4e937ee72aa428c6c98e9930df940d990145695d3443709d8d17c3441"
+    },
+    {
+      "originalPath": "phase1-kinesis/scout-run-contract.mjs",
+      "storedPath": "phase1-kinesis/scout-run-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/scout-run-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 869,
+      "sha256": "4b66654c292664b4338666bad217a61fac39459b91e28921263f81fb45123d37"
+    },
+    {
+      "originalPath": "phase1-kinesis/scout-run-contract.test.mjs",
+      "storedPath": "phase1-kinesis/scout-run-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/scout-run-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 618,
+      "sha256": "147e01c9d9cd966df8cc9580768ff839b4159cc8e01dda03dfa6ba2be8c0cf9a"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-comparison-candidate.mjs",
+      "storedPath": "phase1-kinesis/summarize-comparison-candidate.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-comparison-candidate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 11345,
+      "sha256": "4f4e78057e6c5f72db3bcaada9602787572bbeedc0d45e96225cd0acc00f31a5"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-haproxy-telemetry.mjs",
+      "storedPath": "phase1-kinesis/summarize-haproxy-telemetry.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-haproxy-telemetry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 13038,
+      "sha256": "c7f7db76cdd1e9d79af230df8338274b2c81a0933686a5f96a4120b76bd0780a"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-latency-root-cause-repetitions.mjs",
+      "storedPath": "phase1-kinesis/summarize-latency-root-cause-repetitions.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-latency-root-cause-repetitions.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4342,
+      "sha256": "11b3e7d7c9a2f1c8e181e4b9709b882d5c87d5f53368918ad6215b42e0a0bd83"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-latency-root-cause-telemetry.mjs",
+      "storedPath": "phase1-kinesis/summarize-latency-root-cause-telemetry.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-latency-root-cause-telemetry.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7685,
+      "sha256": "27eacd00f5ad166fa5937e0c3d83cab9d95609c22a67ecadbb3b8ffbf41d91ab"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-pprof-run.mjs",
+      "storedPath": "phase1-kinesis/summarize-pprof-run.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-pprof-run.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6487,
+      "sha256": "e100b2cbcb802b5c6016e0b3b575e7da85cfc7bd75ea9a038dab9fd2b6bb2156"
+    },
+    {
+      "originalPath": "phase1-kinesis/summarize-run.mjs",
+      "storedPath": "phase1-kinesis/summarize-run.mjs.reference",
+      "restorePath": "phase1-kinesis/summarize-run.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 11741,
+      "sha256": "5cf11c4c97b59f5b47c3306ae17898fc3f3883cba4eba2ac6206cfba5071405d"
+    },
+    {
+      "originalPath": "phase1-kinesis/tcp-alb-diagnosis-contract.mjs",
+      "storedPath": "phase1-kinesis/tcp-alb-diagnosis-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/tcp-alb-diagnosis-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8366,
+      "sha256": "2eb558a66eb94d0673d962a6b8d3900c80743fe7d6f615c8d11b1b795bbad222"
+    },
+    {
+      "originalPath": "phase1-kinesis/tcp-alb-diagnosis-contract.test.mjs",
+      "storedPath": "phase1-kinesis/tcp-alb-diagnosis-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/tcp-alb-diagnosis-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4223,
+      "sha256": "a20da3894f6ab3694b8f1d87dc1a0201cf8ab15f29f1d54cbcb79838793477bd"
+    },
+    {
+      "originalPath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.mjs",
+      "storedPath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.mjs.reference",
+      "restorePath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3929,
+      "sha256": "d3b72f36d66e519401844d94ac0afd4532ad93e3a51d109a1a6d2d561a3d8ca4"
+    },
+    {
+      "originalPath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.test.mjs",
+      "storedPath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.test.mjs.reference",
+      "restorePath": "phase1-kinesis/tcp-alb-diagnosis-start-gate.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3870,
+      "sha256": "0b6772cee205a801ae90098091360461eb861da00a12298386009bf6e9c1545f"
+    },
+    {
+      "originalPath": "phase1-kinesis/tcp-alb-worker-contract.test.mjs",
+      "storedPath": "phase1-kinesis/tcp-alb-worker-contract.test.mjs.reference",
+      "restorePath": "phase1-kinesis/tcp-alb-worker-contract.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 3311,
+      "sha256": "59d24e2cd0477c5af6c143d5b87b289a21196410a196a1ccdf07f51c0870d216"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-actual-kinesis-correctness.mjs",
+      "storedPath": "phase1-kinesis/verify-actual-kinesis-correctness.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-actual-kinesis-correctness.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 33454,
+      "sha256": "1014a98e7eb0e3c327bea825e6417231e32ef67a93ab778222727e6a08c7e2dc"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-actual-kinesis-correctness.test.mjs",
+      "storedPath": "phase1-kinesis/verify-actual-kinesis-correctness.test.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-actual-kinesis-correctness.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5909,
+      "sha256": "69881112bcb243d004dbe7d5ca3013ccedf292d17add5babd0162a877d194d97"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-admission-scaleout-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-admission-scaleout-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-admission-scaleout-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 7294,
+      "sha256": "d4b4503274dc9be7453eb31b6d3e77563409b5a5e0ad609d25103b1cb5b22423"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-al2023-hosts.mjs",
+      "storedPath": "phase1-kinesis/verify-al2023-hosts.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-al2023-hosts.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 15875,
+      "sha256": "034c67998948f4509ba35309faae8d91b2c516429d174f802d9a85b15dfc2def"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-alb-warmup-cleanup.mjs",
+      "storedPath": "phase1-kinesis/verify-alb-warmup-cleanup.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-alb-warmup-cleanup.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4674,
+      "sha256": "1f92dbf9dfa72cd7772493d03a24301539fa6269c5e45edfc9ec60c240c6d099"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-alb-warmup-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-alb-warmup-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-alb-warmup-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4865,
+      "sha256": "ba6f816b1a2071d8280afb4885cf3cea75da42400d83ffe1c1b8b977d16e00a6"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-cleanup.mjs",
+      "storedPath": "phase1-kinesis/verify-cleanup.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-cleanup.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 17903,
+      "sha256": "28d76e5b0f6b8eda3bcd3931e03692393a0bbb5b8d430ae2c4108dbbebacd970"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-connection-path-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-connection-path-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-connection-path-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 19069,
+      "sha256": "53ea73a8692f9ec4a46c21a365d82b33fbeec4edebb2dcc21fa41703a80c33e4"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 12853,
+      "sha256": "b14d29573d4ecb58a4328c75369b170c9331de32c8efcb4528b5033dda59d82e"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-generator-control-cleanup.mjs",
+      "storedPath": "phase1-kinesis/verify-generator-control-cleanup.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-generator-control-cleanup.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2933,
+      "sha256": "69108c000e7041c4570488c1f585bdbb337511c21fe6216c9ebd27f2e24425aa"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-generator-control-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-generator-control-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-generator-control-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5582,
+      "sha256": "9ee96a40ec4592e408174910a842e461b84fc757cfa7794b182d7f1650187c88"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-haproxy-local-contract.mjs",
+      "storedPath": "phase1-kinesis/verify-haproxy-local-contract.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-haproxy-local-contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 9474,
+      "sha256": "a92bf31291b8b390c032afaeae944b3e9c00ffd0500c3acc1eccc0dbc4b12e6f"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-protocol-crossover-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-protocol-crossover-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-protocol-crossover-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6824,
+      "sha256": "ea353dc186e790c2a02ab5c4383be8c0630af00a3e05a0efc1190b846877c2c8"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-tcp-alb-diagnosis-deployment.mjs",
+      "storedPath": "phase1-kinesis/verify-tcp-alb-diagnosis-deployment.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-tcp-alb-diagnosis-deployment.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6987,
+      "sha256": "dfde8b30e0e12e7ffa7eaa55ace3808e34f749bac40358249ddb7315f8c73c02"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-tcp-alb-recovery.mjs",
+      "storedPath": "phase1-kinesis/verify-tcp-alb-recovery.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-tcp-alb-recovery.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8074,
+      "sha256": "54784e67d5de739e6d7379fe709cec35b33e0a2229815b678a48e24cf71991eb"
+    },
+    {
+      "originalPath": "phase1-kinesis/verify-tcp-alb-recovery.test.mjs",
+      "storedPath": "phase1-kinesis/verify-tcp-alb-recovery.test.mjs.reference",
+      "restorePath": "phase1-kinesis/verify-tcp-alb-recovery.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2785,
+      "sha256": "2afb3774f93656745de21709459f8cbd28aeb5c04cd189c5d7cec898dea69e34"
+    },
+    {
+      "originalPath": "phase1-kinesis/vpc-flow-log.mjs",
+      "storedPath": "phase1-kinesis/vpc-flow-log.mjs.reference",
+      "restorePath": "phase1-kinesis/vpc-flow-log.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4018,
+      "sha256": "09e0288bfd7b2f7698aaf878f1f318a9c935420450301f41e97c37f001e04c5f"
+    },
+    {
+      "originalPath": "phase1-kinesis/vpc-flow-log.test.mjs",
+      "storedPath": "phase1-kinesis/vpc-flow-log.test.mjs.reference",
+      "restorePath": "phase1-kinesis/vpc-flow-log.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 2162,
+      "sha256": "04de8046c44bea3ba9af72c765ed2bd428b583d99ecc11d021e27200628f2e1a"
+    },
+    {
+      "originalPath": "phase4-clickhouse/README.md",
+      "storedPath": "phase4-clickhouse/README.md",
+      "restorePath": "phase4-clickhouse/README.md",
+      "storageTransform": "none",
+      "bytes": 6696,
+      "sha256": "517df9445d12dd78b79a4c4d5a628a916857f7556cfaedb71eea813511b022dc"
+    },
+    {
+      "originalPath": "phase4-clickhouse/archive_fixture_ecs.py",
+      "storedPath": "phase4-clickhouse/archive_fixture_ecs.py",
+      "restorePath": "phase4-clickhouse/archive_fixture_ecs.py",
+      "storageTransform": "none",
+      "bytes": 12590,
+      "sha256": "76ce4662f6678411f258a784047cb87e5764428effcb629d17a61377ea8cbacb"
+    },
+    {
+      "originalPath": "phase4-clickhouse/aws_correctness_smoke_ecs.py",
+      "storedPath": "phase4-clickhouse/aws_correctness_smoke_ecs.py",
+      "restorePath": "phase4-clickhouse/aws_correctness_smoke_ecs.py",
+      "storageTransform": "none",
+      "bytes": 9046,
+      "sha256": "85c817a8f7aa5daad9d3735a45e2a5295c959ff8034b935dd9df2f3b95812af7"
+    },
+    {
+      "originalPath": "phase4-clickhouse/cleanup_inventory.py",
+      "storedPath": "phase4-clickhouse/cleanup_inventory.py",
+      "restorePath": "phase4-clickhouse/cleanup_inventory.py",
+      "storageTransform": "none",
+      "bytes": 10468,
+      "sha256": "ad60d736b70501496ac9464b531cab5bb2a812716e1fd97273f819293cc9af6c"
+    },
+    {
+      "originalPath": "phase4-clickhouse/cleanup_inventory_ecs.py",
+      "storedPath": "phase4-clickhouse/cleanup_inventory_ecs.py",
+      "restorePath": "phase4-clickhouse/cleanup_inventory_ecs.py",
+      "storageTransform": "none",
+      "bytes": 20649,
+      "sha256": "8a9e6162389cb6cdbb9acac9163b3f97a3b8ebb23d0e2387d3251a4222eaf3d2"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/entrypoint.sh",
+      "storedPath": "phase4-clickhouse/consumer/entrypoint.sh",
+      "restorePath": "phase4-clickhouse/consumer/entrypoint.sh",
+      "storageTransform": "none",
+      "bytes": 1425,
+      "sha256": "eb3dca6b5e8c1cc3ceb7cf0aa8ff8f6ac7b0ced2fb45c7ac3d8aff44771a2b54"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/pom.xml",
+      "storedPath": "phase4-clickhouse/consumer/pom.xml",
+      "restorePath": "phase4-clickhouse/consumer/pom.xml",
+      "storageTransform": "none",
+      "bytes": 5035,
+      "sha256": "745cb1cec284408789f7784462feb5689827be9bd8856c37b1898398719b647e"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/BatchProcessor.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/BatchProcessor.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/BatchProcessor.java",
+      "storageTransform": "none",
+      "bytes": 8133,
+      "sha256": "7b03d812b00656cacac7b36f0b29934406af139fd1b00dc9a44c62b812b8d836"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ClickHouseWriter.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ClickHouseWriter.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ClickHouseWriter.java",
+      "storageTransform": "none",
+      "bytes": 5259,
+      "sha256": "a2b9465297e38507d9e2ff28818091c919adb3287f445c2ceecdec3b6902fc0d"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerMain.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerMain.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerMain.java",
+      "storageTransform": "none",
+      "bytes": 7479,
+      "sha256": "dc94ee7c0750eaf2c8ad7657d53dfaa6b7ecfb4b08ead68ef7a034ab42ab41e2"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerModels.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerModels.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerModels.java",
+      "storageTransform": "none",
+      "bytes": 908,
+      "sha256": "680429ff101f9108fcc066b7dd18b8f5113c1eccc8c90262c2131a253086bd0e"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EmfTelemetry.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EmfTelemetry.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EmfTelemetry.java",
+      "storageTransform": "none",
+      "bytes": 8122,
+      "sha256": "68ef2eb31da4edaadca387a7a52618cfe2f40e096f35f375060c5d753e0c3d66"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EventTransformer.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EventTransformer.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EventTransformer.java",
+      "storageTransform": "none",
+      "bytes": 10251,
+      "sha256": "834bbc5018f90042c7ebcf78bfd658312664a8146be9547c544bac98d9c17a48"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/KclSchedulerFactory.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/KclSchedulerFactory.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/KclSchedulerFactory.java",
+      "storageTransform": "none",
+      "bytes": 5891,
+      "sha256": "ebad27212151cc730a3bf14e88776661e53b23c43dacc68bf995dd7ff12d5326"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/LoopAdRecordProcessor.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/LoopAdRecordProcessor.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/LoopAdRecordProcessor.java",
+      "storageTransform": "none",
+      "bytes": 6585,
+      "sha256": "3d4483402cff86538aa5987bda2364e88299f1a2a8e55cc638615cc882466c91"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/MemoryGateMain.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/MemoryGateMain.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/MemoryGateMain.java",
+      "storageTransform": "none",
+      "bytes": 9147,
+      "sha256": "8c21ae0f20723ece60a12f86c88d3617e377f0ad265b7e9038aa7a567c43c55b"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/RuntimeConfig.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/RuntimeConfig.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/RuntimeConfig.java",
+      "storageTransform": "none",
+      "bytes": 7795,
+      "sha256": "31ba39ad079d8ee0779c90bfcfac8ac85e50079fc9a9126feb05c98b4fdb3c39"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/S3FailureArchiver.java",
+      "storedPath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/S3FailureArchiver.java",
+      "restorePath": "phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/S3FailureArchiver.java",
+      "storageTransform": "none",
+      "bytes": 3818,
+      "sha256": "2d861a116fe757281af50dd2cb34f0e84c35ae39449838c75190432e5498666b"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/BatchProcessorTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/BatchProcessorTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/BatchProcessorTest.java",
+      "storageTransform": "none",
+      "bytes": 4154,
+      "sha256": "fe2411393a5521a6a52333aeb09705bf3377ad5b0e38d1cc9b24cb9ad3686fe2"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ClickHouseWriterTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ClickHouseWriterTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ClickHouseWriterTest.java",
+      "storageTransform": "none",
+      "bytes": 1906,
+      "sha256": "cfb2df1d55b8aeaa50c3fa1b603456fd53e3eac9e0e6f125b2bc26ffabdffaab"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ConsumerFixtures.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ConsumerFixtures.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ConsumerFixtures.java",
+      "storageTransform": "none",
+      "bytes": 1769,
+      "sha256": "49ce9facee13342d182ba44eeddbf8d9e5994f29afe9bb1cc81a385a16d7c52e"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/EventTransformerTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/EventTransformerTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/EventTransformerTest.java",
+      "storageTransform": "none",
+      "bytes": 1878,
+      "sha256": "54aa30addc0c5bbdd667a67baa99269bedd008f7e650786f5546c782a723efcc"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/KclSchedulerFactoryTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/KclSchedulerFactoryTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/KclSchedulerFactoryTest.java",
+      "storageTransform": "none",
+      "bytes": 4949,
+      "sha256": "b0679ec4f1eae34fc682c005a007992e75caadcf7561f2d9bc54a87988b30678"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/LoopAdRecordProcessorTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/LoopAdRecordProcessorTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/LoopAdRecordProcessorTest.java",
+      "storageTransform": "none",
+      "bytes": 3432,
+      "sha256": "042a6377ee10d60416803ee7bfeeb5593332fc40ea9f21b70de3b48bb8ef8ea4"
+    },
+    {
+      "originalPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/RuntimeConfigTest.java",
+      "storedPath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/RuntimeConfigTest.java",
+      "restorePath": "phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/RuntimeConfigTest.java",
+      "storageTransform": "none",
+      "bytes": 4245,
+      "sha256": "5aae5b2e798217d92b6524cf5cae69d0de88dbe3c74f15aa6e879ca599013652"
+    },
+    {
+      "originalPath": "phase4-clickhouse/cost_model.py",
+      "storedPath": "phase4-clickhouse/cost_model.py",
+      "restorePath": "phase4-clickhouse/cost_model.py",
+      "storageTransform": "none",
+      "bytes": 9717,
+      "sha256": "d98c83df46571b6745c6edf9b43ad4579d3105ee990f5eeffe15644074037e70"
+    },
+    {
+      "originalPath": "phase4-clickhouse/cost_model_ecs.py",
+      "storedPath": "phase4-clickhouse/cost_model_ecs.py",
+      "restorePath": "phase4-clickhouse/cost_model_ecs.py",
+      "storageTransform": "none",
+      "bytes": 15349,
+      "sha256": "825c77f422f6bb2e4819b3f17e9fcd9d286cc902aa7be428158f772ad4152853"
+    },
+    {
+      "originalPath": "phase4-clickhouse/docker-compose.yml",
+      "storedPath": "phase4-clickhouse/docker-compose.yml",
+      "restorePath": "phase4-clickhouse/docker-compose.yml",
+      "storageTransform": "none",
+      "bytes": 1768,
+      "sha256": "a99e77df82cc927e5779a585959e3392ed59e2e37bf3d2c83fbd28ab96057e1f"
+    },
+    {
+      "originalPath": "phase4-clickhouse/ecs-exec-plan.md",
+      "storedPath": "phase4-clickhouse/ecs-exec-plan.md",
+      "restorePath": "phase4-clickhouse/ecs-exec-plan.md",
+      "storageTransform": "none",
+      "bytes": 17332,
+      "sha256": "f64540b2e8e7033bccc1872574ccb1feb16f873b8e5cea97bd34cba41b70b750"
+    },
+    {
+      "originalPath": "phase4-clickhouse/ecs_run_support.py",
+      "storedPath": "phase4-clickhouse/ecs_run_support.py",
+      "restorePath": "phase4-clickhouse/ecs_run_support.py",
+      "storageTransform": "none",
+      "bytes": 18842,
+      "sha256": "4739ce540051ab35dc84764570d740784dbf1a78b4ec00b32ca6ad746c2fa296"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evaluate_full_load_ecs.py",
+      "storedPath": "phase4-clickhouse/evaluate_full_load_ecs.py",
+      "restorePath": "phase4-clickhouse/evaluate_full_load_ecs.py",
+      "storageTransform": "none",
+      "bytes": 30338,
+      "sha256": "af6c6105c23629ef6eaccd17439e8112c822e85027490e1a9fee63aba7ee27fb"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/archive.json",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/archive.json",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/archive.json",
+      "storageTransform": "none",
+      "bytes": 1445,
+      "sha256": "4aa3fe65096456300850d8f34c83c9d24196e3b4a6920941698aaad449c95350"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/async-flush.json",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/async-flush.json",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/async-flush.json",
+      "storageTransform": "none",
+      "bytes": 1766,
+      "sha256": "d0cf8ccf240542531aac89e79f54a9c7ea3c37dc59f64c551c9b6f517dc1711c"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/cleanup.json",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/cleanup.json",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/cleanup.json",
+      "storageTransform": "none",
+      "bytes": 159,
+      "sha256": "ba7e3ea968aca3584e171ceb43edc8a262474de772c5ec926af8e88dcade4cf7"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/correctness.json",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/correctness.json",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/correctness.json",
+      "storageTransform": "none",
+      "bytes": 1442,
+      "sha256": "eb8ef30675015e82979c3d1f1705ada3f3cb2fe3d92b1408edd9fcb46341ddd8"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/failures.md",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/failures.md",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/failures.md",
+      "storageTransform": "none",
+      "bytes": 1474,
+      "sha256": "2a0cb6af6a50cd69ab3f5465b75cf4b432c05d21245e1f45728ddbb8a89cbefa"
+    },
+    {
+      "originalPath": "phase4-clickhouse/evidence/local-20260716/iam-autopilot.json",
+      "storedPath": "phase4-clickhouse/evidence/local-20260716/iam-autopilot.json",
+      "restorePath": "phase4-clickhouse/evidence/local-20260716/iam-autopilot.json",
+      "storageTransform": "none",
+      "bytes": 797,
+      "sha256": "d027c6f89b000461afdca3a21e6954f4aeebbc6be35aa8f323e32d20f1ec32d0"
+    },
+    {
+      "originalPath": "phase4-clickhouse/exec-plan.md",
+      "storedPath": "phase4-clickhouse/exec-plan.md",
+      "restorePath": "phase4-clickhouse/exec-plan.md",
+      "storageTransform": "none",
+      "bytes": 22945,
+      "sha256": "fde93775ee58f9202eb9b999309a2f59032660d4355ef154bc5da88431c43bab"
+    },
+    {
+      "originalPath": "phase4-clickhouse/java-memory-gate-result.json",
+      "storedPath": "phase4-clickhouse/java-memory-gate-result.json",
+      "restorePath": "phase4-clickhouse/java-memory-gate-result.json",
+      "storageTransform": "none",
+      "bytes": 725,
+      "sha256": "31032a93fdeff3807adf1a0dafeb1fd5330b9b7ddc83e23a9378069f3d95838a"
+    },
+    {
+      "originalPath": "phase4-clickhouse/local-handler-harness.ts",
+      "storedPath": "phase4-clickhouse/local-handler-harness.ts.reference",
+      "restorePath": "phase4-clickhouse/local-handler-harness.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5816,
+      "sha256": "08713ebbd773a004ee2c770d6c26ac54f9a825a6526e5e95b0469ef081dadae8"
+    },
+    {
+      "originalPath": "phase4-clickhouse/local_integration.py",
+      "storedPath": "phase4-clickhouse/local_integration.py",
+      "restorePath": "phase4-clickhouse/local_integration.py",
+      "storageTransform": "none",
+      "bytes": 33282,
+      "sha256": "d5d7eec4e6574a0a27ead917d2466278ba85eb8a626b06fac59c616661110df1"
+    },
+    {
+      "originalPath": "phase4-clickhouse/lookup_prices.mjs",
+      "storedPath": "phase4-clickhouse/lookup_prices.mjs.reference",
+      "restorePath": "phase4-clickhouse/lookup_prices.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5449,
+      "sha256": "e7be8d04cc4251b5e7ea422b67546c8645aea9c8f908e4d90ff3f05ddc103f9a"
+    },
+    {
+      "originalPath": "phase4-clickhouse/lookup_prices_ecs.mjs",
+      "storedPath": "phase4-clickhouse/lookup_prices_ecs.mjs.reference",
+      "restorePath": "phase4-clickhouse/lookup_prices_ecs.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6893,
+      "sha256": "56974e359392056333111b856d29d28e8f52246feffe59e33808991b1e45fe1c"
+    },
+    {
+      "originalPath": "phase4-clickhouse/preflight.py",
+      "storedPath": "phase4-clickhouse/preflight.py",
+      "restorePath": "phase4-clickhouse/preflight.py",
+      "storageTransform": "none",
+      "bytes": 20113,
+      "sha256": "538b1c372d8d338d55a186956eced4fbe4c87c07987f6fe2b7ff3a1f258dec8e"
+    },
+    {
+      "originalPath": "phase4-clickhouse/preflight_ecs.py",
+      "storedPath": "phase4-clickhouse/preflight_ecs.py",
+      "restorePath": "phase4-clickhouse/preflight_ecs.py",
+      "storageTransform": "none",
+      "bytes": 30513,
+      "sha256": "3db64cf9697d9178de01b88657c591472a912866c310f89bf18c3b4c2c8cc000"
+    },
+    {
+      "originalPath": "phase4-clickhouse/prepare_cleanup_ecs.py",
+      "storedPath": "phase4-clickhouse/prepare_cleanup_ecs.py",
+      "restorePath": "phase4-clickhouse/prepare_cleanup_ecs.py",
+      "storageTransform": "none",
+      "bytes": 8791,
+      "sha256": "6f4fb41e80287ceabe9e2e508c0f11c3066a453b9a7ecb8991a55cac15168bf8"
+    },
+    {
+      "originalPath": "phase4-clickhouse/prepare_producer_ecs.py",
+      "storedPath": "phase4-clickhouse/prepare_producer_ecs.py",
+      "restorePath": "phase4-clickhouse/prepare_producer_ecs.py",
+      "storageTransform": "none",
+      "bytes": 7201,
+      "sha256": "3bb3e65028c347fe8cbc6b33edfa331bd489801a433f10104eb99d7ccc8598d8"
+    },
+    {
+      "originalPath": "phase4-clickhouse/producer-env/pyproject.toml",
+      "storedPath": "phase4-clickhouse/producer-env/pyproject.toml",
+      "restorePath": "phase4-clickhouse/producer-env/pyproject.toml",
+      "storageTransform": "none",
+      "bytes": 321,
+      "sha256": "b006c6f45c23eda97cae85e29074e4bc53714b9e4ff834e4f94ad877f317a91b"
+    },
+    {
+      "originalPath": "phase4-clickhouse/run-java-memory-gate.sh",
+      "storedPath": "phase4-clickhouse/run-java-memory-gate.sh",
+      "restorePath": "phase4-clickhouse/run-java-memory-gate.sh",
+      "storageTransform": "none",
+      "bytes": 790,
+      "sha256": "762acf7f96c6a1f0be0a6de2e03f0d4a7b94c2577674ad0c4c19a22cc6dde4aa"
+    },
+    {
+      "originalPath": "phase4-clickhouse/run_full_load_ecs.py",
+      "storedPath": "phase4-clickhouse/run_full_load_ecs.py",
+      "restorePath": "phase4-clickhouse/run_full_load_ecs.py",
+      "storageTransform": "none",
+      "bytes": 21087,
+      "sha256": "b0e589527d5ac7284b397452cf71f917e49720fbbf0b2589f803f33342647bcf"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/performance_tests_import.py",
+      "storedPath": "phase4-clickhouse/tests/performance_tests_import.py",
+      "restorePath": "phase4-clickhouse/tests/performance_tests_import.py",
+      "storageTransform": "none",
+      "bytes": 595,
+      "sha256": "f92db1a46403277d46bf20d75ec700094d72b8f4e1e1f1fba8fe04478810101e"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_cleanup_inventory.py",
+      "storedPath": "phase4-clickhouse/tests/test_cleanup_inventory.py",
+      "restorePath": "phase4-clickhouse/tests/test_cleanup_inventory.py",
+      "storageTransform": "none",
+      "bytes": 1049,
+      "sha256": "2ec91dfe76853b056e10cf9f6c030aaa0e9532eb72cd76e7c0ea9ed2b3dd32e4"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_cleanup_inventory_ecs.py",
+      "storedPath": "phase4-clickhouse/tests/test_cleanup_inventory_ecs.py",
+      "restorePath": "phase4-clickhouse/tests/test_cleanup_inventory_ecs.py",
+      "storageTransform": "none",
+      "bytes": 3433,
+      "sha256": "0f1638eb748ce5a3a6b0113e410821a3bf0e10254be6057f1504089d610b430c"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_cost_model.py",
+      "storedPath": "phase4-clickhouse/tests/test_cost_model.py",
+      "restorePath": "phase4-clickhouse/tests/test_cost_model.py",
+      "storageTransform": "none",
+      "bytes": 2834,
+      "sha256": "43a1b350f7e0c8259b693e119f50890bd84b6c852a4547d70392b719e6fbb9cb"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_cost_model_ecs.py",
+      "storedPath": "phase4-clickhouse/tests/test_cost_model_ecs.py",
+      "restorePath": "phase4-clickhouse/tests/test_cost_model_ecs.py",
+      "storageTransform": "none",
+      "bytes": 3912,
+      "sha256": "552bc9990af7d2c98f5cec59ae4e957b67551d247112693800e92017f5f2852b"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_ecs_run_support.py",
+      "storedPath": "phase4-clickhouse/tests/test_ecs_run_support.py",
+      "restorePath": "phase4-clickhouse/tests/test_ecs_run_support.py",
+      "storageTransform": "none",
+      "bytes": 5429,
+      "sha256": "acbfd0ba376743ab1688eb12feefbfc5b027c6f3fa807191e19c33c18130886d"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_evaluate_archive_ecs.py",
+      "storedPath": "phase4-clickhouse/tests/test_evaluate_archive_ecs.py",
+      "restorePath": "phase4-clickhouse/tests/test_evaluate_archive_ecs.py",
+      "storageTransform": "none",
+      "bytes": 6412,
+      "sha256": "d0982d1e4ba876e6299a08427d9d5e52d69a5430d8beb39758534257a7761745"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_local_integration.py",
+      "storedPath": "phase4-clickhouse/tests/test_local_integration.py",
+      "restorePath": "phase4-clickhouse/tests/test_local_integration.py",
+      "storageTransform": "none",
+      "bytes": 1522,
+      "sha256": "4e19a0a88197d4ce9acb6090da02369c6105dae5a67c6f278c285bacdb66eb94"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_preflight.py",
+      "storedPath": "phase4-clickhouse/tests/test_preflight.py",
+      "restorePath": "phase4-clickhouse/tests/test_preflight.py",
+      "storageTransform": "none",
+      "bytes": 1797,
+      "sha256": "a45c92278c3cb8fca2ef7b69f6403317e456f635f0cd012fab54de56a4caf6a3"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_preflight_ecs.py",
+      "storedPath": "phase4-clickhouse/tests/test_preflight_ecs.py",
+      "restorePath": "phase4-clickhouse/tests/test_preflight_ecs.py",
+      "storageTransform": "none",
+      "bytes": 3592,
+      "sha256": "57d0bedc4c8fd28c6b11492e64a5b35d2d696b1c312da25c891e513f5b185fc6"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_producer_ecs.py",
+      "storedPath": "phase4-clickhouse/tests/test_producer_ecs.py",
+      "restorePath": "phase4-clickhouse/tests/test_producer_ecs.py",
+      "storageTransform": "none",
+      "bytes": 4156,
+      "sha256": "45f6721ab6ce50c1511cad72029cbf4c36436bd48a890e1187317851599d89ae"
+    },
+    {
+      "originalPath": "phase4-clickhouse/tests/test_verify_producer_contract.py",
+      "storedPath": "phase4-clickhouse/tests/test_verify_producer_contract.py",
+      "restorePath": "phase4-clickhouse/tests/test_verify_producer_contract.py",
+      "storageTransform": "none",
+      "bytes": 787,
+      "sha256": "c5d09dc509e11b15d33d0d38b13bdfe1894e669f67faa40f03879b812da66f21"
+    },
+    {
+      "originalPath": "phase4-clickhouse/verify_ecs_recovery.py",
+      "storedPath": "phase4-clickhouse/verify_ecs_recovery.py",
+      "restorePath": "phase4-clickhouse/verify_ecs_recovery.py",
+      "storageTransform": "none",
+      "bytes": 9148,
+      "sha256": "c7872f3546b29daf0100b336ed3c9ea3fc015e03b2251e5cc8af2510bbb6d3e1"
+    },
+    {
+      "originalPath": "phase4-clickhouse/verify_producer_contract.py",
+      "storedPath": "phase4-clickhouse/verify_producer_contract.py",
+      "restorePath": "phase4-clickhouse/verify_producer_contract.py",
+      "storageTransform": "none",
+      "bytes": 4956,
+      "sha256": "154643387e07664191f2505b74b74750babea5c3b43bff561ac0c4cafd9bcaa3"
+    },
+    {
+      "originalPath": "phase6-archive/README.md",
+      "storedPath": "phase6-archive/README.md",
+      "restorePath": "phase6-archive/README.md",
+      "storageTransform": "none",
+      "bytes": 6486,
+      "sha256": "55865ad33b9dfcdb4dd51c65d044eeca57f4e84c58bcab4f1fbb17ddf7b953f3"
+    },
+    {
+      "originalPath": "phase6-archive/archive.py",
+      "storedPath": "phase6-archive/archive.py",
+      "restorePath": "phase6-archive/archive.py",
+      "storageTransform": "none",
+      "bytes": 41568,
+      "sha256": "8de29e6a7d7a4f7124b77ae376715c0cf06ad5e825b25791ebf8597f525c6b0a"
+    },
+    {
+      "originalPath": "phase6-archive/cleanup_inventory.py",
+      "storedPath": "phase6-archive/cleanup_inventory.py",
+      "restorePath": "phase6-archive/cleanup_inventory.py",
+      "storageTransform": "none",
+      "bytes": 1621,
+      "sha256": "796aaf5baff55ab77f9af3cf81eec499be56ef25d2830d529ee1346d8dbe6379"
+    },
+    {
+      "originalPath": "phase6-archive/clickhouse-config/memory.xml",
+      "storedPath": "phase6-archive/clickhouse-config/memory.xml",
+      "restorePath": "phase6-archive/clickhouse-config/memory.xml",
+      "storageTransform": "none",
+      "bytes": 250,
+      "sha256": "51677891063946f2ec4f676f7800aa6d4886e493d63911a7e192462be2efe848"
+    },
+    {
+      "originalPath": "phase6-archive/cost_model.py",
+      "storedPath": "phase6-archive/cost_model.py",
+      "restorePath": "phase6-archive/cost_model.py",
+      "storageTransform": "none",
+      "bytes": 3078,
+      "sha256": "363ad689d5045b1b9f505232e652762f6d96365fe2a0093a766faf10cf11e315"
+    },
+    {
+      "originalPath": "phase6-archive/docker-compose.yml",
+      "storedPath": "phase6-archive/docker-compose.yml",
+      "restorePath": "phase6-archive/docker-compose.yml",
+      "storageTransform": "none",
+      "bytes": 1946,
+      "sha256": "f646687a892685e42d252121882328f2f756c84d53a05618412ecf79150dae1d"
+    },
+    {
+      "originalPath": "phase6-archive/exec-plan.md",
+      "storedPath": "phase6-archive/exec-plan.md",
+      "restorePath": "phase6-archive/exec-plan.md",
+      "storageTransform": "none",
+      "bytes": 9848,
+      "sha256": "871cca48bd88fc8c1eb5f90767a8c0cf2efa47d95d0a90a16cf3898926739c80"
+    },
+    {
+      "originalPath": "phase6-archive/failure_snapshot.py",
+      "storedPath": "phase6-archive/failure_snapshot.py",
+      "restorePath": "phase6-archive/failure_snapshot.py",
+      "storageTransform": "none",
+      "bytes": 2353,
+      "sha256": "3dceef06b5d6bedd8686c87db6ab92d6db01bb90b4d337fc154e30ccfdfee65c"
+    },
+    {
+      "originalPath": "phase6-archive/finalize_local.py",
+      "storedPath": "phase6-archive/finalize_local.py",
+      "restorePath": "phase6-archive/finalize_local.py",
+      "storageTransform": "none",
+      "bytes": 4424,
+      "sha256": "6ae626a199ab76eb62935d263b5193a1b1de4b83c45be03bc99bdbaa62eee2a4"
+    },
+    {
+      "originalPath": "phase6-archive/integration_runner.py",
+      "storedPath": "phase6-archive/integration_runner.py",
+      "restorePath": "phase6-archive/integration_runner.py",
+      "storageTransform": "none",
+      "bytes": 19385,
+      "sha256": "6dfcbb00cba5340c0178a4a03f896606a4e05e106c6830c94ec15035cbc86b71"
+    },
+    {
+      "originalPath": "phase6-archive/local_gate.py",
+      "storedPath": "phase6-archive/local_gate.py",
+      "restorePath": "phase6-archive/local_gate.py",
+      "storageTransform": "none",
+      "bytes": 11331,
+      "sha256": "7e5f2159dd65024905658a591e7ac4a8811b9a955328e112c42c350da6095427"
+    },
+    {
+      "originalPath": "phase6-archive/preflight.py",
+      "storedPath": "phase6-archive/preflight.py",
+      "restorePath": "phase6-archive/preflight.py",
+      "storageTransform": "none",
+      "bytes": 1558,
+      "sha256": "5e94628b72f5577af580388071f0670c84bb71e3d2e257d3c8aeb4d0b7165107"
+    },
+    {
+      "originalPath": "phase6-archive/price-fixtures/ap-northeast-2-20260716.json",
+      "storedPath": "phase6-archive/price-fixtures/ap-northeast-2-20260716.json",
+      "restorePath": "phase6-archive/price-fixtures/ap-northeast-2-20260716.json",
+      "storageTransform": "none",
+      "bytes": 518,
+      "sha256": "e5f1d49273df6dd1043635ef54d3041a501447fae4f68f7561bafa855c8fe139"
+    },
+    {
+      "originalPath": "phase6-archive/retry_full_scale.py",
+      "storedPath": "phase6-archive/retry_full_scale.py",
+      "restorePath": "phase6-archive/retry_full_scale.py",
+      "storageTransform": "none",
+      "bytes": 5772,
+      "sha256": "1a5218992f6c4b6d4f9a108ab1d0bd075731baa6c0f9b4af151b180a2eb1db80"
+    },
+    {
+      "originalPath": "phase6-archive/seed_partition.py",
+      "storedPath": "phase6-archive/seed_partition.py",
+      "restorePath": "phase6-archive/seed_partition.py",
+      "storageTransform": "none",
+      "bytes": 6251,
+      "sha256": "2ccf3e858647b5153b39c374ea8be364c474120d750fe454220bccacf0602b99"
+    },
+    {
+      "originalPath": "phase6-archive/static_evidence.py",
+      "storedPath": "phase6-archive/static_evidence.py",
+      "restorePath": "phase6-archive/static_evidence.py",
+      "storageTransform": "none",
+      "bytes": 11207,
+      "sha256": "8577b5b608f0c6280d1c6257ab7239e200b00bf2c4c8e62e410800086e555c2b"
+    },
+    {
+      "originalPath": "phase6-archive/synth.ts",
+      "storedPath": "phase6-archive/synth.ts.reference",
+      "restorePath": "phase6-archive/synth.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 577,
+      "sha256": "403f8897e69de3706a72ad7287d2466813ce621431e39aed6501f00d3cccfadb"
+    },
+    {
+      "originalPath": "phase6-archive/tests/__init__.py",
+      "storedPath": "phase6-archive/tests/__init__.py",
+      "restorePath": "phase6-archive/tests/__init__.py",
+      "storageTransform": "none",
+      "bytes": 32,
+      "sha256": "19e19b63246e63daae0836561ac76d6024f3447f563c36bbddb3e7d36ea8f2a0"
+    },
+    {
+      "originalPath": "phase6-archive/tests/bootstrap_runtime.sh",
+      "storedPath": "phase6-archive/tests/bootstrap_runtime.sh",
+      "restorePath": "phase6-archive/tests/bootstrap_runtime.sh",
+      "storageTransform": "none",
+      "bytes": 1084,
+      "sha256": "db83865aca414eea39aa9f63c166c57d3a964e3215681dd2edd8b129b996b43d"
+    },
+    {
+      "originalPath": "phase6-archive/tests/flock_overlap.sh",
+      "storedPath": "phase6-archive/tests/flock_overlap.sh",
+      "restorePath": "phase6-archive/tests/flock_overlap.sh",
+      "storageTransform": "none",
+      "bytes": 490,
+      "sha256": "4bbb2270366e8ca5a3f5a7092697747106ef3961429537aa694e2c231aa7581f"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_archive.py",
+      "storedPath": "phase6-archive/tests/test_archive.py",
+      "restorePath": "phase6-archive/tests/test_archive.py",
+      "storageTransform": "none",
+      "bytes": 11354,
+      "sha256": "6380c23dddf5b7c03dedaf03fcf292b2e6c5ce1de4df71ec9b9f10088ad6df3c"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_cleanup_inventory.py",
+      "storedPath": "phase6-archive/tests/test_cleanup_inventory.py",
+      "restorePath": "phase6-archive/tests/test_cleanup_inventory.py",
+      "storageTransform": "none",
+      "bytes": 1329,
+      "sha256": "f8da860d403f60338870bf1bbcb62c8e3d10c9cb87d1d431470ba647bc20fc82"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_compose_contract.py",
+      "storedPath": "phase6-archive/tests/test_compose_contract.py",
+      "restorePath": "phase6-archive/tests/test_compose_contract.py",
+      "storageTransform": "none",
+      "bytes": 813,
+      "sha256": "e209c34d5f9914a9c40a904ce0c22abc359be7793b2a1e0d45b715bd975776ae"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_cost_model.py",
+      "storedPath": "phase6-archive/tests/test_cost_model.py",
+      "restorePath": "phase6-archive/tests/test_cost_model.py",
+      "storageTransform": "none",
+      "bytes": 630,
+      "sha256": "3eacb09eb8f130e64ce1154f168f4c9b6f5d01c8699812b6de464006a29071a7"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_integration_runner.py",
+      "storedPath": "phase6-archive/tests/test_integration_runner.py",
+      "restorePath": "phase6-archive/tests/test_integration_runner.py",
+      "storageTransform": "none",
+      "bytes": 2900,
+      "sha256": "1a5c34621ac3bbda89d29de0e4f82c951e273a88b6167662f2f73ebab8aeaaad"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_local_gate.py",
+      "storedPath": "phase6-archive/tests/test_local_gate.py",
+      "restorePath": "phase6-archive/tests/test_local_gate.py",
+      "storageTransform": "none",
+      "bytes": 406,
+      "sha256": "f4499690aefd07b53d320fc6b67110d01edcae426366b9be837c7c6cbcbd4dd2"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_preflight.py",
+      "storedPath": "phase6-archive/tests/test_preflight.py",
+      "restorePath": "phase6-archive/tests/test_preflight.py",
+      "storageTransform": "none",
+      "bytes": 1693,
+      "sha256": "e2dc2e8b783ba04df517e4c5daecfe9254c6efedf044e10eaf24ffe1bc5c7ca8"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_seed_partition.py",
+      "storedPath": "phase6-archive/tests/test_seed_partition.py",
+      "restorePath": "phase6-archive/tests/test_seed_partition.py",
+      "storageTransform": "none",
+      "bytes": 1989,
+      "sha256": "2216d73b9b46330bbfa5e145afb026c4f14d8e0a69e23c3ac09c00c8d9838ff0"
+    },
+    {
+      "originalPath": "phase6-archive/tests/test_systemd_contract.py",
+      "storedPath": "phase6-archive/tests/test_systemd_contract.py",
+      "restorePath": "phase6-archive/tests/test_systemd_contract.py",
+      "storageTransform": "none",
+      "bytes": 854,
+      "sha256": "ccba3a95826aa68efa10426fe7f95edca638e87355fe68eb0989dd800875f963"
+    },
+    {
+      "originalPath": "phase7-integration/README.md",
+      "storedPath": "phase7-integration/README.md",
+      "restorePath": "phase7-integration/README.md",
+      "storageTransform": "none",
+      "bytes": 8737,
+      "sha256": "df26017a408b769bd249a1bd8b1869613069a7683fc6b6f5b9b704ad819c86f4"
+    },
+    {
+      "originalPath": "phase7-integration/archive/entrypoint.py",
+      "storedPath": "phase7-integration/archive/entrypoint.py",
+      "restorePath": "phase7-integration/archive/entrypoint.py",
+      "storageTransform": "none",
+      "bytes": 5144,
+      "sha256": "994c237e8ee950d099a9baaf27e0d7707e599171b38877646b686450f39ab000"
+    },
+    {
+      "originalPath": "phase7-integration/archive/schema_sidecar.py",
+      "storedPath": "phase7-integration/archive/schema_sidecar.py",
+      "restorePath": "phase7-integration/archive/schema_sidecar.py",
+      "storageTransform": "none",
+      "bytes": 1626,
+      "sha256": "8db86287e4cec26d7f1a39e5cccecc506503c21aa014f7ee29ed7b24b10ac566"
+    },
+    {
+      "originalPath": "phase7-integration/archive/targeted_seed.py",
+      "storedPath": "phase7-integration/archive/targeted_seed.py",
+      "restorePath": "phase7-integration/archive/targeted_seed.py",
+      "storageTransform": "none",
+      "bytes": 5176,
+      "sha256": "976ee5c75658bfc6fe6cc27011cd522746bf0684d78213f1d3a70b502a06b4b3"
+    },
+    {
+      "originalPath": "phase7-integration/aws/README.md",
+      "storedPath": "phase7-integration/aws/README.md",
+      "restorePath": "phase7-integration/aws/README.md",
+      "storageTransform": "none",
+      "bytes": 6428,
+      "sha256": "e59218c7d5661ff8bb37e3fa9728457087dcc1b973470980a83ccc4241ab7c08"
+    },
+    {
+      "originalPath": "phase7-integration/aws/archive_diagnostic_app.ts",
+      "storedPath": "phase7-integration/aws/archive_diagnostic_app.ts.reference",
+      "restorePath": "phase7-integration/aws/archive_diagnostic_app.ts",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 673,
+      "sha256": "2812787dfe3fa83e61ef08260e9133fbd41a41a7055285586a1017f8ac0cfe59"
+    },
+    {
+      "originalPath": "phase7-integration/aws/build_full_stack_scoped_source.py",
+      "storedPath": "phase7-integration/aws/build_full_stack_scoped_source.py",
+      "restorePath": "phase7-integration/aws/build_full_stack_scoped_source.py",
+      "storageTransform": "none",
+      "bytes": 16128,
+      "sha256": "0d227b48b6193a21a4ec2e43c009037c553f23321775e65324da5b6af7c0f3e2"
+    },
+    {
+      "originalPath": "phase7-integration/aws/build_phase8_composite_handoff.py",
+      "storedPath": "phase7-integration/aws/build_phase8_composite_handoff.py",
+      "restorePath": "phase7-integration/aws/build_phase8_composite_handoff.py",
+      "storageTransform": "none",
+      "bytes": 20298,
+      "sha256": "b0894ec27d1250032e4d5eebdec75dc865280451cc604d7ca8aff1772490bebe"
+    },
+    {
+      "originalPath": "phase7-integration/aws/build_run_commands.py",
+      "storedPath": "phase7-integration/aws/build_run_commands.py",
+      "restorePath": "phase7-integration/aws/build_run_commands.py",
+      "storageTransform": "none",
+      "bytes": 7402,
+      "sha256": "fb57a89a94312032a46e6238c4a2003706f9e9424c2c75de4c5ab84ba4457eb1"
+    },
+    {
+      "originalPath": "phase7-integration/aws/cleanup.py",
+      "storedPath": "phase7-integration/aws/cleanup.py",
+      "restorePath": "phase7-integration/aws/cleanup.py",
+      "storageTransform": "none",
+      "bytes": 73633,
+      "sha256": "2782a71d16652b5d7cdb5c9c0a0a982da5cf1b20b1fa01ba419e6ec0c1e77e1c"
+    },
+    {
+      "originalPath": "phase7-integration/aws/common.py",
+      "storedPath": "phase7-integration/aws/common.py",
+      "restorePath": "phase7-integration/aws/common.py",
+      "storageTransform": "none",
+      "bytes": 16980,
+      "sha256": "4e30689116c8451162362416c4d92f3f45dfdc8b7146e7d34e26964e7151eba8"
+    },
+    {
+      "originalPath": "phase7-integration/aws/cost_model.py",
+      "storedPath": "phase7-integration/aws/cost_model.py",
+      "restorePath": "phase7-integration/aws/cost_model.py",
+      "storageTransform": "none",
+      "bytes": 9972,
+      "sha256": "7bcfffc3a2c5d528b7708d67ac3393d9629e039521d48e7e2c261749b5b5d9bb"
+    },
+    {
+      "originalPath": "phase7-integration/aws/diagnostic_payload_pool.mjs",
+      "storedPath": "phase7-integration/aws/diagnostic_payload_pool.mjs.reference",
+      "restorePath": "phase7-integration/aws/diagnostic_payload_pool.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8258,
+      "sha256": "9e63d68af530610a73b83ffa9e98c4083919fb0fc2618492785e9e66cec414e1"
+    },
+    {
+      "originalPath": "phase7-integration/aws/evaluator.py",
+      "storedPath": "phase7-integration/aws/evaluator.py",
+      "restorePath": "phase7-integration/aws/evaluator.py",
+      "storageTransform": "none",
+      "bytes": 11068,
+      "sha256": "2d2679036b6c548249cc26b0ffd6d0fb1b729ad6688c63242be9833f425602b8"
+    },
+    {
+      "originalPath": "phase7-integration/aws/evidence_assembler.py",
+      "storedPath": "phase7-integration/aws/evidence_assembler.py",
+      "restorePath": "phase7-integration/aws/evidence_assembler.py",
+      "storageTransform": "none",
+      "bytes": 86499,
+      "sha256": "ea6037473ee9098cfb10f137a7219b931ad4c95c0ed1030d6a913cd4fcffcb61"
+    },
+    {
+      "originalPath": "phase7-integration/aws/final_evaluate.py",
+      "storedPath": "phase7-integration/aws/final_evaluate.py",
+      "restorePath": "phase7-integration/aws/final_evaluate.py",
+      "storageTransform": "none",
+      "bytes": 5924,
+      "sha256": "9fb82ce9da1b50b52362e7f6e05298da7b1f23de426a8ffc7f4612913269e4d2"
+    },
+    {
+      "originalPath": "phase7-integration/aws/full_stack_scoped_archive.py",
+      "storedPath": "phase7-integration/aws/full_stack_scoped_archive.py",
+      "restorePath": "phase7-integration/aws/full_stack_scoped_archive.py",
+      "storageTransform": "none",
+      "bytes": 98510,
+      "sha256": "ebbabe69dbece75d9c9b638d16dbc0991c57d0076d9fd609ea7dc01c342e7feb"
+    },
+    {
+      "originalPath": "phase7-integration/aws/full_stack_scoped_cost_model.py",
+      "storedPath": "phase7-integration/aws/full_stack_scoped_cost_model.py",
+      "restorePath": "phase7-integration/aws/full_stack_scoped_cost_model.py",
+      "storageTransform": "none",
+      "bytes": 21145,
+      "sha256": "03975c963a687f30e20494789a88658b2454f99dc956dba7272e75919825a36f"
+    },
+    {
+      "originalPath": "phase7-integration/aws/image_prep.py",
+      "storedPath": "phase7-integration/aws/image_prep.py",
+      "restorePath": "phase7-integration/aws/image_prep.py",
+      "storageTransform": "none",
+      "bytes": 29342,
+      "sha256": "a4f99ce1de00a53739d6bc198fc17c933a4e7c22bac64358eae9b0e1cfee80e3"
+    },
+    {
+      "originalPath": "phase7-integration/aws/lookup-prices.mjs",
+      "storedPath": "phase7-integration/aws/lookup-prices.mjs.reference",
+      "restorePath": "phase7-integration/aws/lookup-prices.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 6473,
+      "sha256": "cb08e1e45da39c18ee0992290e3666b5d604af29689fca2577c239ce3ae8e724"
+    },
+    {
+      "originalPath": "phase7-integration/aws/lookup-targeted-archive-prices.mjs",
+      "storedPath": "phase7-integration/aws/lookup-targeted-archive-prices.mjs.reference",
+      "restorePath": "phase7-integration/aws/lookup-targeted-archive-prices.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4991,
+      "sha256": "f13e9bbb90df61a4909f6352738475bf075d1a6956195b1d403f5719ef0a7080"
+    },
+    {
+      "originalPath": "phase7-integration/aws/phase7_aws_task_orchestration.mjs",
+      "storedPath": "phase7-integration/aws/phase7_aws_task_orchestration.mjs.reference",
+      "restorePath": "phase7-integration/aws/phase7_aws_task_orchestration.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 38006,
+      "sha256": "a0b577cc00f73556ec399eff68c9bd785031906e21716ec70153057e7b73ac77"
+    },
+    {
+      "originalPath": "phase7-integration/aws/phase7_diagnostic_contract.mjs",
+      "storedPath": "phase7-integration/aws/phase7_diagnostic_contract.mjs.reference",
+      "restorePath": "phase7-integration/aws/phase7_diagnostic_contract.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 5067,
+      "sha256": "61e92af692e691ee8b322c28008efc03850e855367bbcc559eb13b3dae31942f"
+    },
+    {
+      "originalPath": "phase7-integration/aws/preflight.py",
+      "storedPath": "phase7-integration/aws/preflight.py",
+      "restorePath": "phase7-integration/aws/preflight.py",
+      "storageTransform": "none",
+      "bytes": 26542,
+      "sha256": "b3c2d6d97a58f6cba7d6aa21b7590b66013f88405c50e2f2fa0cdb21132f7c62"
+    },
+    {
+      "originalPath": "phase7-integration/aws/run_chain.py",
+      "storedPath": "phase7-integration/aws/run_chain.py",
+      "restorePath": "phase7-integration/aws/run_chain.py",
+      "storageTransform": "none",
+      "bytes": 8464,
+      "sha256": "6855246045d9ebc74e82b7d190920591848d8a237c8283bdb91c96b89f89d877"
+    },
+    {
+      "originalPath": "phase7-integration/aws/run_diagnostic_oha.mjs",
+      "storedPath": "phase7-integration/aws/run_diagnostic_oha.mjs.reference",
+      "restorePath": "phase7-integration/aws/run_diagnostic_oha.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 20108,
+      "sha256": "a828d622755fc5c8241ca5c7a14165d781ea48090bbc8bf5047e96a0d490fa7c"
+    },
+    {
+      "originalPath": "phase7-integration/aws/runner.py",
+      "storedPath": "phase7-integration/aws/runner.py",
+      "restorePath": "phase7-integration/aws/runner.py",
+      "storageTransform": "none",
+      "bytes": 33496,
+      "sha256": "be27a755ad2162cc72d8de2ab620f37c288c73c9e481f92f5ffd2a1c35990487"
+    },
+    {
+      "originalPath": "phase7-integration/aws/runtime_observability.py",
+      "storedPath": "phase7-integration/aws/runtime_observability.py",
+      "restorePath": "phase7-integration/aws/runtime_observability.py",
+      "storageTransform": "none",
+      "bytes": 36205,
+      "sha256": "a511e0f5f58c42ea9ad59a4d8308af4e1cead873f2218e51d7256ab96fcf655c"
+    },
+    {
+      "originalPath": "phase7-integration/aws/runtime_stages.py",
+      "storedPath": "phase7-integration/aws/runtime_stages.py",
+      "restorePath": "phase7-integration/aws/runtime_stages.py",
+      "storageTransform": "none",
+      "bytes": 95244,
+      "sha256": "fb6f859752c58b1ab0c511a5676a8c40fcd043425b3c9351b686eec6c287e5c8"
+    },
+    {
+      "originalPath": "phase7-integration/aws/seal_full_stack_scoped_attempt.py",
+      "storedPath": "phase7-integration/aws/seal_full_stack_scoped_attempt.py",
+      "restorePath": "phase7-integration/aws/seal_full_stack_scoped_attempt.py",
+      "storageTransform": "none",
+      "bytes": 6998,
+      "sha256": "62616f3320e47baa6654960525be035dd37123065857abe90efa2b33c589d35d"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_cleanup.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_cleanup.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_cleanup.py",
+      "storageTransform": "none",
+      "bytes": 32405,
+      "sha256": "57da40f9d54191789e12aedea211631fe043b11152a751050aad4aa945e288da"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_common.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_common.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_common.py",
+      "storageTransform": "none",
+      "bytes": 9208,
+      "sha256": "60d19bea6087f88d5bc41823c29255e07cd698bc37118fefdf4e473ce203097b"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_cost_model.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_cost_model.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_cost_model.py",
+      "storageTransform": "none",
+      "bytes": 5124,
+      "sha256": "0fff792aab097d0ca923d3452a71e4db34573c0bbbd8085f35a9d7835c4113fe"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_image_prep.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_image_prep.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_image_prep.py",
+      "storageTransform": "none",
+      "bytes": 9048,
+      "sha256": "88ebab213b512447a8fa9b9a236e6e08dff8769bdec3520a87eb2423b24c0957"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_preflight.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_preflight.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_preflight.py",
+      "storageTransform": "none",
+      "bytes": 6219,
+      "sha256": "8b9b721b3d85232a518cbe54fb8c0c142a61e23d277c7e35245d3a1e3bad96ff"
+    },
+    {
+      "originalPath": "phase7-integration/aws/targeted_archive_runtime.py",
+      "storedPath": "phase7-integration/aws/targeted_archive_runtime.py",
+      "restorePath": "phase7-integration/aws/targeted_archive_runtime.py",
+      "storageTransform": "none",
+      "bytes": 48745,
+      "sha256": "6c4d7ae0f2f2c94ec1d2bb34f3ed0e6bbe8d31450c370a5ddbbc625f62fb866c"
+    },
+    {
+      "originalPath": "phase7-integration/aws/validate_template.py",
+      "storedPath": "phase7-integration/aws/validate_template.py",
+      "restorePath": "phase7-integration/aws/validate_template.py",
+      "storageTransform": "none",
+      "bytes": 2285,
+      "sha256": "8db4af4044dfdd0984021b23a77279ba18a1f2e3c5ab057639f7904f8da6c4a4"
+    },
+    {
+      "originalPath": "phase7-integration/cleanup_inventory.py",
+      "storedPath": "phase7-integration/cleanup_inventory.py",
+      "restorePath": "phase7-integration/cleanup_inventory.py",
+      "storageTransform": "none",
+      "bytes": 1851,
+      "sha256": "837712885f045056a0d57e1084872c97fadc8303b5a66f00357975beb912c3db"
+    },
+    {
+      "originalPath": "phase7-integration/clickhouse-config/memory.xml",
+      "storedPath": "phase7-integration/clickhouse-config/memory.xml",
+      "restorePath": "phase7-integration/clickhouse-config/memory.xml",
+      "storageTransform": "none",
+      "bytes": 265,
+      "sha256": "84ded425bcb0b964e763b3d438cd89a94db3074d99a322a4984eb535db11193f"
+    },
+    {
+      "originalPath": "phase7-integration/docker-compose.yml",
+      "storedPath": "phase7-integration/docker-compose.yml",
+      "restorePath": "phase7-integration/docker-compose.yml",
+      "storageTransform": "none",
+      "bytes": 7322,
+      "sha256": "3545ee9b881165f03f2af64ca6182c0b95116243ac44830608cd081491865845"
+    },
+    {
+      "originalPath": "phase7-integration/exec-plan.md",
+      "storedPath": "phase7-integration/exec-plan.md",
+      "restorePath": "phase7-integration/exec-plan.md",
+      "storageTransform": "none",
+      "bytes": 7762,
+      "sha256": "a9a4d50ca9481a125fcd22602ed2974f67ea5d445be54668f0a25be8ca71e77c"
+    },
+    {
+      "originalPath": "phase7-integration/finalize_evidence.py",
+      "storedPath": "phase7-integration/finalize_evidence.py",
+      "restorePath": "phase7-integration/finalize_evidence.py",
+      "storageTransform": "none",
+      "bytes": 11821,
+      "sha256": "60e3640decdb0abb95fa3b9455b1bca84f91dc82ae500d76f495e8f38129e2ab"
+    },
+    {
+      "originalPath": "phase7-integration/local_runner.py",
+      "storedPath": "phase7-integration/local_runner.py",
+      "restorePath": "phase7-integration/local_runner.py",
+      "storageTransform": "none",
+      "bytes": 20970,
+      "sha256": "af092a631f4e0e23598df91ec64f527759de796b79c0717f6f9309740e0e66df"
+    },
+    {
+      "originalPath": "phase7-integration/localstack-init.sh",
+      "storedPath": "phase7-integration/localstack-init.sh",
+      "restorePath": "phase7-integration/localstack-init.sh",
+      "storageTransform": "none",
+      "bytes": 1192,
+      "sha256": "9df689c58a62dd76b5b99850c0f6a3b24f622c45fda9bed8b60a1fffde38879b"
+    },
+    {
+      "originalPath": "phase7-integration/run-local.sh",
+      "storedPath": "phase7-integration/run-local.sh",
+      "restorePath": "phase7-integration/run-local.sh",
+      "storageTransform": "none",
+      "bytes": 3468,
+      "sha256": "df7addbe8ee8b5862947e4ebe0f80bb185c947e6fb59da42c837c8e9f57186fd"
+    },
+    {
+      "originalPath": "phase7-integration/tests/diagnostic_payload_pool.test.mjs",
+      "storedPath": "phase7-integration/tests/diagnostic_payload_pool.test.mjs.reference",
+      "restorePath": "phase7-integration/tests/diagnostic_payload_pool.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 8671,
+      "sha256": "fb836a48c9597aba2f4a6b2d44517a6533ce955439d2a02d893f92921b7dc902"
+    },
+    {
+      "originalPath": "phase7-integration/tests/exact_load_completion.test.mjs",
+      "storedPath": "phase7-integration/tests/exact_load_completion.test.mjs.reference",
+      "restorePath": "phase7-integration/tests/exact_load_completion.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 4183,
+      "sha256": "5b99012ead31f3ee78bd44345afc5213c45b3983ca352eb2ddf942ef6533007b"
+    },
+    {
+      "originalPath": "phase7-integration/tests/phase7_aws_task_orchestration.test.mjs",
+      "storedPath": "phase7-integration/tests/phase7_aws_task_orchestration.test.mjs.reference",
+      "restorePath": "phase7-integration/tests/phase7_aws_task_orchestration.test.mjs",
+      "storageTransform": "remove .reference suffix",
+      "bytes": 24550,
+      "sha256": "d00544d3b3c50679f5f717218de709784fc65fa032f6051d8ef65f7bcc179f0b"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_aws_tooling.py",
+      "storedPath": "phase7-integration/tests/test_aws_tooling.py",
+      "restorePath": "phase7-integration/tests/test_aws_tooling.py",
+      "storageTransform": "none",
+      "bytes": 21249,
+      "sha256": "5362201bba752a426b1d659fe36714196fb4dc3fb1c439c8376ffdf8ed7b481d"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_deployment_verifier.py",
+      "storedPath": "phase7-integration/tests/test_deployment_verifier.py",
+      "restorePath": "phase7-integration/tests/test_deployment_verifier.py",
+      "storageTransform": "none",
+      "bytes": 21659,
+      "sha256": "354848be59b5ae217590c5a78decf02e7faf9cfd8f97e6589e87d78434e6e38e"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_evidence_assembler.py",
+      "storedPath": "phase7-integration/tests/test_evidence_assembler.py",
+      "restorePath": "phase7-integration/tests/test_evidence_assembler.py",
+      "storageTransform": "none",
+      "bytes": 47990,
+      "sha256": "a470cf7764789f5570d7ffa8f0a1a3d61b32a64876d5086a9d225083929dcc46"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_final_evaluate.py",
+      "storedPath": "phase7-integration/tests/test_final_evaluate.py",
+      "restorePath": "phase7-integration/tests/test_final_evaluate.py",
+      "storageTransform": "none",
+      "bytes": 8419,
+      "sha256": "71f3341bedf41705a6582a277f3473d34226b4ac305390614678637b18c3d911"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_finalize_manifest.py",
+      "storedPath": "phase7-integration/tests/test_finalize_manifest.py",
+      "restorePath": "phase7-integration/tests/test_finalize_manifest.py",
+      "storageTransform": "none",
+      "bytes": 2745,
+      "sha256": "64b72d75037623f476f802d119ddf89660f3bbf2642909bfde9e1d37272b6935"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_full_stack_scoped_archive.py",
+      "storedPath": "phase7-integration/tests/test_full_stack_scoped_archive.py",
+      "restorePath": "phase7-integration/tests/test_full_stack_scoped_archive.py",
+      "storageTransform": "none",
+      "bytes": 52424,
+      "sha256": "dce7c4d128b2acc8da96d3d5a9e414910975fa1360676f764de1cf92e28720a9"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_local_runner.py",
+      "storedPath": "phase7-integration/tests/test_local_runner.py",
+      "restorePath": "phase7-integration/tests/test_local_runner.py",
+      "storageTransform": "none",
+      "bytes": 9253,
+      "sha256": "4399ceb9ddb98a5ecf2336f516378cb19bed60733459da3bd6922d68d613ad41"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_phase7_archive_runtime.py",
+      "storedPath": "phase7-integration/tests/test_phase7_archive_runtime.py",
+      "restorePath": "phase7-integration/tests/test_phase7_archive_runtime.py",
+      "storageTransform": "none",
+      "bytes": 14362,
+      "sha256": "37c95f1d41fae7d2798c9b38b6d135c88493b6e2106e5c3ede9506c00f2da30b"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_phase7_cleanup_contract.py",
+      "storedPath": "phase7-integration/tests/test_phase7_cleanup_contract.py",
+      "restorePath": "phase7-integration/tests/test_phase7_cleanup_contract.py",
+      "storageTransform": "none",
+      "bytes": 48983,
+      "sha256": "aacafd7bd584c3e2e0967321fa46029b0b0761db61439544b41e342748e52dcf"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_phase7_initialize_contract.py",
+      "storedPath": "phase7-integration/tests/test_phase7_initialize_contract.py",
+      "restorePath": "phase7-integration/tests/test_phase7_initialize_contract.py",
+      "storageTransform": "none",
+      "bytes": 4026,
+      "sha256": "02976a6c13f728452ef4b3dabd801b365f2f1e0e5fe48f78bc83d6f39383d8e0"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_run_chain.py",
+      "storedPath": "phase7-integration/tests/test_run_chain.py",
+      "restorePath": "phase7-integration/tests/test_run_chain.py",
+      "storageTransform": "none",
+      "bytes": 12276,
+      "sha256": "cd72dd2b4fd2b8b68d2031b76b98813239ddfe4353c266be71b6a72f72846b16"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_run_commands.py",
+      "storedPath": "phase7-integration/tests/test_run_commands.py",
+      "restorePath": "phase7-integration/tests/test_run_commands.py",
+      "storageTransform": "none",
+      "bytes": 5912,
+      "sha256": "66e3bfb4fb4e9bd33d5b11c2e1d1093f0f508cb4f8ea28900d60d6e56eb1bf90"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_runner.py",
+      "storedPath": "phase7-integration/tests/test_runner.py",
+      "restorePath": "phase7-integration/tests/test_runner.py",
+      "storageTransform": "none",
+      "bytes": 20115,
+      "sha256": "7b194bc2167b5ec89a136442af67434780e84b6bbac4c4eff8034e2e665bb75b"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_runtime_observability.py",
+      "storedPath": "phase7-integration/tests/test_runtime_observability.py",
+      "restorePath": "phase7-integration/tests/test_runtime_observability.py",
+      "storageTransform": "none",
+      "bytes": 17702,
+      "sha256": "d43bb3eb886cb5adad01d463e391f9ff5cc307e453e1611afdf0fd0e1221e036"
+    },
+    {
+      "originalPath": "phase7-integration/tests/test_targeted_archive_tooling.py",
+      "storedPath": "phase7-integration/tests/test_targeted_archive_tooling.py",
+      "restorePath": "phase7-integration/tests/test_targeted_archive_tooling.py",
+      "storageTransform": "none",
+      "bytes": 8848,
+      "sha256": "d4ce003eeababa767cc89b2132607d8d0dd84f847a4e6bafb33765d52bfca936"
+    },
+    {
+      "originalPath": "phase7-integration/topology-contract.json",
+      "storedPath": "phase7-integration/topology-contract.json",
+      "restorePath": "phase7-integration/topology-contract.json",
+      "storageTransform": "none",
+      "bytes": 753,
+      "sha256": "1b07d74852da550cc302fb48d6c6963c01704fb2bdc9c3780e2c8baa9025264d"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-10-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-10-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-10-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "d3098a6193a84b8945b235481563f67a74944004d915795a9c25d475c2be29b3"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-10-cost-reconciliation-prices.json",
+      "storedPath": "phase7_2-stabilization/attempt-10-cost-reconciliation-prices.json",
+      "restorePath": "phase7_2-stabilization/attempt-10-cost-reconciliation-prices.json",
+      "storageTransform": "none",
+      "bytes": 11421,
+      "sha256": "3c63834eb99ffe207fad5c026b31990e8fbae416ce3b75d5c1bcd90b77b1872c"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-10-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-10-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-10-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6804,
+      "sha256": "844224b1abcadf4e759cfdd1a4df7d6327153b85709982c851723bd4d0fedf7e"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-10-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-10-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-10-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 1922,
+      "sha256": "cf77f0794c6ac9b467beb54eef75bc8fbd6f373b95e1b4a2d9f83964155e64f9"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-11-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-11-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-11-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 644,
+      "sha256": "31f062a88f8ecfbfe5b9163856642661ba3bab5771cc159319283997f415299d"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-11-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-11-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-11-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6227,
+      "sha256": "a4f9c60686405e91ad281c599ad0855072338bbcc42d9d21eed168bd4397dba4"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-11-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-11-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-11-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3127,
+      "sha256": "a5f537a0f9fb6d3a52150b3a1f8470e02b0a7ebe6bd667469936bddf630da026"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-11-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-11-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-11-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 8232,
+      "sha256": "dd961c6deb27ee2d727efa3a84968f56b6854d3a01d3122b54cda691a0fd4cef"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-12-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-12-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-12-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 644,
+      "sha256": "2c9e0d8ed3e3736a2dae7013ce16b4fcd55a53d4018849d0634c6d9c53eedcf2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-12-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-12-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-12-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6702,
+      "sha256": "cb1b94d0d38d857298e4d93a85e4a9d5d3897c6d18c88d56beefd48bf633dddf"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-12-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-12-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-12-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2599,
+      "sha256": "85a20dd291d46ae0a64cc872a1b8f2046a87b10d50949498a617a57c06abb07a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-12-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-12-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-12-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 8763,
+      "sha256": "f1d8012170ebcddf05480562c50c7f378581e3331753ca3d6024096b6b7c67b8"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-13-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-13-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-13-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 644,
+      "sha256": "87320b8255a06a7e73ff604ecac73035527ddc01835f230033abcfa9b3a5eca3"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-13-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-13-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-13-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 7237,
+      "sha256": "2326abe425e6edfb470648b5db58e44f8ad80eac1116173f83c3d18b179425bc"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-13-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-13-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-13-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3101,
+      "sha256": "6e436c8ef69c0578ba447f45b5547dd49b5124349ea3aed154689d00f80ed66b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-13-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-13-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-13-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 9162,
+      "sha256": "e2eabe17b3097d3c393a0171c9a56f6cef2f785e060b7b8b4ff3f402a3abe89e"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-14-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-14-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-14-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 644,
+      "sha256": "b967f7ccaa31cf9e34ad7456ab1b1d345a9163923cc670193e9a7d13fe6df8f9"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-14-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-14-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-14-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 7647,
+      "sha256": "85dbe408834e7285c1e59a5b772db48ce6119503c3b3e044fbd7e28ac03cd34e"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-14-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-14-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-14-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3365,
+      "sha256": "ac9fdffd7be63bc6c072356561f2eb7cc2ad34282518d03993b4f8277bd2380c"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-14-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-14-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-14-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 9394,
+      "sha256": "a95447dc55ce2681408615d46500fe6b6202a1ed4c306ea17fa19c753acc600a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-15-cost-explorer-20260719.json",
+      "storedPath": "phase7_2-stabilization/attempt-15-cost-explorer-20260719.json",
+      "restorePath": "phase7_2-stabilization/attempt-15-cost-explorer-20260719.json",
+      "storageTransform": "none",
+      "bytes": 975,
+      "sha256": "cb5682f9536b2be9506ffabcf49ecd1ff4e27afe36fde65c99860f7b47e0ff5b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-15-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-15-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-15-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 8078,
+      "sha256": "cd8530b5f3de5c42e3c959d05b73fb81becf988345180daa1608dad79d839de6"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-15-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-15-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-15-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 5134,
+      "sha256": "487e1c06c9fb3fd90c57753f953461bcd6a3f19cd9f81f9466946bbd2663091a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-15-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-15-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-15-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 10485,
+      "sha256": "641f2e8cc940a8b01230a4fec0edf64b0ac579000e740557c3eb654352dcdff0"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-15-load-failure-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-15-load-failure-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-15-load-failure-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 4989,
+      "sha256": "54451d394799e1d4ab206570f8f2322c9eb11978c7f013c40c458d7a9678b757"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-16-cost-explorer-20260719.json",
+      "storedPath": "phase7_2-stabilization/attempt-16-cost-explorer-20260719.json",
+      "restorePath": "phase7_2-stabilization/attempt-16-cost-explorer-20260719.json",
+      "storageTransform": "none",
+      "bytes": 822,
+      "sha256": "222d5cc22e082069a398f9ac75c55d1ed5106772a48c1def8bd13e559738106f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-16-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-16-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-16-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6933,
+      "sha256": "f75cdf9132dcdc458a658c3c4c2a0486691c1b88b1ed042b5ab9cc6b489d9216"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-16-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-16-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-16-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 1936,
+      "sha256": "fa6512eb5400be1cf9aab4690d45b445aa32eb2c8fe931aa309661a052537473"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-16-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-16-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-16-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 9849,
+      "sha256": "f86af8dc8736d09830750e93d4d5d3705f949b15953fcbb3c04333d9c8e2807d"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 2680,
+      "sha256": "76d5e0851ef50e2687f1346eaf4e85df15abe5c51351869d25c9f410124508f0"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-archive-memory-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-archive-memory-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-archive-memory-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 2174,
+      "sha256": "6127c8b7907944c2f58e96ee4f4621923b8b1a084e3e136a77040e248a54e0a9"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-cost-explorer-20260719.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-cost-explorer-20260719.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-cost-explorer-20260719.json",
+      "storageTransform": "none",
+      "bytes": 810,
+      "sha256": "8458ea18d093a7a2342b80368be38e575fa874ebd3a86c850044946a553b280e"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 3558,
+      "sha256": "537288211fe617dcb6fe4f8774f4e71e26449c5252149bd97767b658f116a0e2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2923,
+      "sha256": "f92950ce5df91b6a990c162a1c72ee722614450966a9ccd359ddb8ce453924e5"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 11092,
+      "sha256": "c9514064a4ec43dae457c9d85f0283304b9815d266271a7df263da0e278518b2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-post-cleanup-tagging-api-20260719T055755Z.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-post-cleanup-tagging-api-20260719T055755Z.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-post-cleanup-tagging-api-20260719T055755Z.json",
+      "storageTransform": "none",
+      "bytes": 522,
+      "sha256": "88bc996e26ab8695d5a622262933ca87f0e8b5edb07f36502c3df559af68d21d"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-17-terminal-evidence-manifest.json",
+      "storedPath": "phase7_2-stabilization/attempt-17-terminal-evidence-manifest.json",
+      "restorePath": "phase7_2-stabilization/attempt-17-terminal-evidence-manifest.json",
+      "storageTransform": "none",
+      "bytes": 2331,
+      "sha256": "076e6ad68dfb28c916570ebcb43261b99bf1c31bbcf7ebbb39b91f4fb981c4ef"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-cost-explorer-20260719.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-cost-explorer-20260719.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-cost-explorer-20260719.json",
+      "storageTransform": "none",
+      "bytes": 843,
+      "sha256": "c2bf72602e9c1595df65f639dd8be09906106cc13b1edafaa1cad00b32029819"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 3744,
+      "sha256": "4dec36af5a5a6882ef57978d3015d4621a150fe0bd31ff1275fc463f6387bbd1"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2079,
+      "sha256": "4d254382a60694546b8eae63c53887e6284687d67f4c2fa84667e6d3140df871"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 8529,
+      "sha256": "0fc7c713e557481b6e741bda10ca0af921396f22568da0c970fe665322ceab13"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-targeted-deploy-failure-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-targeted-deploy-failure-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-targeted-deploy-failure-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 5329,
+      "sha256": "ef92729ef32673bd1aace46632b7e988bcd6a5a4ce2ad63283ddfd14fa530a99"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-18-terminal-evidence-manifest.json",
+      "storedPath": "phase7_2-stabilization/attempt-18-terminal-evidence-manifest.json",
+      "restorePath": "phase7_2-stabilization/attempt-18-terminal-evidence-manifest.json",
+      "storageTransform": "none",
+      "bytes": 3310,
+      "sha256": "3bb890ac4adfc4374b84dbc33aa4e748b77a2c4af256321ff180e14aa96de094"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-19-cost-explorer-20260719.json",
+      "storedPath": "phase7_2-stabilization/attempt-19-cost-explorer-20260719.json",
+      "restorePath": "phase7_2-stabilization/attempt-19-cost-explorer-20260719.json",
+      "storageTransform": "none",
+      "bytes": 843,
+      "sha256": "5ccc1d3386a4af8430b082cff1b4df6efb6782bc3bff43772916a7755ff6f466"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-19-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-19-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-19-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 3608,
+      "sha256": "08f0c7e187613df74f6a4d4971f725fdaa954babf65f2de9d14502aac510a178"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-19-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-19-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-19-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2425,
+      "sha256": "af307f2bb609bd839daabfb65aa84d8bb8aeb4c5cec36e01672585ed454068fa"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-19-ledger-entry.json",
+      "storedPath": "phase7_2-stabilization/attempt-19-ledger-entry.json",
+      "restorePath": "phase7_2-stabilization/attempt-19-ledger-entry.json",
+      "storageTransform": "none",
+      "bytes": 8674,
+      "sha256": "d09ffa398b70674918d645014e13969c803bd0613ee59c03969af43287bb4aff"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-2-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-2-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-2-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 412,
+      "sha256": "b8cea643b95e06f1947c57b0f98ba2bf258b3bb7dd79e7f81ae43ee21ea0f034"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-2-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-2-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-2-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 1271,
+      "sha256": "7953dd62544046761ca7a7bbb0cb96a9ba73656afc5fcdc4fd7bdb9a1a1d1320"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-20-archive-memory-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-20-archive-memory-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-20-archive-memory-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 5182,
+      "sha256": "9436e65ec842b8d999042e6b92cf8b6103505c079a8e7534ca14dc4bdfee65af"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-20-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-20-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-20-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 4470,
+      "sha256": "8599a31907475abf43ef17322861f0927045918f40e3034da4437af78366fd3c"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-21-archive-memory-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-21-archive-memory-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-21-archive-memory-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 5040,
+      "sha256": "42460516b384cb71d307de22bbb748aa03293d729d5b05c47099903f342ebb7a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-21-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-21-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-21-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3788,
+      "sha256": "ddc88420d81e9b24ef62b3aece5bb229e0751e8779d94befabde0aa3971257f9"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-21-ledger-repricing-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-21-ledger-repricing-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-21-ledger-repricing-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 1069,
+      "sha256": "f07152f0d2fb1861fcad146c4d64186de9058b536b8fb77ba19259b092a55430"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-22-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-22-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-22-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2078,
+      "sha256": "6ac6177f1e40228ed219116dc315ec80a0e84181bbe66f72a2b7d2ae8c5b4dd2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-22-image-preparation-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/attempt-22-image-preparation-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/attempt-22-image-preparation-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 1422,
+      "sha256": "1a47b78de11c491b566b978fad855fb7080a6fdeef6b3da03e70008976ba85e0"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-3-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-3-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-3-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "ce7fd9357f75b801b0efffad34decf35bd98787802ad4324afe07b610b88b715"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-3-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-3-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-3-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 5015,
+      "sha256": "6463753746afb3e4c8c993ec26f730e164f1bcdaa052e78be0518954330bd046"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-3-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-3-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-3-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2277,
+      "sha256": "bc661c8a5a3db07a20e4759a21367cbf0dfe6c707dc1fd8400d5001acd0be2a9"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-3-pre-attempt4-revalidation.json",
+      "storedPath": "phase7_2-stabilization/attempt-3-pre-attempt4-revalidation.json",
+      "restorePath": "phase7_2-stabilization/attempt-3-pre-attempt4-revalidation.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "6b72e04aa0b402b25f2b00b90c97b34453162f08f6af55c8eb2b5812d49b0dd5"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-4-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-4-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-4-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "72389fd65a74243d6d3e9c39344dbefad0684aefd04b8ea0eb933749fec1765a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-4-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-4-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-4-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 5149,
+      "sha256": "d95ea131d6a770f96738dcc116d8f2ea49a1ceea90fb0f3204592f27cf9e3cf1"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-4-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-4-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-4-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2927,
+      "sha256": "36c280f4e7ad42e445d3199ed26c0dbbda9b8805f258703f036ea22882b8ee8c"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-5-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-5-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-5-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "7bd44a5aaf2c155b4e976f655ebac751ed63f911ac2883c0c9ab7cd774107ab7"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-5-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-5-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-5-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 4715,
+      "sha256": "3c210c9c5afcae637767ef9ee1a839e1fecd436767d6c369a3fd1821047918d4"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-5-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-5-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-5-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3337,
+      "sha256": "86e900a8fe8909bcb9f121603791dad54f058c1ce601be4cb23ee744b4db2c96"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-6-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-6-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-6-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "1a4c923cc776b4f9220929caf3a233aef487bbd29b866388f498c95b81899406"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-6-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-6-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-6-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6002,
+      "sha256": "fd03e0682daa35b9aa5fc6faf84b8da1d1879d4fbd67ef7eaf261f5cce3e8eec"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-6-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-6-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-6-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 3675,
+      "sha256": "f49463cce60309c89c9307e91a429a9709fbfaf64ef9be93170fc0b303fc249f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-7-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-7-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-7-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "505e9368e18293ff18f6f6a4fc022976294b2463609de765dc3b38656af7d371"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-7-cost-reconciliation-prices.json",
+      "storedPath": "phase7_2-stabilization/attempt-7-cost-reconciliation-prices.json",
+      "restorePath": "phase7_2-stabilization/attempt-7-cost-reconciliation-prices.json",
+      "storageTransform": "none",
+      "bytes": 11421,
+      "sha256": "ee0c01645446807b2fd1ab722d1f624fdb7e011e168553af790800b28ed73d78"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-7-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-7-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-7-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 7063,
+      "sha256": "ae30868b00e245c111e312140e7c3d258945472ae47fb01c94321bf11ed27851"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-7-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-7-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-7-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 4036,
+      "sha256": "4fca8cb64743012bec1ad87973f036d37ae7360c2cd279db6d83542ccc299e71"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-7-next-attempt-cost-gate.json",
+      "storedPath": "phase7_2-stabilization/attempt-7-next-attempt-cost-gate.json",
+      "restorePath": "phase7_2-stabilization/attempt-7-next-attempt-cost-gate.json",
+      "storageTransform": "none",
+      "bytes": 7687,
+      "sha256": "89fbbf3c20bfa4668fe2fd5458858becdf3bf1f3f148a8567468dd2ffda3393f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-8-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/attempt-8-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/attempt-8-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 622,
+      "sha256": "8e278950cdbe7fb95f8cee8cc97319b3f2fe0f2eb8fefcdc932a263de829982b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-8-cost-reconciliation-prices.json",
+      "storedPath": "phase7_2-stabilization/attempt-8-cost-reconciliation-prices.json",
+      "restorePath": "phase7_2-stabilization/attempt-8-cost-reconciliation-prices.json",
+      "storageTransform": "none",
+      "bytes": 11421,
+      "sha256": "36bdb3d8fa10e9f4f7979638237113003320485b8559bf3a53cffecc3901d9c1"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-8-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/attempt-8-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/attempt-8-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6854,
+      "sha256": "e89cd1109a978c1c37e656309ebf11681d604e362404a0aef50360dcda9ebb91"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-8-fix-verification.json",
+      "storedPath": "phase7_2-stabilization/attempt-8-fix-verification.json",
+      "restorePath": "phase7_2-stabilization/attempt-8-fix-verification.json",
+      "storageTransform": "none",
+      "bytes": 2988,
+      "sha256": "8411b05e94ff2a60f1ca35d0dad00be6478e5c3064c2c5ff008673f649beac09"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/attempt-ledger.json",
+      "storedPath": "phase7_2-stabilization/attempt-ledger.json",
+      "restorePath": "phase7_2-stabilization/attempt-ledger.json",
+      "storageTransform": "none",
+      "bytes": 203515,
+      "sha256": "1bf6dfef7c48eb9fa97a1bcf08412d828fcc37b6898da83734f83be6f063e29b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-16.json",
+      "storedPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-16.json",
+      "restorePath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-16.json",
+      "storageTransform": "none",
+      "bytes": 1473,
+      "sha256": "1b0f95439e3c0f43e9e67316ba7b2b3bddd885f04f781070a21c2fc7ffb74e33"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-18.json",
+      "storedPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-18.json",
+      "restorePath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-18.json",
+      "storageTransform": "none",
+      "bytes": 2079,
+      "sha256": "eedc2bdf691664dfa3878633dd5acccaad2c23d7f19fa69f776529315cd71f6b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-22.json",
+      "storedPath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-22.json",
+      "restorePath": "phase7_2-stabilization/budget-reset-20260719-after-attempt-22.json",
+      "storageTransform": "none",
+      "bytes": 2378,
+      "sha256": "03f12e2694c1d0f857694cc8f655b6e91149f05efa24dfbede237fa784e5daec"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/budget-reset-20260720-after-phase8.json",
+      "storedPath": "phase7_2-stabilization/budget-reset-20260720-after-phase8.json",
+      "restorePath": "phase7_2-stabilization/budget-reset-20260720-after-phase8.json",
+      "storageTransform": "none",
+      "bytes": 2517,
+      "sha256": "f2f9d1b1eb710119465674e1868d195a819a270ec539bc05062f76f183675421"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-diagnostic-policy-20260719.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-diagnostic-policy-20260719.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-diagnostic-policy-20260719.json",
+      "storageTransform": "none",
+      "bytes": 2458,
+      "sha256": "5eb380a8890ae6113703adbd4f0843a628fce65605cfb3e77d3bbb0a8f560d9b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T124943Z.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T124943Z.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-source-20260719T124943Z.json",
+      "storageTransform": "none",
+      "bytes": 19669,
+      "sha256": "60870e15854bf7fda9846ac8e21e0acea8c630e4038a85f0253dcae98f1fe9c3"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T144300Z.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T144300Z.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-source-20260719T144300Z.json",
+      "storageTransform": "none",
+      "bytes": 19882,
+      "sha256": "2c11be0f125b48debf6fc79aed53d51768c7e45cebc9fb7edd2606d1888eb76a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T162551Z.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T162551Z.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-source-20260719T162551Z.json",
+      "storageTransform": "none",
+      "bytes": 20095,
+      "sha256": "344a42ee24aee7d867c145d20045585078fd51075d6504ac247d7fc8c7ff4140"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T164247Z.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-source-20260719T164247Z.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-source-20260719T164247Z.json",
+      "storageTransform": "none",
+      "bytes": 20308,
+      "sha256": "cf03fd80a9819fcbbaf7443b33e565ce968e0d3bf6c1554f2b5dff79a82b3936"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-tooling-audit-20260719.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-tooling-audit-20260719.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-tooling-audit-20260719.json",
+      "storageTransform": "none",
+      "bytes": 2094,
+      "sha256": "1f228e1895f8376116db8a94b3cc954a95c74df5e201f3bd4e5d2e493c802f60"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-tooling-commands-20260719.md",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-tooling-commands-20260719.md",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-tooling-commands-20260719.md",
+      "storageTransform": "none",
+      "bytes": 1714,
+      "sha256": "94aee07237dd615f2501bae98c5b132d6d855ed9123d8b54f167972637b45eeb"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+      "storedPath": "phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+      "restorePath": "phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+      "storageTransform": "none",
+      "bytes": 20871,
+      "sha256": "43e55d286392f584e8f2917ec18e89b4f18378adc44238c99d24c68d8c486fb2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cleanup-attempt-2-20260718T001200Z.json",
+      "storedPath": "phase7_2-stabilization/historical-cleanup-attempt-2-20260718T001200Z.json",
+      "restorePath": "phase7_2-stabilization/historical-cleanup-attempt-2-20260718T001200Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "8a3cc5f01db296a537a6c9328a82d8d04715513e43c7450eac05992061125081"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000250Z.json",
+      "storedPath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000250Z.json",
+      "restorePath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000250Z.json",
+      "storageTransform": "none",
+      "bytes": 3674,
+      "sha256": "5fd4dc10e879ac3b881e4be583246427f4a8b92b19e2583ce15bf5d28a2ef26f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000900Z.json",
+      "storedPath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000900Z.json",
+      "restorePath": "phase7_2-stabilization/historical-cleanup-verification-20260718T000900Z.json",
+      "storageTransform": "none",
+      "bytes": 2837,
+      "sha256": "f5e9e03d638dcf08ce1d146596bc112985cfd7f49ae415b9fce44373be668abd"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cleanup-verification-final-20260718T001100Z.json",
+      "storedPath": "phase7_2-stabilization/historical-cleanup-verification-final-20260718T001100Z.json",
+      "restorePath": "phase7_2-stabilization/historical-cleanup-verification-final-20260718T001100Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "01ca137193d628a39734f29d4b103320f58aa5d99f7d869cde99bcba176f245a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cost-explorer-20260718.json",
+      "storedPath": "phase7_2-stabilization/historical-cost-explorer-20260718.json",
+      "restorePath": "phase7_2-stabilization/historical-cost-explorer-20260718.json",
+      "storageTransform": "none",
+      "bytes": 754,
+      "sha256": "e977e4f2a6fd3e7fe3245090a6d9407103be333092cd335d29658e09aafa4086"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/historical-cost-reconciliation.json",
+      "storedPath": "phase7_2-stabilization/historical-cost-reconciliation.json",
+      "restorePath": "phase7_2-stabilization/historical-cost-reconciliation.json",
+      "storageTransform": "none",
+      "bytes": 6118,
+      "sha256": "930813792604b7242fe72f676c30cb6e42934bb14ede89bfe8686df51c8bc2bc"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/issue-register.json",
+      "storedPath": "phase7_2-stabilization/issue-register.json",
+      "restorePath": "phase7_2-stabilization/issue-register.json",
+      "storageTransform": "none",
+      "bytes": 51179,
+      "sha256": "2b20712573e77104773f7ffa1cd7eca4d432b6745dc6c395bf2660ded6fdad2f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/local-handoff-20260719-034506-failure-diagnosis.json",
+      "storedPath": "phase7_2-stabilization/local-handoff-20260719-034506-failure-diagnosis.json",
+      "restorePath": "phase7_2-stabilization/local-handoff-20260719-034506-failure-diagnosis.json",
+      "storageTransform": "none",
+      "bytes": 2665,
+      "sha256": "dfb56104f230f9621d004cfa039dc6676bfd4ee5eaea9beffc595cf7ce46620f"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/phase8-cleanup-recovered-amendment-20260719.json",
+      "storedPath": "phase7_2-stabilization/phase8-cleanup-recovered-amendment-20260719.json",
+      "restorePath": "phase7_2-stabilization/phase8-cleanup-recovered-amendment-20260719.json",
+      "storageTransform": "none",
+      "bytes": 1990,
+      "sha256": "51a7c30345fc452311a0600179d76dd847727144c52c304c2ff64c370174e83a"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/phase8-composite-promotion-policy-20260719.json",
+      "storedPath": "phase7_2-stabilization/phase8-composite-promotion-policy-20260719.json",
+      "restorePath": "phase7_2-stabilization/phase8-composite-promotion-policy-20260719.json",
+      "storageTransform": "none",
+      "bytes": 4568,
+      "sha256": "b8d5fbaa00558b6a2ee97d27fc37f7d4c0839d2e198e6a0bf2fc58a4b1abf501"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/phase8-handoff.json",
+      "storedPath": "phase7_2-stabilization/phase8-handoff.json",
+      "restorePath": "phase7_2-stabilization/phase8-handoff.json",
+      "storageTransform": "none",
+      "bytes": 10159,
+      "sha256": "e8332270d0a49611631c8f83a231cd2a05dbd607951e9547a0065493fec97760"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/pre-attempt17-attempt16-live-inventory-20260719T043009Z.json",
+      "storedPath": "phase7_2-stabilization/pre-attempt17-attempt16-live-inventory-20260719T043009Z.json",
+      "restorePath": "phase7_2-stabilization/pre-attempt17-attempt16-live-inventory-20260719T043009Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "e20e3a0407e46ef3494ceb9cf5835ea7eaa7e6cdfe85cacc3419263d2b2f538b"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/pre-attempt17-attempt16-tagging-api-20260719T043318Z.json",
+      "storedPath": "phase7_2-stabilization/pre-attempt17-attempt16-tagging-api-20260719T043318Z.json",
+      "restorePath": "phase7_2-stabilization/pre-attempt17-attempt16-tagging-api-20260719T043318Z.json",
+      "storageTransform": "none",
+      "bytes": 897,
+      "sha256": "c377d6b7c2eac5c80b6e5fb739d7e36221f0a1302e7debcc7cddfc1c4caa59c6"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/pre-attempt19-orphan-cleanup-final-20260719T0845Z.json",
+      "storedPath": "phase7_2-stabilization/pre-attempt19-orphan-cleanup-final-20260719T0845Z.json",
+      "restorePath": "phase7_2-stabilization/pre-attempt19-orphan-cleanup-final-20260719T0845Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "f6538fd014a443ff29f47b59006c2fd67fca691bdba5ea9d74f4fd43d89f1e50"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/pre-attempt19-orphan-inventory-20260719T0843Z.json",
+      "storedPath": "phase7_2-stabilization/pre-attempt19-orphan-inventory-20260719T0843Z.json",
+      "restorePath": "phase7_2-stabilization/pre-attempt19-orphan-inventory-20260719T0843Z.json",
+      "storageTransform": "none",
+      "bytes": 3073,
+      "sha256": "bd2676e20c080a7f64e9c7e307450007b06a3df670933d61b197224988aec705"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/pre-attempt20-global-run-owned-inventory-20260719T125447Z.json",
+      "storedPath": "phase7_2-stabilization/pre-attempt20-global-run-owned-inventory-20260719T125447Z.json",
+      "restorePath": "phase7_2-stabilization/pre-attempt20-global-run-owned-inventory-20260719T125447Z.json",
+      "storageTransform": "none",
+      "bytes": 268,
+      "sha256": "4fe6080627cc5a8a5f1570d475f2792cd7d3dda6467838c0a9c355cf03d174a2"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/reconcile_historical_attempt.py",
+      "storedPath": "phase7_2-stabilization/reconcile_historical_attempt.py",
+      "restorePath": "phase7_2-stabilization/reconcile_historical_attempt.py",
+      "storageTransform": "none",
+      "bytes": 10908,
+      "sha256": "57fef9b00e80be730372f2dd6e222739927122851f831af67d65ae24cc7d1ba8"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume-identity-inventory-20260719T015345Z.json",
+      "storedPath": "phase7_2-stabilization/resume-identity-inventory-20260719T015345Z.json",
+      "restorePath": "phase7_2-stabilization/resume-identity-inventory-20260719T015345Z.json",
+      "storageTransform": "none",
+      "bytes": 1025,
+      "sha256": "a00f1cf9d4a68fccdd50ba62c8627dbb66b051a343e058de6de8b20f07c36718"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume-inventory-attempt15-20260719T015345Z.json",
+      "storedPath": "phase7_2-stabilization/resume-inventory-attempt15-20260719T015345Z.json",
+      "restorePath": "phase7_2-stabilization/resume-inventory-attempt15-20260719T015345Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "02b2b1bb014bd963ae5381a8537a7920bda0bdf70e602fb7e3ebcda2bae6d46c"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume-inventory-run1-20260718T024549Z.json",
+      "storedPath": "phase7_2-stabilization/resume-inventory-run1-20260718T024549Z.json",
+      "restorePath": "phase7_2-stabilization/resume-inventory-run1-20260718T024549Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "d4acad128d420ff6e27b02c88684c99b67d3d924bc5a1bccac3ce255c996df07"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume-inventory-run2-20260718T024549Z.json",
+      "storedPath": "phase7_2-stabilization/resume-inventory-run2-20260718T024549Z.json",
+      "restorePath": "phase7_2-stabilization/resume-inventory-run2-20260718T024549Z.json",
+      "storageTransform": "none",
+      "bytes": 2330,
+      "sha256": "db28124aafc9806aa057bab96a6e9d5ff5ca2884bd0f8263b15f4eb096dedbd4"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume-login-verification-20260718T024706Z.json",
+      "storedPath": "phase7_2-stabilization/resume-login-verification-20260718T024706Z.json",
+      "restorePath": "phase7_2-stabilization/resume-login-verification-20260718T024706Z.json",
+      "storageTransform": "none",
+      "bytes": 581,
+      "sha256": "110b79ea8d1bc32723c591099284c06a163d052f45a33dc514f506b9344efd20"
+    },
+    {
+      "originalPath": "phase7_2-stabilization/resume.md",
+      "storedPath": "phase7_2-stabilization/resume.md",
+      "restorePath": "phase7_2-stabilization/resume.md",
+      "storageTransform": "none",
+      "bytes": 2228,
+      "sha256": "d5f34d6151b1f4308e41139d4c4c957f4231c9f58d72d6eb00449b5cf3889822"
+    },
+    {
+      "originalPath": "phase8-final/acceptance-summary.md",
+      "storedPath": "phase8-final/acceptance-summary.md",
+      "restorePath": "phase8-final/acceptance-summary.md",
+      "storageTransform": "none",
+      "bytes": 5069,
+      "sha256": "1739c32e38de3b2c08607842ec05064d061f2ae0eb7c47ef654755447a9cc292"
+    },
+    {
+      "originalPath": "phase8-final/failure-history.md",
+      "storedPath": "phase8-final/failure-history.md",
+      "restorePath": "phase8-final/failure-history.md",
+      "storageTransform": "none",
+      "bytes": 7249,
+      "sha256": "9a2ca87f1e06802485134b6b420a4de4f094510713bca80aaee46f1d7510b327"
+    },
+    {
+      "originalPath": "phase8-final/finalize.py",
+      "storedPath": "phase8-final/finalize.py",
+      "restorePath": "phase8-final/finalize.py",
+      "storageTransform": "none",
+      "bytes": 46411,
+      "sha256": "77ee991c0f04f8ae3820d030475cd28b864b3095d663071d62658baae4b47f3e"
+    },
+    {
+      "originalPath": "phase8-final/focused-verification.json",
+      "storedPath": "phase8-final/focused-verification.json",
+      "restorePath": "phase8-final/focused-verification.json",
+      "storageTransform": "none",
+      "bytes": 849,
+      "sha256": "c62d094739555d69a90d16aebd5c3b3a72d61dfbeb0ca9ebe1f340bbfbc9a6f8"
+    },
+    {
+      "originalPath": "phase8-final/operations-handoff.md",
+      "storedPath": "phase8-final/operations-handoff.md",
+      "restorePath": "phase8-final/operations-handoff.md",
+      "storageTransform": "none",
+      "bytes": 2945,
+      "sha256": "288331a4fddcbfd00928af4dae89810af4c2075f171c2739e741c6031918aef7"
+    },
+    {
+      "originalPath": "phase8-final/phase8-manifest.json",
+      "storedPath": "phase8-final/phase8-manifest.json",
+      "restorePath": "phase8-final/phase8-manifest.json",
+      "storageTransform": "none",
+      "bytes": 16138,
+      "sha256": "b5c063d6cdef969e25240741010e88f294a83cda36677fb920de424ef3116dc1"
+    },
+    {
+      "originalPath": "phase8-final/post-promotion-cost-reset-verification-20260720.json",
+      "storedPath": "phase8-final/post-promotion-cost-reset-verification-20260720.json",
+      "restorePath": "phase8-final/post-promotion-cost-reset-verification-20260720.json",
+      "storageTransform": "none",
+      "bytes": 1644,
+      "sha256": "4b8a947b1dc088b1081e9f630a136fdbc0f4269f6fe16b2c1a26dac4e12545cd"
+    },
+    {
+      "originalPath": "phase8-final/post-promotion-verification-20260720.json",
+      "storedPath": "phase8-final/post-promotion-verification-20260720.json",
+      "restorePath": "phase8-final/post-promotion-verification-20260720.json",
+      "storageTransform": "none",
+      "bytes": 1598,
+      "sha256": "8da55b9e910031ad5f95ac415bc7a5258a4a17153af5944e50fc1095a89aedff"
+    },
+    {
+      "originalPath": "phase8-final/test_finalize.py",
+      "storedPath": "phase8-final/test_finalize.py",
+      "restorePath": "phase8-final/test_finalize.py",
+      "storageTransform": "none",
+      "bytes": 2794,
+      "sha256": "aaf783bd219b9b286a783dda0155f0ba00c5bff0d4b8f1b2f2fd3fe5b3b5b513"
+    }
+  ]
+}

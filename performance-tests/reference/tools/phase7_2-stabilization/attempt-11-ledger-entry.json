@@ -1,0 +1,155 @@
+{
+  "attemptType": "aws-integration",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1
+    },
+    "deadline": "2026-07-18T19:31:55.886642Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260718_162042_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "be9aa7bc72065fcaa52dbc67fe696c1ab7bfa003d92aa68b518c35b10d67aa90"
+      },
+      {
+        "path": "performance-tests/run_20260718_162042_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "62c59e27134abf549033ed9356d9d93e9fc8006a4720eb2842fb9c0439441bcf"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-18T17:20:23.563Z",
+    "startToAuthoritativeZeroSeconds": "1707.676358"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "12.000000",
+    "campaignChargedUpperBoundUsd": "12.000000",
+    "chargedUpperBoundUsd": "6.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-11-cost-explorer-20260718.json",
+    "costExplorerEvidenceSha256": "31f062a88f8ecfbfe5b9163856642661ba3bab5771cc159319283997f415299d",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "65.000000",
+    "maximumIncludingCleanupUsd": "44.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "5.449623",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-11-cost-reconciliation.json",
+    "reconciliationSha256": "a4f9c60686405e91ad281c599ad0855072338bbcc42d9d21eed168bd4397dba4"
+  },
+  "evidenceCommit": "ee9aed3c4070528c0134a59f9a519177136a9f9a",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260718_162042_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260718_162042_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260718_161016_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "The exact 1237-byte HAProxy configuration ended with byte 112 instead of LF. All six owned HAProxy tasks exited 1, and the same pinned image reproduced Missing LF on last line and a fatal configuration error.",
+    "diagnosisEvidencePath": "performance-tests/run_20260718_162042_phase7_2_aws_integration/evidence/diagnosis/haproxy-missing-final-lf.json",
+    "diagnosisEvidenceSha256": "1371a1fac48639705545a3acd71ae68af680defb213fa3123329db2d2d921c14",
+    "firstFailingGate": "deploy",
+    "rawAwsError": "ECS Deployment Circuit Breaker was triggered for HaproxyServiceE1B870CD",
+    "rawEvidencePath": "performance-tests/run_20260718_162042_phase7_2_aws_integration/evidence/control/deploy.attempt-1.stderr.log.gz",
+    "rawEvidenceSha256": "78f05bba0b6a9d38c30f3491637594f381351bb885dbffeab7ebd633fd6155ad",
+    "rawUncompressedSha256": "28dd976adb5772db703bfa888fae335ef672833d179dafb88336962ff239d6d3",
+    "runnerError": "deploy watchdog exit 124 after CloudFormation reported the HAProxy ECS circuit breaker and rolled the stack back"
+  },
+  "fix": {
+    "applied": "Retain exactly one terminal LF in the canonical HAProxy UTF-8 Buffer, keep Base64 and the published SHA-256 derived from that same Buffer, and regression-test the exact final bytes.",
+    "fixCommit": "42774cdca4f415385b4b649099dc1db6ea6c8857",
+    "verification": {
+      "build": "passed",
+      "cfnLintAcceptedE1022": 8,
+      "cfnLintAcceptedW3005": 3,
+      "cfnLintUnexpectedFindings": 0,
+      "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+      "nodeTests": 27,
+      "phase7JestTests": 14,
+      "pinnedHaproxySyntax": "passed",
+      "pythonTests": 138,
+      "status": "passed"
+    },
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-11-fix-verification.json",
+    "verificationSha256": "a5f537a0f9fb6d3a52150b3a1f8470e02b0a7ebe6bd667469936bddf630da026"
+  },
+  "gitCommit": "9e4a5765404dfc97941ac8056e698b75b86672c5",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "ab2aa0e0ac81f5ba99e4fe9bb03a69cb1ecc66534901ee513368cde63ac3d6b2",
+    "commandSeal": "cd5b859dff49ba654fb120144a0c310f8223f80d88b95b7bb1202fcf189e6743",
+    "commandSet": "8b9e2760520e9b83dfd2c68be5a79bec213f49545d5dcf5e3d5888b4f74ff1f8",
+    "costModel": "ef09bfbc76a3e1b9b6ce1deb08c5df51341edf21e567640d51e1fd36829553b4",
+    "identityContract": "4b9c483a7d135499370c493da8d8118598077e450aea72959d8b0f82c6041668",
+    "imageManifest": "109cedb2767e4891a575edd14bf1a02e433061631fb2612a78b9f394374e3eb3",
+    "localHandoff": "ec154acd27ec41de04b2368eb8103b686434a7903d1bcc6e5efd23d238fa8a37",
+    "preparedPreflight": "36dd027cbca5f5a1cc2750052e0adc29fa04f6de723ca4516e918bf262f436bc",
+    "runtimeTemplate": "02d71f1df368a779e0386116c13af39ab482c9fd7906c36b15c48a144fe88d3d"
+  },
+  "implementationTreeSha256": "11c9d34085ec0ae491fac2cabbc96c16eef8f0b32e46ca6e92fb0193ada21005",
+  "ordinal": 11,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-18T19:31:55.886642Z",
+    "elapsedSeconds": "1707.676358",
+    "endedAt": "2026-07-18T17:20:23.563Z",
+    "hardDeadline": "2026-07-18T19:51:55.886642Z",
+    "startedAt": "2026-07-18T16:51:55.886642Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "6db81209c76fee7bcf39e26fed4d3220ab1d24e05be91dd6f7f7ad61cd2a5e05",
+  "readinessCommit": "45237a051d42f5e6fff1a358aa8af69509387671",
+  "runId": "run_20260718_162042_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "91f42c19731d3ecff409ef638d379372147d69c8",
+  "sealedCommandSetSha256": "8b9e2760520e9b83dfd2c68be5a79bec213f49545d5dcf5e3d5888b4f74ff1f8",
+  "sessionId": "phase7-integration-20260718T162042Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 0,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 0,
+    "seed": 0,
+    "verify": 0,
+    "warmup": 0
+  },
+  "terminalEvidenceHashes": {
+    "cleanupInventory": "be9aa7bc72065fcaa52dbc67fe696c1ab7bfa003d92aa68b518c35b10d67aa90",
+    "cleanupVerification": "62c59e27134abf549033ed9356d9d93e9fc8006a4720eb2842fb9c0439441bcf",
+    "commands": "5a2c9c78e9138aef331c2069ef448845b8fd6b501125f9e39baa725a7284e5af",
+    "costReconciliation": "a4f9c60686405e91ad281c599ad0855072338bbcc42d9d21eed168bd4397dba4",
+    "diagnosis": "1371a1fac48639705545a3acd71ae68af680defb213fa3123329db2d2d921c14",
+    "failures": "c5358e1b9a8a131af0482a3be8b8790fce09582c773b4fc81f70a49875aa7906",
+    "finalEvaluation": "d8e07ac0663716323a657dfc5d0261fce412eb748429a14d99dbcc7bec0a7ce3",
+    "finalEvidenceStatus": "92990713ff23daa4ababe4c536284d4d9d944448b3bf58e1299c96870fe17596",
+    "fixVerification": "a5f537a0f9fb6d3a52150b3a1f8470e02b0a7ebe6bd667469936bddf630da026",
+    "improvementBacklog": "5eff6b12bae44e479ae6bc631d127a66beb3ffda7aca2cd0efc404a99be4178f",
+    "infra": "1c6c2f3f2d880f2ae45ea95d010697fd5f86fa2c5f5fcdca9f227256df4a4cde",
+    "report": "c5e0e6e8ebd95d4a831dc030c9603599b4fba77568c2fb57be710639130fff93",
+    "run": "c2c2f7fb7fb74da252cf5015d31532e26e66a129c53f99b0567d63a6a50430d0"
+  },
+  "verdict": "failed",
+  "entrySha256": "1a9df27af3035a8a0e1c5f176341e83bf15865e49763132d826c5a00f84734ad"
+}

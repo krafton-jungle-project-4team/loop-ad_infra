@@ -1,0 +1,117 @@
+export function parseTelemetryTsv(text) {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const headers = lines[0].split('\t');
+    return lines.slice(1).map((line) => Object.fromEntries(line.split('\t').map((value, index) => [headers[index], index === 0 ? value : Number(value)])));
+}
+
+export function evaluatePersistentWarmupGate(input) {
+    const workerEvaluations = input.workers.map(evaluateWorker);
+    const lastTen = workerEvaluations.map((worker) => worker.lastTen);
+    const totalEstablished = Array.from({ length: 10 }, (_, offset) => lastTen.reduce((sum, rows) => sum + (rows[offset]?.oha_established ?? 0), 0));
+    const totalSynSent = Array.from({ length: 10 }, (_, offset) => lastTen.reduce((sum, rows) => sum + (rows[offset]?.oha_syn_sent ?? 0), 0));
+    const targetHealthDescriptions = input.targetHealth?.TargetHealthDescriptions ?? [];
+    const service = input.service?.service ?? input.service ?? {};
+    const failedTasks = (service.deployments ?? []).reduce((sum, deployment) => sum + (deployment.failedTasks ?? 0), 0);
+    const producer = evaluateProducerQueues(input.debugVars ?? []);
+    const cloudwatch = input.cloudwatch ?? {};
+    const checks = {
+        exactlyTwoWorkers: workerEvaluations.length === 2,
+        eachWorkerHasTenSamples: workerEvaluations.every((worker) => worker.lastTen.length === 10),
+        establishedStableAtLeast11880: totalEstablished.length === 10 && totalEstablished.every((value) => value >= 11_880),
+        synSentNotGrowing: totalSynSent.length === 10 && totalSynSent.at(-1) <= totalSynSent[0] + 20,
+        timeWaitAndOrphansBounded: workerEvaluations.every((worker) => worker.timeWaitAndOrphansBounded),
+        sameFourOhaProcesses: workerEvaluations.every((worker) => worker.identitiesStable) &&
+            workerEvaluations.reduce((sum, worker) => sum + worker.processCount, 0) === 4,
+        workerResourceHeadroom: workerEvaluations.every((worker) => worker.resourceHeadroom),
+        enaAllowanceDeltasZero: workerEvaluations.every((worker) => worker.enaAllowanceDeltasZero),
+        fourHealthyTargets: targetHealthDescriptions.length === 4 && targetHealthDescriptions.every((target) => target.TargetHealth?.State === 'healthy'),
+        serviceStable: service.desiredCount === 4 && service.runningCount === 4 && service.pendingCount === 0 && failedTasks === 0,
+        taskTopologySafe: input.taskState?.topology?.passed === true,
+        rejectedConnectionsZero: numberOrZero(cloudwatch.rejectedConnectionCount) === 0,
+        targetConnectionErrorsZero: numberOrZero(cloudwatch.targetConnectionErrorCount) === 0,
+        elb5xxZero: numberOrZero(cloudwatch.elb5xxCount) === 0,
+        producerQueueBounded: producer.bounded,
+    };
+    return {
+        evaluatedAt: new Date().toISOString(),
+        configuredConnections: 12_000,
+        stableWindowSeconds: 10,
+        totalEstablished,
+        totalSynSent,
+        workers: workerEvaluations,
+        targetHealth: targetHealthDescriptions,
+        service: { desiredCount: service.desiredCount, runningCount: service.runningCount, pendingCount: service.pendingCount, failedTasks },
+        cloudwatch: {
+            rejectedConnectionCount: numberOrZero(cloudwatch.rejectedConnectionCount),
+            targetConnectionErrorCount: numberOrZero(cloudwatch.targetConnectionErrorCount),
+            elb5xxCount: numberOrZero(cloudwatch.elb5xxCount),
+        },
+        producer,
+        checks,
+        passed: Object.values(checks).every(Boolean),
+    };
+}
+
+function evaluateWorker(worker) {
+    const rows = Array.isArray(worker.telemetry) ? worker.telemetry : parseTelemetryTsv(worker.telemetryTsv ?? '');
+    const lastTen = rows.slice(-10);
+    const identities = [worker.identityStart, worker.identityReady, worker.identityGate];
+    const identityLists = identities.map((identity) => identity?.processes ?? []);
+    const baseline = identityLists[0] ?? [];
+    const identitiesStable = baseline.length === 2 && identityLists.every((list) => list.length === 2 && list.every((process, index) => (
+        process.processId === baseline[index]?.processId && process.containerId === baseline[index]?.containerId &&
+        process.hostOhaPid === baseline[index]?.hostOhaPid && process.running === true
+    )));
+    const first = lastTen[0] ?? {};
+    const last = lastTen.at(-1) ?? {};
+    const cpuColumns = ['cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait', 'cpu_irq', 'cpu_softirq', 'cpu_steal'];
+    const totalCpuDelta = cpuColumns.reduce((sum, key) => sum + Math.max(0, numberOrZero(last[key]) - numberOrZero(first[key])), 0);
+    const busyCpuPercent = totalCpuDelta > 0 ? 100 * (1 - Math.max(0, numberOrZero(last.cpu_idle) - numberOrZero(first.cpu_idle)) / totalCpuDelta) : 100;
+    const bootstrap = worker.bootstrap ?? {};
+    const conntrackMax = bootstrap.conntrack?.max ?? 0;
+    const resourceHeadroom = lastTen.length === 10 && busyCpuPercent < 90 &&
+        lastTen.every((row) => numberOrZero(row.mem_available_kib) >= 256 * 1_024 && numberOrZero(row.oha_open_fds) < 900_000 &&
+            (conntrackMax <= 0 || numberOrZero(row.conntrack_count) < conntrackMax * 0.8));
+    const before = worker.enaBefore ?? {};
+    const gate = worker.enaGate ?? {};
+    const enaKeys = [...new Set([...Object.keys(before), ...Object.keys(gate)])].filter((key) => key.includes('allowance_exceeded'));
+    const enaAllowanceDeltas = Object.fromEntries(enaKeys.map((key) => [key, numberOrZero(gate[key]) - numberOrZero(before[key])]));
+    const enaAllowanceDeltasZero = enaKeys.length > 0 && Object.values(enaAllowanceDeltas).every((value) => value === 0);
+    const timeWaitAndOrphansBounded = lastTen.length === 10 && numberOrZero(last.tcp_tw) <= numberOrZero(first.tcp_tw) + 6_000 &&
+        numberOrZero(last.tcp_orphan) <= numberOrZero(first.tcp_orphan) + 100;
+    return {
+        nodeId: worker.nodeId,
+        processCount: baseline.length,
+        identitiesStable,
+        lastTen,
+        busyCpuPercent,
+        resourceHeadroom,
+        enaAllowanceDeltas,
+        enaAllowanceDeltasZero,
+        timeWaitAndOrphansBounded,
+    };
+}
+
+function evaluateProducerQueues(debugVars) {
+    const observations = debugVars.map((snapshot, index) => {
+        if (snapshot.kpl) {
+            const outstandingRecords = numberOrZero(snapshot.kpl.outstandingRecords);
+            const currentConnections = numberOrZero(snapshot.connections?.current);
+            const bounded = outstandingRecords < 800 && currentConnections < 800 && numberOrZero(snapshot.kpl.failures) === 0;
+            return { collector: index + 1, currentInFlight: currentConnections, maxInFlight: null, queueDepth: outstandingRecords, outstandingRecords, bounded };
+        }
+        const admission = snapshot.admission ?? {};
+        const putRecords = snapshot.kinesis?.put_records ?? {};
+        const queueDepth = numberOrZero(putRecords.queue_depth) + numberOrZero(putRecords.sender_queue_depth);
+        const outstandingRecords = numberOrZero(putRecords.outstanding_records);
+        const currentInFlight = numberOrZero(admission.current_in_flight);
+        const maxInFlight = numberOrZero(admission.max_in_flight);
+        const bounded = (maxInFlight <= 0 || currentInFlight < maxInFlight * 0.8) && queueDepth < 800 && outstandingRecords < 800 &&
+            numberOrZero(putRecords.queue_full) === 0 && numberOrZero(putRecords.failures) === 0 && numberOrZero(putRecords.timeouts) === 0;
+        return { collector: index + 1, currentInFlight, maxInFlight, queueDepth, outstandingRecords, bounded };
+    });
+    return { observations, bounded: observations.length === 4 && observations.every((observation) => observation.bounded) };
+}
+
+function numberOrZero(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }

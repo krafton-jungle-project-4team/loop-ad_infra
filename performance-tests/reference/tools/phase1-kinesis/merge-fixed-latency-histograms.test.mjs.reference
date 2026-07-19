@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { histogramLatencyMs, mergeFixedHistograms } from './merge-fixed-latency-histograms.mjs';
+
+function histogram(counts, overflow = 0) {
+    return { method: 'fixed-width-upper-bound', unit: 'nanoseconds', bucket_width_nanoseconds: 1_000_000,
+        max_nanoseconds: 3_000_000, counts, count: counts.reduce((sum, value) => sum + value, 0), overflow_count: overflow };
+}
+
+test('merges worker histogram counts before calculating fleet quantiles', () => {
+    const merged = mergeFixedHistograms([histogram([0, 95, 5, 0]), histogram([0, 0, 0, 100])]);
+    assert.deepEqual(merged.counts, [0, 95, 5, 100]);
+    assert.equal(merged.count, 200);
+    assert.deepEqual(histogramLatencyMs(merged), {
+        method: 'fleet-pooled-fixed-histogram-upper-bound', p50: 2, p95: 3, p99: 3,
+    });
+});
+
+test('rejects incompatible or internally inconsistent histograms', () => {
+    assert.throws(() => mergeFixedHistograms([histogram([1, 0]), { ...histogram([1, 0]), bucket_width_nanoseconds: 2_000_000 }]), /incompatible/);
+    assert.throws(() => mergeFixedHistograms([{ ...histogram([1, 0]), count: 2 }]), /count mismatch/);
+});

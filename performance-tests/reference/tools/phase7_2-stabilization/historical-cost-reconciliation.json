@@ -1,0 +1,176 @@
+{
+  "archiveTasksStarted": 0,
+  "calculatedAt": "2026-07-18T00:14:49.577Z",
+  "campaignChargedUpperBoundUsd": "5.000000",
+  "cleanupAllZero": true,
+  "components": [
+    {
+      "costUsd": "2.220000",
+      "name": "Kinesis provisioned shards",
+      "note": "All 120 shards are charged for one full-hour quantum although the stream existed for under three minutes.",
+      "quantity": "120",
+      "unit": "shard-hour",
+      "unitPriceUsd": "0.0185"
+    },
+    {
+      "costUsd": "0.067500",
+      "name": "three Network Load Balancers",
+      "note": "All three template NLBs are charged for one full-hour quantum.",
+      "quantity": "3",
+      "unit": "NLB-hour",
+      "unitPriceUsd": "0.0225"
+    },
+    {
+      "costUsd": "0.018000",
+      "name": "idle NLB capacity allowance",
+      "note": "One NLCU-hour per NLB is reserved despite no workload traffic.",
+      "quantity": "3",
+      "unit": "NLCU-hour",
+      "unitPriceUsd": "0.006"
+    },
+    {
+      "costUsd": "0.059000",
+      "name": "single NAT gateway",
+      "note": "The partial NAT gateway hour is rounded up.",
+      "quantity": "1",
+      "unit": "gateway-hour",
+      "unitPriceUsd": "0.059"
+    },
+    {
+      "costUsd": "0.005900",
+      "name": "NAT data allowance",
+      "note": "Control-plane traffic allowance; no workload ran.",
+      "quantity": "0.1",
+      "unit": "GiB",
+      "unitPriceUsd": "0.059"
+    },
+    {
+      "costUsd": "0.005000",
+      "name": "public IPv4 address",
+      "note": "One NAT Elastic IP is charged for one full-hour quantum.",
+      "quantity": "1",
+      "unit": "IPv4-hour",
+      "unitPriceUsd": "0.005"
+    },
+    {
+      "costUsd": "0.013151",
+      "name": "Secrets Manager storage",
+      "note": "One secret is conservatively charged for a full day.",
+      "quantity": "0.03287671232876712328767123288",
+      "unit": "secret-month",
+      "unitPriceUsd": "0.4"
+    },
+    {
+      "costUsd": "0.009863",
+      "name": "ECR image storage",
+      "note": "Three one-GiB image allowances are charged for a full day.",
+      "quantity": "0.09863013698630136986301369864",
+      "unit": "GiB-month",
+      "unitPriceUsd": "0.1"
+    },
+    {
+      "costUsd": "0.002670",
+      "name": "DynamoDB storage",
+      "note": "Three empty control tables receive a full-day storage allowance.",
+      "quantity": "0.009863013698630136986301369864",
+      "unit": "GB-month",
+      "unitPriceUsd": "0.27075"
+    },
+    {
+      "costUsd": "0.001355",
+      "name": "DynamoDB control reads",
+      "note": "No data workload ran; this is a control-plane allowance.",
+      "quantity": "10000",
+      "unit": "read unit",
+      "unitPriceUsd": "0.0000001355"
+    },
+    {
+      "costUsd": "0.006800",
+      "name": "DynamoDB control writes",
+      "note": "No data workload ran; this is a control-plane allowance.",
+      "quantity": "10000",
+      "unit": "write unit",
+      "unitPriceUsd": "0.00000068"
+    },
+    {
+      "costUsd": "0.004932",
+      "name": "S3 storage",
+      "note": "Two empty buckets receive the full successful-run storage allowance for one day.",
+      "quantity": "0.1972602739726027397260273973",
+      "unit": "GB-month",
+      "unitPriceUsd": "0.025"
+    },
+    {
+      "costUsd": "0.007600",
+      "name": "CloudWatch log ingestion allowance",
+      "note": "No ECS hosts started; a small control-plane margin is retained.",
+      "quantity": "0.01",
+      "unit": "GiB",
+      "unitPriceUsd": "0.76"
+    },
+    {
+      "costUsd": "0.010000",
+      "name": "Cost Explorer query",
+      "note": "One delayed tag-attribution query was executed.",
+      "quantity": "1",
+      "unit": "query",
+      "unitPriceUsd": "0.01"
+    },
+    {
+      "costUsd": "1.500000",
+      "name": "evidence and transfer reserve",
+      "note": "Preserves the original model's unmodeled evidence and transfer reserve.",
+      "quantity": "1",
+      "unit": "fixed reserve",
+      "unitPriceUsd": "1.5"
+    },
+    {
+      "costUsd": "0.500000",
+      "name": "failure-path reserve",
+      "note": "Covers delayed billing and rollback uncertainty.",
+      "quantity": "1",
+      "unit": "fixed reserve",
+      "unitPriceUsd": "0.5"
+    }
+  ],
+  "computeInstancesStarted": 0,
+  "inputs": {
+    "cleanupVerification": {
+      "path": "performance-tests/phase7_2-stabilization/historical-cleanup-verification-final-20260718T001100Z.json",
+      "sha256": "01ca137193d628a39734f29d4b103320f58aa5d99f7d869cde99bcba176f245a"
+    },
+    "costExplorer": {
+      "path": "performance-tests/phase7_2-stabilization/historical-cost-explorer-20260718.json",
+      "sha256": "e977e4f2a6fd3e7fe3245090a6d9407103be333092cd335d29658e09aafa4086"
+    },
+    "deployLog": {
+      "path": "performance-tests/run_20260717_225316_phase7_2_aws_integration/evidence/control/deploy.attempt-1.stderr.log",
+      "sha256": "c06fc2fd52ae9636df8433db71dc3146cc2254cb79a6f8e6783213c18bcfc185"
+    },
+    "imageManifest": {
+      "path": "performance-tests/run_20260717_225316_phase7_2_deployment_readiness/image-manifest.json",
+      "sha256": "9d64793a0029090a12d4ca02697295cc236664f753181264d758e509ade3d6be"
+    },
+    "prices": {
+      "path": "performance-tests/run_20260717_225316_phase7_2_deployment_readiness/prices.json",
+      "sha256": "f25d890061b2017ba149fbc58de5c621c3e1b402a10bc6545c0e0260eb2cd1d7"
+    },
+    "run": {
+      "path": "performance-tests/run_20260717_225316_phase7_2_aws_integration/run.json",
+      "sha256": "253aead3805e6b8d224aab68c5902f691a56fa4ca0c9c89ac9f4df96fdf40d72"
+    }
+  },
+  "loadRequestsStarted": 0,
+  "modeledFailurePathUpperBoundUsd": "4.431771",
+  "observedCostDisposition": "delayed evidence; not used as a zero-cost assumption",
+  "observedCostEstimated": true,
+  "observedCostUsd": "0.000000",
+  "paidBillingHoursCeiling": "1",
+  "paidElapsedSeconds": "1584.76559",
+  "paidEndedAt": "2026-07-17T23:48:28.555Z",
+  "paidStartedAt": "2026-07-17T23:22:03.789410Z",
+  "roundingPolicy": "round the evidence-backed failure-path model up to the next whole USD",
+  "runId": "run_20260717_225316_phase7_integration",
+  "schemaVersion": 1,
+  "sessionId": "phase7-integration-20260717T225316Z"
+}

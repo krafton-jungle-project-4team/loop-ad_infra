@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "incidentId": "incident-phase1-generator-diagnosis",
+  "symptom": "not_recorded",
+  "rootCause": "not_recorded",
+  "fix": "not_recorded",
+  "regressionResult": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p:unknown, run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p:unknown, run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p:unknown, run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p:unknown, run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p:unknown, run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync:unknown, run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch:unknown, run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl:unknown",
+  "affectedRunIds": [
+    "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p",
+    "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p",
+    "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p",
+    "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p",
+    "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p",
+    "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync",
+    "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch",
+    "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl"
+  ],
+  "period": {
+    "start": "2026-07-12T15:09:33",
+    "end": "2026-07-12T17:10:51",
+    "timezone": "not_recorded"
+  },
+  "invalidationScope": "unknown",
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceEvidence": [
+      {
+        "path": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/cleanup-verification.json",
+        "bytes": 360,
+        "sha256": "c4522eca840d51d931743a7b5071ac7eb5bf70c8fdebf5c8cc1904973372652e"
+      },
+      {
+        "path": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/cost-accrued-before-control.json",
+        "bytes": 159,
+        "sha256": "4ea0d89d06a3d9f8ad5119a4b8a4711abbb254409eb87d77172859256b83f04f"
+      },
+      {
+        "path": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/cost-before-control.json",
+        "bytes": 1758,
+        "sha256": "977a4e0373609d1ef0de8c502248b3e19300eb0eea747bf5e0a502db5c8d7528"
+      },
+      {
+        "path": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/cost-initial-plan.json",
+        "bytes": 1821,
+        "sha256": "78471daba4a6d8affc1a037a8b3b6e7b8360ae59476f0761a1a37a82a55c245d"
+      },
+      {
+        "path": "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p/cost-before-attempt.json",
+        "bytes": 1775,
+        "sha256": "07a11cab4bf079132f5c80f05a42523565a99c6e337fecb47c987e7a532db315"
+      },
+      {
+        "path": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p/cost-before-attempt.json",
+        "bytes": 1773,
+        "sha256": "02d3de87e4bb4ba1dc53324f051a6921850d6a6e4186db97635d89fffb7aaf39"
+      },
+      {
+        "path": "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p/cost-before-attempt.json",
+        "bytes": 1769,
+        "sha256": "f49d942ae26bb7721367a57a1ae8a63085e4cd16a270eb0efc2ab9d0c0956188"
+      },
+      {
+        "path": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p/cleanup-verification.json",
+        "bytes": 360,
+        "sha256": "275dd1f7f45c1e4d2e97fd57288ea82ceffaa263796e3341dd409ace5839d82d"
+      },
+      {
+        "path": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p/cost-before-attempt.json",
+        "bytes": 1769,
+        "sha256": "53bb516ff8f1c7beaf65961b7e1a799dbe0520d344a44e891cc29d84fd93edcf"
+      },
+      {
+        "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/cleanup-verification.json",
+        "bytes": 1174,
+        "sha256": "245524875c110fb8d373b9befccff74bf0c78c23916dbfa496c9fb878f353d98"
+      },
+      {
+        "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/correctness-summary.json",
+        "bytes": 1032,
+        "sha256": "430cf157226d7de0fef29f7f358cbfc4ff4ff24a845d6efd61452aaca8d1fc28"
+      },
+      {
+        "path": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/cost-plan.json",
+        "bytes": 1843,
+        "sha256": "abcb25581b9af7bdf579cea7dac71d4b798b7e10c23688cfe82f67982566f7cb"
+      },
+      {
+        "path": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch/cleanup-verification.json",
+        "bytes": 1176,
+        "sha256": "660502ffe178a1908ca61ad14621d57888acbdb08365b6af504e163f3afb7ff0"
+      },
+      {
+        "path": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch/correctness-summary.json",
+        "bytes": 1033,
+        "sha256": "360fb5b56da80fb21b37231ab995585ad2a8fa944911909a2bbfdafcaafafac8"
+      },
+      {
+        "path": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch/cost-plan.json",
+        "bytes": 1843,
+        "sha256": "c569ae94e9d67037986289cb8e37a24c7d1f9a1d377d448fb2d5a2bb05a1e998"
+      },
+      {
+        "path": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/cleanup-verification.json",
+        "bytes": 1176,
+        "sha256": "e82b629442d24f088fc69ac7d7e44badc6cb21f4a8f865f85e86b59e2f32a022"
+      },
+      {
+        "path": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/correctness-summary.json",
+        "bytes": 1033,
+        "sha256": "36bd1f3a26e96eec01b6fe12bb4fabe9905e4777fd298c4ecde3775012bb9084"
+      },
+      {
+        "path": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/cost-explorer.json",
+        "bytes": 1037,
+        "sha256": "978612b35c4ccc8c0f27513d1800007d960feba5b56918db695fd8ec7ccce6b6"
+      },
+      {
+        "path": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/cost-plan.json",
+        "bytes": 1843,
+        "sha256": "3cf3563c74048920eaefcbcb186872e9a2ef429b993a313cc364b1b1337caad8"
+      }
+    ]
+  }
+}

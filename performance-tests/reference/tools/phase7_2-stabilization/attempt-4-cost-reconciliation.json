@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 4,
+  "runId": "run_20260718_042130_phase7_integration",
+  "sessionId": "phase7-integration-20260718T042130Z",
+  "reconciledAt": "2026-07-18T05:40:11Z",
+  "paidRuntime": {
+    "deployStartedAt": "2026-07-18T04:43:34.635098Z",
+    "cloudFormationFirstFailureAt": "2026-07-18T04:47:51.982Z",
+    "runnerDeployFinishedAt": "2026-07-18T05:03:34.670748Z",
+    "runnerDeployWallClockSeconds": "1200.035650",
+    "runtimeAndImageStacksDeletedBy": "2026-07-18T05:31:20.343Z",
+    "stackToTeardownSeconds": "2865.708000"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-4-cost-explorer-20260718.json",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "The current-day result is estimated and delayed; zero is not treated as a zero-cost attempt."
+  },
+  "modeledFailurePath": {
+    "billableResourceDurationCeilingSeconds": 3600,
+    "components": [
+      {
+        "name": "EC2 fixed fleet",
+        "costUsd": "3.369200",
+        "note": "All 19 planned instances receive a conservative full instance-hour although only the six collector hosts persisted through the cleanup stall."
+      },
+      {
+        "name": "Kinesis provisioned shards",
+        "costUsd": "2.220000",
+        "note": "All 120 shards receive a full shard-hour."
+      },
+      {
+        "name": "three Network Load Balancers",
+        "costUsd": "0.067500",
+        "note": "Each partial load-balancer hour is charged as one full hour."
+      },
+      {
+        "name": "idle NLB capacity allowance",
+        "costUsd": "0.018000"
+      },
+      {
+        "name": "single NAT gateway",
+        "costUsd": "0.059000"
+      },
+      {
+        "name": "NAT processed data allowance",
+        "costUsd": "0.005900"
+      },
+      {
+        "name": "public IPv4 address",
+        "costUsd": "0.005000"
+      },
+      {
+        "name": "gp3 capacity and ClickHouse extra throughput",
+        "costUsd": "0.153353",
+        "note": "All planned roots and provisioned throughput receive a conservative full-hour ceiling."
+      },
+      {
+        "name": "Secrets Manager storage",
+        "costUsd": "0.013151"
+      },
+      {
+        "name": "ECR image storage",
+        "costUsd": "0.009863"
+      },
+      {
+        "name": "DynamoDB storage and control requests",
+        "costUsd": "0.010825"
+      },
+      {
+        "name": "S3 storage allowance",
+        "costUsd": "0.004932"
+      },
+      {
+        "name": "CloudWatch log ingestion allowance",
+        "costUsd": "0.007600"
+      },
+      {
+        "name": "CloudWatch custom metrics",
+        "costUsd": "0.246575"
+      },
+      {
+        "name": "Cost Explorer query",
+        "costUsd": "0.010000"
+      },
+      {
+        "name": "evidence and transfer reserve",
+        "costUsd": "0.500000"
+      },
+      {
+        "name": "delayed metering and rollback reserve",
+        "costUsd": "0.500000"
+      }
+    ],
+    "upperBoundUsd": "7.200899"
+  },
+  "roundingPolicy": "Charge 8.000000 USD to the campaign ledger, rounding the 7.200899 USD failure-path upper bound upward while retaining delayed-billing margin.",
+  "campaignChargedUpperBoundUsd": "8.000000",
+  "campaignAfterAttempt": {
+    "chargedUpperBoundUsd": "19.000000",
+    "remainingBeforeHardCapUsd": "31.000000",
+    "remainingOperationalBeforeReserveUsd": "26.000000"
+  },
+  "nextFullAttemptGate": {
+    "nextAttemptOperationalUpperBoundUsd": "33.855718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "57.855718",
+    "hardCapUsd": "60.000000",
+    "passed": true,
+    "authorization": "The user explicitly raised the Phase 7-2 campaign hard cap from 50.000000 USD to 60.000000 USD on 2026-07-18. The cleanup reserve remains 5.000000 USD and the new-paid-work stop becomes 55.000000 USD."
+  },
+  "sourceEvidence": {
+    "cleanupVerification": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_aws_integration/cleanup-verification.json",
+      "sha256": "a01f79fd057dedc7bc27f0c3b5002559cb87f87d9ada36c5b2cddeeebf882187"
+    },
+    "costModel": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_aws_integration/inputs/cost-model.json",
+      "sha256": "a5521ed5cf9665c3957b8049d1e148ce34f25ccded62bdb217387654f2544e16"
+    },
+    "deployLog": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_aws_integration/evidence/control/deploy.attempt-1.stderr.log",
+      "sha256": "5105996132f7d73e061e9adacc1cc7872ceb42e522b433ba9b347efbaf03ba9c"
+    },
+    "imageManifest": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_deployment_readiness/image-manifest.json",
+      "sha256": "fcda5781a10e888a1d02503d66f4006a218df91c49934b6bd7d82fe64cad08f7"
+    },
+    "prices": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_deployment_readiness/prices-final.json",
+      "sha256": "d9eabbbc34db8c3a7a86824238db15f4cfc34482826478576ce819fbe12747ab"
+    },
+    "run": {
+      "path": "performance-tests/run_20260718_042130_phase7_2_aws_integration/run.json",
+      "sha256": "f07bdbe7090b7ffca126929ce932b0756c17265aa3ab298346f424a144722cc2"
+    }
+  }
+}

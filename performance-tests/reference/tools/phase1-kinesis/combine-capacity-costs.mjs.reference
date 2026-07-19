@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const scout = readJson(requiredOption('--scout-cost'));
+const final = readJson(requiredOption('--final-cost'));
+const output = requiredOption('--output');
+const cleanupReserveUsd = 4;
+const initialConservativeUpperBoundUsd = scout.runUpperBoundUsd + final.runUpperBoundUsd;
+const result = {
+    calculatedAt: new Date().toISOString(),
+    scoutUpperBoundUsd: scout.runUpperBoundUsd,
+    finalUpperBoundUsd: final.runUpperBoundUsd,
+    initialConservativeUpperBoundUsd,
+    cleanupAndErrorReserveUsd: cleanupReserveUsd,
+    hardCapUsd: 20,
+    checks: {
+        initialUpperBoundAtMost16: initialConservativeUpperBoundUsd <= 16,
+        reserveAtLeast4: 20 - initialConservativeUpperBoundUsd >= cleanupReserveUsd,
+        hardCapStrictlyBelow20: initialConservativeUpperBoundUsd < 20,
+    },
+};
+result.passed = Object.values(result.checks).every(Boolean);
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function readJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} is required`); return value; }

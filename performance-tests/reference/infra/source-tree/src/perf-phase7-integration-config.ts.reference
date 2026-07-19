@@ -1,0 +1,120 @@
+import type { Construct } from 'constructs';
+import topology from '../performance-tests/phase7-integration/topology-contract.json';
+
+export const PHASE7_REGION = 'ap-northeast-2';
+export const PHASE7_RUN_ID_CONTEXT_KEY = 'phase7RunId';
+export const PHASE7_SESSION_ID_CONTEXT_KEY = 'phase7SessionId';
+export const PHASE7_COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY = 'phase7CollectorImageDigest';
+export const PHASE7_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY = 'phase7ConsumerImageDigest';
+export const PHASE7_ARCHIVE_IMAGE_DIGEST_CONTEXT_KEY = 'phase7ArchiveImageDigest';
+export const PHASE7_X86_ECS_AMI_ID_CONTEXT_KEY = 'phase7X86EcsAmiId';
+export const PHASE7_ARM_ECS_AMI_ID_CONTEXT_KEY = 'phase7ArmEcsAmiId';
+export const PHASE7_PROTOCOL_CERTIFICATE_ARN_CONTEXT_KEY = 'phase7ProtocolCertificateArn';
+export const PHASE7_PROTOCOL_DNS_NAME_CONTEXT_KEY = 'phase7ProtocolDnsName';
+
+export const PHASE7_STREAM_SHARDS = topology.kinesisShards;
+export const PHASE7_COLLECTOR_COUNT = topology.collectorHosts;
+export const PHASE7_HAPROXY_COUNT = topology.haproxyHosts;
+export const PHASE7_CONSUMER_COUNT = topology.consumerHosts;
+export const PHASE7_LOAD_GENERATOR_COUNT = topology.loadGeneratorHosts;
+export const PHASE7_CLICKHOUSE_IMAGE =
+    topology.fixedImages.clickHouse;
+export const PHASE7_HAPROXY_IMAGE =
+    topology.fixedImages.haproxy;
+export const PHASE7_OHA_IMAGE =
+    topology.fixedImages.oha;
+export const PHASE7_HOST_INSTANCE_TYPES = topology.hostInstanceTypes;
+
+export interface PerfPhase7IntegrationConfig {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly collectorImageDigest: string;
+    readonly consumerImageDigest: string;
+    readonly archiveImageDigest: string;
+    readonly x86EcsAmiId: string;
+    readonly armEcsAmiId: string;
+    readonly protocolCertificateArn: string;
+    readonly protocolDnsName: string;
+    readonly collectorRepositoryName: string;
+    readonly consumerRepositoryName: string;
+    readonly archiveRepositoryName: string;
+}
+
+export function phase7OwnershipTags(scope: Construct): Record<string, string> {
+    const { runId, sessionId } = readPhase7RunIdentity(scope);
+    return {
+        Project: 'loop-ad',
+        Phase: '7',
+        RunId: runId,
+        SessionId: sessionId,
+        ResourceScope: 'run',
+        ManagedBy: 'codex',
+    };
+}
+
+export function readPerfPhase7IntegrationConfig(scope: Construct): PerfPhase7IntegrationConfig {
+    const { runId, sessionId } = readPhase7RunIdentity(scope);
+    const collectorImageDigest = context(scope, PHASE7_COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY);
+    const consumerImageDigest = context(scope, PHASE7_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY);
+    const archiveImageDigest = context(scope, PHASE7_ARCHIVE_IMAGE_DIGEST_CONTEXT_KEY);
+    const x86EcsAmiId = context(scope, PHASE7_X86_ECS_AMI_ID_CONTEXT_KEY);
+    const armEcsAmiId = context(scope, PHASE7_ARM_ECS_AMI_ID_CONTEXT_KEY);
+    const protocolCertificateArn = context(scope, PHASE7_PROTOCOL_CERTIFICATE_ARN_CONTEXT_KEY);
+    const protocolDnsName = context(scope, PHASE7_PROTOCOL_DNS_NAME_CONTEXT_KEY);
+
+    for (const [key, value] of [
+        [PHASE7_COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY, collectorImageDigest],
+        [PHASE7_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY, consumerImageDigest],
+        [PHASE7_ARCHIVE_IMAGE_DIGEST_CONTEXT_KEY, archiveImageDigest],
+    ] as const) {
+        if (!/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error(`${key} must be a sha256 digest.`);
+    }
+    for (const [key, value] of [
+        [PHASE7_X86_ECS_AMI_ID_CONTEXT_KEY, x86EcsAmiId],
+        [PHASE7_ARM_ECS_AMI_ID_CONTEXT_KEY, armEcsAmiId],
+    ] as const) {
+        if (!/^ami-[0-9a-f]{8,17}$/.test(value)) throw new Error(`${key} must be an exact AMI ID.`);
+    }
+    if (!/^arn:aws:acm:ap-northeast-2:\d{12}:certificate\/[0-9a-f-]{36}$/.test(protocolCertificateArn)) {
+        throw new Error(`${PHASE7_PROTOCOL_CERTIFICATE_ARN_CONTEXT_KEY} must be an ap-northeast-2 ACM certificate ARN.`);
+    }
+    if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(protocolDnsName)) {
+        throw new Error(`${PHASE7_PROTOCOL_DNS_NAME_CONTEXT_KEY} must be a lowercase DNS name.`);
+    }
+
+    const repositoryPrefix = `loop-ad/perf-phase7/${runId}`;
+    return {
+        runId,
+        sessionId,
+        collectorImageDigest,
+        consumerImageDigest,
+        archiveImageDigest,
+        x86EcsAmiId,
+        armEcsAmiId,
+        protocolCertificateArn,
+        protocolDnsName,
+        collectorRepositoryName: `${repositoryPrefix}/collector`,
+        consumerRepositoryName: `${repositoryPrefix}/consumer`,
+        archiveRepositoryName: `${repositoryPrefix}/archive`,
+    };
+}
+
+function readPhase7RunIdentity(scope: Construct): { runId: string; sessionId: string } {
+    const runId = context(scope, PHASE7_RUN_ID_CONTEXT_KEY);
+    const sessionId = context(scope, PHASE7_SESSION_ID_CONTEXT_KEY);
+    if (!/^run_\d{8}_\d{6}_phase7_integration$/.test(runId)) {
+        throw new Error(`${PHASE7_RUN_ID_CONTEXT_KEY} must match run_YYYYMMDD_HHMMSS_phase7_integration.`);
+    }
+    if (!/^phase7-integration-\d{8}T\d{6}Z$/.test(sessionId)) {
+        throw new Error(`${PHASE7_SESSION_ID_CONTEXT_KEY} must match phase7-integration-YYYYMMDDTHHMMSSZ.`);
+    }
+    return { runId, sessionId };
+}
+
+function context(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) {
+        throw new Error(`Missing or invalid CDK context "${key}".`);
+    }
+    return value;
+}

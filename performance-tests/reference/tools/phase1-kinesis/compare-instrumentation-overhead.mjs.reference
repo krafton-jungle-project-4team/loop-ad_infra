@@ -1,0 +1,19 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const enabledPath = requiredOption('--enabled');
+const disabledPath = requiredOption('--disabled');
+const output = requiredOption('--output');
+const enabled = JSON.parse(readFileSync(enabledPath, 'utf8'));
+const disabled = JSON.parse(readFileSync(disabledPath, 'utf8'));
+if (enabled.instrumentation !== 'on' || disabled.instrumentation !== 'off' || enabled.targetRps !== disabled.targetRps || enabled.targetPath !== disabled.targetPath || enabled.durationSeconds !== disabled.durationSeconds) throw new Error('instrumentation comparison conditions do not match');
+const throughputDifferenceRatio = Math.abs(enabled.aggregate.actualRps - disabled.aggregate.actualRps) / Math.max(1, disabled.aggregate.actualRps);
+const p95DifferenceRatio = Math.abs(enabled.aggregate.latencyMs.p95 - disabled.aggregate.latencyMs.p95) / Math.max(1, disabled.aggregate.latencyMs.p95);
+const result = { comparedAt: new Date().toISOString(), enabled: enabledPath, disabled: disabledPath,
+    targetRps: enabled.targetRps, targetPath: enabled.targetPath, throughputDifferenceRatio, p95DifferenceRatio,
+    thresholdRatio: .02, passed: throughputDifferenceRatio <= .02 && p95DifferenceRatio <= .02 };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

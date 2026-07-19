@@ -1,0 +1,44 @@
+config:
+  target: "http://127.0.0.1"
+  payload:
+    path: "./payloads/sdk-compatible-event-bodies.tsv"
+    fields:
+      - "body_json"
+      - "payload_size_profile"
+      - "payload_actual_bytes"
+    skipHeader: true
+    delimiter: "\t"
+    cast: false
+    options:
+      quote: false
+    order: sequence
+  phases:
+    - name: "ramp 100 to 500 rps"
+      duration: 60
+      arrivalRate: 100
+      rampTo: 500
+    - name: "hold 500 rps"
+      duration: 60
+      arrivalRate: 500
+    - name: "ramp 500 to 1000 rps"
+      duration: 60
+      arrivalRate: 500
+      rampTo: 1000
+    - name: "hold 1000 rps"
+      duration: 60
+      arrivalRate: 1000
+    - name: "ramp 1000 to 2000 rps"
+      duration: 60
+      arrivalRate: 1000
+      rampTo: 2000
+  defaults:
+    headers:
+      content-type: "application/json"
+  http:
+    timeout: 5
+scenarios:
+  - name: "POST ALB fixed response ramp"
+    flow:
+      - post:
+          url: "/__fixed"
+          body: "{{ body_json }}"

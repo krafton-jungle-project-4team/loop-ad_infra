@@ -1,0 +1,91 @@
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+import { ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE } from './oha-load-contract.mjs';
+
+export const ADMISSION_SCALEOUT_PROFILES = Object.freeze({
+    A: Object.freeze({ collectorCount: 4, instanceType: 'c6i.xlarge', applicationMaxInFlight: 2048, kinesisMaxConnections: 1024, totalVcpus: 16, totalMemoryGiB: 32 }),
+    B: Object.freeze({ collectorCount: 8, instanceType: 'c6i.large', applicationMaxInFlight: 2048, kinesisMaxConnections: 1024, totalVcpus: 16, totalMemoryGiB: 32 }),
+});
+
+export const ADMISSION_SCALEOUT_STAGES = Object.freeze({
+    A30: Object.freeze({ profile: 'A', targetPath: '/events', targetRps: 30_000, durationSeconds: 120 }),
+    A40: Object.freeze({ profile: 'A', targetPath: '/events', targetRps: 40_000, durationSeconds: 60 }),
+    B10: Object.freeze({ profile: 'B', targetPath: '/events', targetRps: 10_000, durationSeconds: 60 }),
+    B20: Object.freeze({ profile: 'B', targetPath: '/events', targetRps: 20_000, durationSeconds: 60 }),
+    B30: Object.freeze({ profile: 'B', targetPath: '/events', targetRps: 30_000, durationSeconds: 60 }),
+    B40: Object.freeze({ profile: 'B', targetPath: '/events', targetRps: 40_000, durationSeconds: 60 }),
+    B50_CONTROL: Object.freeze({ profile: 'B', targetPath: '/__generator_control', targetRps: 50_000, durationSeconds: 30 }),
+    B50: Object.freeze({ profile: 'B', targetPath: '/events', targetRps: 50_000, durationSeconds: 60 }),
+});
+
+export function admissionScaleoutStagePlan(stageName) {
+    const stage = ADMISSION_SCALEOUT_STAGES[stageName];
+    if (!stage) throw new Error('unknown admission scale-out stage');
+    return { stageName, ...stage, ...oha12kNodePlan({ nodeCount: 4, processesPerNode: 2,
+        targetRps: stage.targetRps, experimentMode: ADMISSION_SCALEOUT_CAPACITY_EXPERIMENT_MODE }) };
+}
+
+export function evaluateAdmissionStage({ stageName, aggregate, metrics = {}, recovery = {} }) {
+    const plan = admissionScaleoutStagePlan(stageName);
+    const attempted = aggregate.attemptedRequests ?? (aggregate.completedRequests ?? 0) + (aggregate.transportErrors ?? 0);
+    const transportErrorRate = attempted > 0 ? (aggregate.transportErrors ?? 0) / attempted : null;
+    const nodes = aggregate.nodes ?? [];
+    const nodeChecks = nodes.map((node) => ({ nodeId: node.nodeId, actualRps: node.actualRps,
+        transportErrorRate: (node.transportErrors ?? 0) / Math.max(1, node.attemptedRequests ?? 0),
+        passed: node.actualRps >= node.offeredRps * 0.99 && (node.transportErrors ?? 0) / Math.max(1, node.attemptedRequests ?? 0) <= 0.001 }));
+    const fixedControl = plan.targetPath === '/__generator_control';
+    const checks = {
+        aggregateRps: aggregate.actualRps >= plan.targetRps * 0.99,
+        transportErrors: transportErrorRate !== null && transportErrorRate <= 0.001,
+        allGeneratorNodes: nodeChecks.length === 4 && nodeChecks.every((node) => node.passed),
+        ...(fixedControl ? {} : {
+            admissionPeak: metrics.admissionUtilizationPeak < 0.8,
+            targetP95: metrics.targetResponseP95Ms < 150,
+            cpuPeak: metrics.cpuPeakPercent < 70,
+            memoryPeak: metrics.memoryPeakPercent < 70,
+            kinesisThrottle: metrics.kinesisThrottleCount === 0,
+            producerFailures: metrics.producerFailureCount === 0 && metrics.producerTimeoutCount === 0,
+            pathStable: metrics.alb460Increasing === false && metrics.synSentIncreasing === false,
+            enaStable: metrics.enaAllowanceDelta === 0,
+            targetsHealthy: metrics.healthyTargetCount === ADMISSION_SCALEOUT_PROFILES[plan.profile].collectorCount,
+            runtimeSafe: metrics.oomFatalRestartCount === 0,
+            recovery: recovery.passed === true && recovery.queueDepth === 0 && recovery.outstandingRecords === 0 && recovery.apiInFlight === 0,
+        }),
+    };
+    const immediateStop = fixedControl ? false : aggregate.actualRps < plan.targetRps * 0.95 || (transportErrorRate ?? 1) > 0.01 ||
+        metrics.admissionSustained90 === true || metrics.targetResponseP95Ms >= 250 || metrics.cpuSustained80 === true ||
+        metrics.memorySustained80 === true || metrics.kinesisThrottleCount > 0 || metrics.producerFailureCount > 0 ||
+        metrics.producerTimeoutCount > 0 || recovery.unrecovered === true || metrics.alb460Increasing === true ||
+        metrics.synSentIncreasing === true || metrics.oomFatalRestartCount > 0;
+    return { stageName, profile: plan.profile, targetPath: plan.targetPath, offeredRps: plan.targetRps,
+        actualRps: aggregate.actualRps, attemptedRequests: attempted, transportErrors: aggregate.transportErrors ?? 0,
+        transportErrorRate, nodeChecks, metrics, recovery, checks, immediateStop,
+        result: Object.values(checks).every(Boolean) ? 'success' : 'failure' };
+}
+
+export function evaluateAdmissionScaleout(input) {
+    const stages = Object.fromEntries(Object.entries(input.stages ?? {}).map(([name, stage]) => [name,
+        evaluateAdmissionStage({ stageName: name, aggregate: stage.aggregate, metrics: stage.metrics, recovery: stage.recovery })]));
+    const profileA30Resolved = stages.A30?.result === 'success';
+    const profileAToward40k = stages.A40 ? stages.A40.actualRps >= 38_000 && stages.A40.immediateStop === false : false;
+    const generator50Run = Boolean(stages.B50_CONTROL);
+    const generator50Qualified = stages.B50_CONTROL?.result === 'success';
+    const profileB50Accepted = generator50Qualified && stages.B50?.result === 'success';
+    const highestSuccessfulActualRps = Object.values(stages).filter((stage) => stage.targetPath === '/events' && stage.result === 'success')
+        .reduce((maximum, stage) => Math.max(maximum, stage.offeredRps), 0);
+    const bottleneck = profileB50Accepted ? 'none-observed-through-50k'
+        : generator50Run && !generator50Qualified ? 'generator'
+        : input.bottleneckEvidence?.admission === true ? 'application-admission'
+        : input.bottleneckEvidence?.targetLatency === true ? 'target-latency'
+        : input.bottleneckEvidence?.albPath === true ? 'alb-path'
+        : input.bottleneckEvidence?.kinesis === true ? 'kinesis' : 'inconclusive';
+    return { evaluatedAt: new Date().toISOString(), stages,
+        conclusions: { profileA30Resolved, profileAToward40k, generator50Qualified, profileB50Accepted,
+            highestSuccessfulActualRps, bottleneck,
+            maxInFlightEffect: profileA30Resolved ? 'supported' : stages.A30 ? 'not-supported-at-30k' : 'inconclusive',
+            scaleOutEffect: stages.A30 && stages.B30 ? (stages.B30.actualRps > stages.A30.actualRps ? 'supported' : 'not-supported') : 'inconclusive',
+            productionCollectorRecommendation: profileB50Accepted ? { min: 8, max: 12 } : null,
+            autoscalingSignals: { admissionUtilizationTarget: 0.65, admissionUtilizationScaleOut: 0.75,
+                albTargetP95ScaleOutMs: 120, producerQueueMustRecover: true, cpuScaleOutPercent: 65,
+                memoryScaleOutPercent: 65, kinesisThrottleRequired: 0 } },
+        diagnosticComplete: true };
+}

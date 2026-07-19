@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./calculate-cost.mjs', import.meta.url).pathname;
+
+test('capacity cost model fixes four collectors and includes explicit NAT/data-transfer upper bounds', () => {
+    const output = JSON.parse(execFileSync('node', args(4), { encoding: 'utf8' }));
+    assert.equal(output.inputs.experimentMode, 'capacity');
+    assert.equal(output.inputs.collectorCount, 4);
+    assert.equal(output.components.natGateway, 0);
+    assert.equal(output.components.dataTransfer, 1.25);
+    assert.equal(output.budget.initialPlanAccepted, true);
+    assert.equal(output.budget.mayStart, true);
+});
+
+test('capacity cost model rejects a collector count other than four', () => {
+    const result = spawnSync('node', args(3), { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /exactly four collectors/);
+});
+
+test('oha12k cost model prices each selected load-generator node', () => {
+    const output = JSON.parse(execFileSync('node', args(4, 'capacity-oha12k', 4), { encoding: 'utf8' }));
+    assert.equal(output.inputs.loadGeneratorCount, 4);
+    assert.equal(output.inputs.instanceCount, 8);
+    assert.equal(output.components.loadGeneratorEc2, 4 * 2 * 0.1281);
+});
+
+test('fast-control cost model excludes collector and Kinesis charges', () => {
+    const output = JSON.parse(execFileSync('node', args(0, 'generator-diagnosis', 1, 'fast-control'), { encoding: 'utf8' }));
+    assert.equal(output.inputs.targetKind, 'fast-control');
+    assert.equal(output.inputs.collectorCount, 0);
+    assert.equal(output.components.collectorEc2, 0);
+    assert.equal(output.components.kinesisShardHours, 0);
+    assert.equal(output.components.kinesisPutPayloadUnits, 0);
+});
+
+test('tcp/alb diagnosis fixes four generators and reserves cleanup at 24 dollars', () => {
+    const result = JSON.parse(execFileSync('node', args(4, 'tcp-alb-path-diagnosis', 4), { encoding: 'utf8' }));
+    assert.equal(result.inputs.loadGeneratorCount, 4);
+    assert.equal(result.budget.newRunStopUsd, 24);
+    assert.equal(result.budget.hardLimitUsd, 30);
+    assert.equal(result.budget.mayStart, true);
+    const invalid = spawnSync('node', args(4, 'tcp-alb-path-diagnosis', 2), { encoding: 'utf8' });
+    assert.notEqual(invalid.status, 0);
+    assert.match(invalid.stderr, /invalid load generator count/);
+});
+
+function args(collectorCount, experimentMode = 'capacity', loadGeneratorCount = 1, targetKind = 'collector') {
+    const dir = mkdtempSync(join(tmpdir(), 'loopad-capacity-cost-'));
+    const prices = join(dir, 'prices.json');
+    writeFileSync(prices, JSON.stringify({
+        asOf: '2026-07-12T08:00:00Z',
+        prices: {
+            collectorInstanceHour: 0.192, loadGeneratorInstanceHour: 0.1281,
+            kinesisProvisionedShardHour: 0.0185, kinesisPutPayloadUnit: 2.04e-8,
+            albHour: 0.0225, albLcuHour: 0.008, ebsGp3GbMonth: 0.0912,
+            publicIpv4Hour: 0.005, cloudWatchMetricMonth: 0.3,
+            cloudWatchLogIngestGb: 0.76, cloudWatchLogStorageGbMonth: 0.0314,
+            cloudWatchGetMetricDataMetric: 0.00001, ecrStorageGbMonth: 0.1,
+        },
+        fixedApiUpperBounds: { costExplorerRequestUsd: 0.01 },
+    }));
+    return [script, '--experiment-mode', experimentMode, '--target-kind', targetKind, '--budget-mode', 'initial-plan',
+        '--prices', prices, '--collector-count', `${collectorCount}`,
+        '--load-generator-count', `${loadGeneratorCount}`,
+        '--wall-seconds-upper-bound', '7200', '--requests-upper-bound', '30000000',
+        '--previous-upper-bound-usd', '0', '--data-transfer-upper-bound-usd', '1.25'];
+}

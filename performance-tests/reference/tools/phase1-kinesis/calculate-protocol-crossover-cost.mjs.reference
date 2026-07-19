@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const pricesDocument = JSON.parse(readFileSync(requiredOption('--prices'), 'utf8'));
+const prices = pricesDocument.prices;
+const wallSeconds = positiveInteger('--wall-seconds');
+const requests = nonNegativeInteger('--requests-upper-bound');
+const previousUpperBoundUsd = nonNegativeNumber('--previous-upper-bound-usd');
+const logIngestGiB = numberOption('--log-ingest-gib-upper-bound', 4);
+const loadBalancerLcuHours = numberOption('--load-balancer-lcu-hours-upper-bound', 300);
+const evidenceUpperBoundUsd = numberOption('--evidence-upper-bound-usd', .5);
+const transferUpperBoundUsd = numberOption('--data-transfer-upper-bound-usd', 1);
+const output = optionValue('--output');
+for (const key of ['collectorInstanceHour', 'loadGeneratorInstanceHour', 'kinesisProvisionedShardHour',
+    'kinesisPutPayloadUnit', 'albHour', 'albLcuHour', 'nlbHour', 'nlbLcuHour', 'ebsGp3GbMonth',
+    'publicIpv4Hour', 'cloudWatchMetricMonth', 'cloudWatchLogIngestGb', 'cloudWatchLogStorageGbMonth',
+    'cloudWatchGetMetricDataMetric', 'ecrStorageGbMonth']) {
+    if (!Number.isFinite(prices[key]) || prices[key] < 0) throw new Error(`missing price: ${key}`);
+}
+const wallHours = Math.ceil(wallSeconds / 3_600);
+const nlbConditionalHours = 2;
+const ebsGbHours = 8 * 30 * wallHours;
+const detailedMetricHours = 8 * 10 * wallHours;
+const components = {
+    collectors: 4 * wallHours * prices.collectorInstanceHour,
+    loadGenerators: 4 * wallHours * prices.loadGeneratorInstanceHour,
+    kinesisShardHours: 80 * wallHours * prices.kinesisProvisionedShardHour,
+    kinesisPutPayloadUnits: requests * prices.kinesisPutPayloadUnit,
+    albHours: wallHours * prices.albHour,
+    albLcu: loadBalancerLcuHours * prices.albLcuHour,
+    conditionalNlbHours: nlbConditionalHours * prices.nlbHour,
+    conditionalNlbLcu: loadBalancerLcuHours * prices.nlbLcuHour,
+    ebsGp3: ebsGbHours / 730 * prices.ebsGp3GbMonth,
+    publicIpv4: 8 * wallHours * prices.publicIpv4Hour,
+    detailedMonitoring: detailedMetricHours / 730 * prices.cloudWatchMetricMonth,
+    cloudWatchLogsIngest: logIngestGiB * prices.cloudWatchLogIngestGb,
+    cloudWatchLogsStorage: logIngestGiB * wallHours / 730 * prices.cloudWatchLogStorageGbMonth,
+    cloudWatchGetMetricData: 50_000 * prices.cloudWatchGetMetricDataMetric,
+    ecrStorage: .5 * wallHours / 730 * prices.ecrStorageGbMonth,
+    evidence: evidenceUpperBoundUsd,
+    dataTransfer: transferUpperBoundUsd,
+    costExplorerApi: pricesDocument.fixedApiUpperBounds.costExplorerRequestUsd,
+};
+const runUpperBoundUsd = Object.values(components).reduce((sum, value) => sum + value, 0);
+const projectedCumulativeUpperBoundUsd = previousUpperBoundUsd + runUpperBoundUsd;
+const cleanupReserveUsd = 7;
+const checks = {
+	accruedBelowNewDeployStop: previousUpperBoundUsd < 32,
+	projectedPlusReserveBelowHardCap: projectedCumulativeUpperBoundUsd + cleanupReserveUsd < 40,
+};
+const result = {
+    calculatedAt: new Date().toISOString(), priceAsOf: pricesDocument.asOf, currency: 'USD',
+    model: 'conservative upper bound with all wall-clock resources rounded to full hours and conditional NLB included',
+    inputs: { wallSeconds, wallHours, requests, previousUpperBoundUsd, logIngestGiB, loadBalancerLcuHours, evidenceUpperBoundUsd, transferUpperBoundUsd },
+    components, runUpperBoundUsd, projectedCumulativeUpperBoundUsd,
+	budget: { hardCapUsd: 40, newDeployAccruedStopUsd: 32, cleanupReserveUsd, checks, mayStart: Object.values(checks).every(Boolean) },
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (output) writeFileSync(output, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.budget.mayStart) process.exitCode = 2;
+
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function nonNegativeNumber(name) { const value = Number(requiredOption(name)); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }
+function nonNegativeInteger(name) { const value = nonNegativeNumber(name); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function positiveInteger(name) { const value = nonNegativeInteger(name); if (value < 1) throw new Error(`${name} must be positive`); return value; }
+function numberOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative`); return value; }

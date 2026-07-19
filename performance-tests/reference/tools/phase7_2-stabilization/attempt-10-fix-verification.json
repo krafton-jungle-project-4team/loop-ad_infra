@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 10,
+  "runId": "run_20260718_144405_phase7_integration",
+  "sessionId": "phase7-integration-20260718T144405Z",
+  "verifiedAt": "2026-07-18T16:02:05Z",
+  "fix": {
+    "commit": "709c4254fffb636f30b91766b1147173577413c4",
+    "sourceFile": "src/perf-phase7-integration-stack.ts",
+    "testFile": "test/perf-phase7-integration.test.ts",
+    "mechanism": "Create one UTF-8 Buffer from haproxyConfigText, derive both Base64 and SHA-256 from that Buffer, then decode the payload directly to /opt/loopad/haproxy.cfg with printf and base64 -d."
+  },
+  "regressionContract": {
+    "synthTime": true,
+    "decodedPayloadShaMatchesCdkOutput": true,
+    "canonicalBase64": true,
+    "heredocAbsent": true,
+    "topologyTextDecodedFromDeployedPayload": true,
+    "allLaunchTemplateUserDataMaximumBytes": 16384,
+    "loadGeneratorUserDataMaximumBytes": 15360
+  },
+  "commands": [
+    {
+      "command": "npx jest --runInBand test/perf-phase7-integration.test.ts -t 'keeps every decoded EC2 user-data payload within the launch-template limit|writes HAProxy config bytes that exactly match the published runtime fingerprint'",
+      "exitCode": 0,
+      "result": "focused HAProxy exact-byte regression passed"
+    },
+    {
+      "command": "npm run test:phase7",
+      "exitCode": 0,
+      "result": {
+        "jestPassed": 14,
+        "nodePassed": 27,
+        "pythonPassed": 138,
+        "failed": 0
+      }
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "result": "TypeScript no-emit build passed"
+    }
+  ],
+  "developmentNote": "The first full test run exposed a stale test that expected HAProxy configuration plaintext in the synthesized template. The test was corrected to decode and inspect the actual embedded payload; the final full run above passed.",
+  "awsRequests": 0,
+  "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+  "status": "passed"
+}

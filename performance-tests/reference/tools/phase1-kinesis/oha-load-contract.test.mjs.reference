@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import {
+    GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE,
+    LEGACY_MAX_CONNECTIONS,
+    OHA12K_EXPERIMENT_MODE,
+    resolveOhaConnections,
+} from './oha-load-contract.mjs';
+
+test('capacity-oha12k requires and preserves the explicit connection count', () => {
+    assert.equal(resolveOhaConnections({
+        rps: 30_000,
+        explicitConnections: 12_000,
+        experimentMode: OHA12K_EXPERIMENT_MODE,
+    }), 12_000);
+    assert.throws(() => resolveOhaConnections({
+        rps: 30_000,
+        experimentMode: OHA12K_EXPERIMENT_MODE,
+    }), /requires an explicit/);
+});
+
+test('generator-diagnosis also requires explicit process connections', () => {
+    assert.equal(resolveOhaConnections({
+        rps: 12_500,
+        explicitConnections: 3_000,
+        experimentMode: GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    }), 3_000);
+    assert.throws(() => resolveOhaConnections({
+        rps: 50_000,
+        experimentMode: GENERATOR_DIAGNOSIS_EXPERIMENT_MODE,
+    }), /requires an explicit/);
+});
+
+test('alb-warmup also requires exact explicit process connections', () => {
+    assert.equal(resolveOhaConnections({ rps: 12_500, explicitConnections: 3_000, experimentMode: 'alb-warmup' }), 3_000);
+    assert.throws(() => resolveOhaConnections({ rps: 12_500, experimentMode: 'alb-warmup' }), /requires an explicit/);
+});
+
+test('connection-path crossover requires explicit per-node physical connections', () => {
+    assert.equal(resolveOhaConnections({ rps: 7_500, explicitConnections: 3_000, experimentMode: CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE }), 3_000);
+    assert.throws(() => resolveOhaConnections({ rps: 7_500, experimentMode: CONNECTION_PATH_CROSSOVER_EXPERIMENT_MODE }), /requires an explicit/);
+});
+
+test('legacy modes retain the existing calculated 4096 maximum', () => {
+    assert.equal(resolveOhaConnections({ rps: 30_000, experimentMode: 'capacity' }), 2_500);
+    assert.equal(resolveOhaConnections({ rps: 50_000, experimentMode: 'scout' }), LEGACY_MAX_CONNECTIONS);
+    assert.equal(resolveOhaConnections({ rps: 50_000, experimentMode: 'comparison' }), LEGACY_MAX_CONNECTIONS);
+});
+
+test('legacy explicit connections remain supported without changing defaults', () => {
+    assert.equal(resolveOhaConnections({ rps: 1_000, explicitConnections: 512 }), 512);
+    assert.throws(() => resolveOhaConnections({
+        rps: 30_000,
+        explicitConnections: 12_001,
+        experimentMode: OHA12K_EXPERIMENT_MODE,
+    }), /cannot exceed 12000/);
+});
+
+test('worker evidence keeps configured connections and separates latency domains', () => {
+    const worker = readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url), 'utf8');
+    assert.match(worker, /PROCESSES_PER_NODE/);
+    assert.match(worker, /-c "\$per_process_connections"/);
+    assert.match(worker, /process-plans\.ndjson/);
+    assert.match(worker, /oha-command\.json/);
+    assert.match(worker, /configuredConnections/);
+    assert.match(worker, /maxOhaEstablished/);
+    assert.match(worker, /firstByteMs/);
+    assert.match(worker, /latencyCorrectedMs/);
+    assert.match(worker, /ena-allowance-before\.txt/);
+    assert.match(worker, /load-generator-bootstrap\.json/);
+});

@@ -1,0 +1,178 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { buildDiagnosticPayloadPool, DIAGNOSTIC_POOL_ROWS } from '../aws/diagnostic_payload_pool.mjs';
+import {
+    evaluateDiagnosticStage,
+    PHASE7_DIAGNOSTIC_IDENTITY_MODE,
+} from '../aws/phase7_diagnostic_contract.mjs';
+import { isPhase7InternalProxyNlbDnsName } from '../../phase1-kinesis/connection-path-destination.mjs';
+
+const runId = 'run_20260717_180000_phase7_integration';
+
+test('builds separate balanced replacement-sampled warmup and score pools', () => {
+    const warmup = buildDiagnosticPayloadPool({ runId, stage: 'warmup', eventDate: '2026-07-17' });
+    const score = buildDiagnosticPayloadPool({ runId, stage: 'score', eventDate: '2026-07-17' });
+    for (const result of [warmup, score]) {
+        assert.equal(result.output.trimEnd().split('\n').length, DIAGNOSTIC_POOL_ROWS);
+        assert.equal(result.manifest.uniqueFixtureEventIds, DIAGNOSTIC_POOL_ROWS);
+        assert.deepEqual(result.manifest.kinesisPartitioning.rowsPerShard, { min: 4, max: 4 });
+        assert.equal(result.manifest.kinesisPartitioning.belowRecordLimit, true);
+        assert.equal(result.manifest.kinesisPartitioning.belowByteLimit, true);
+        assert.equal(result.manifest.globalRequestEventIdUniquenessGuaranteed, false);
+        assert.equal(result.manifest.identityMode, PHASE7_DIAGNOSTIC_IDENTITY_MODE);
+        assert.ok(result.manifest.compressedBase64Bytes <= 20 * 1024);
+    }
+    assert.notEqual(warmup.manifest.sha256, score.manifest.sha256);
+    assert.notEqual(warmup.manifest.eventIdPrefix, score.manifest.eventIdPrefix);
+});
+
+test('rejects a non-Phase-7 run or unsupported stage', () => {
+    assert.throws(() => buildDiagnosticPayloadPool({ runId: 'run_bad', stage: 'score', eventDate: '2026-07-17' }), /run ID/);
+    assert.throws(() => buildDiagnosticPayloadPool({ runId, stage: 'retry', eventDate: '2026-07-17' }), /stage/);
+});
+
+test('diagnostic identity mode is accepted by the Python evaluator contract', () => {
+    const evaluator = readFileSync(new URL('../aws/evaluator.py', import.meta.url), 'utf8');
+    assert.match(evaluator, new RegExp(`"${PHASE7_DIAGNOSTIC_IDENTITY_MODE}"`));
+});
+
+test('AWS diagnostic orchestrator wires the strict destination and shared decision contracts', () => {
+    const orchestrator = readFileSync(new URL('../aws/run_diagnostic_oha.mjs', import.meta.url), 'utf8');
+    assert.equal(isPhase7InternalProxyNlbDnsName(
+        'perf-p1-conn-proxy-60718210703-381db1c0bfbf645a.elb.ap-northeast-2.amazonaws.com',
+    ), true);
+    assert.match(orchestrator, /isPhase7InternalProxyNlbDnsName\(targetConnectDnsName\)/);
+    assert.match(orchestrator, /identityMode: PHASE7_DIAGNOSTIC_IDENTITY_MODE/);
+    assert.match(orchestrator, /evaluateDiagnosticStage\(\{/);
+    assert.match(orchestrator, /runArchiveTaskOnceAt\(\{/);
+    assert.match(orchestrator, /reconcileOwnedStageCommands\(\{/);
+    assert.match(orchestrator, /plans: nodePlans/);
+    assert.match(orchestrator, /cancelOwnedStageWork\(\{/);
+    assert.match(orchestrator, /cancellation-evidence\.json/);
+    assert.match(orchestrator, /ssm-command-reconciliation\.json/);
+    assert.match(orchestrator, /detached: true/);
+    assert.match(orchestrator, /process\.kill\(-handle\.pid, 'SIGTERM'\)/);
+    assert.doesNotMatch(orchestrator, /activeNodeIds/);
+    assert.doesNotMatch(orchestrator, /ssm-transfer-probe-started\.json/);
+    assert.ok(orchestrator.indexOf('if (archiveConfig) validateArchiveConfig(archiveConfig)') <
+        orchestrator.indexOf('const nodePromises = nodePlans.map(runNode)'));
+});
+
+test('aggregate contract failure blocks strict acceptance and diagnostic continuation', () => {
+    const passing = diagnosticDecision({ aggregatePassed: true, actualRps: 50_000 });
+    assert.equal(passing.strictAcceptancePassed, true);
+    assert.equal(passing.acceptanceFailed, false);
+    assert.equal(passing.diagnosticContinuationAllowed, true);
+    assert.equal(passing.hardStopRequired, false);
+    assert.equal(passing.checks.aggregateContractPassed, true);
+
+    const invalidTopology = diagnosticDecision({ aggregatePassed: false, actualRps: 50_000 });
+    assert.equal(invalidTopology.strictAcceptancePassed, false);
+    assert.equal(invalidTopology.diagnosticContinuationAllowed, false);
+    assert.equal(invalidTopology.hardStopRequired, true);
+    assert.equal(invalidTopology.checks.aggregateContractPassed, false);
+});
+
+test('35k through 49.5k remains diagnostic-only when aggregation is valid', () => {
+    const result = diagnosticDecision({ aggregatePassed: true, actualRps: 40_000 });
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.diagnosticContinuationAllowed, true);
+    assert.equal(result.acceptanceFailed, true);
+    assert.equal(result.hardStopRequired, false);
+    assert.equal(result.continuationReason, 'acceptance-failed-diagnostic-continuation');
+});
+
+test('34,999 RPS with trustworthy forward progress continues as diagnostic evidence', () => {
+    const result = diagnosticDecision({ aggregatePassed: true, actualRps: 34_999 });
+    assert.equal(result.checks.diagnosticContinuationAtLeast35000, false);
+    assert.equal(result.checks.forwardProgressObserved, true);
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.acceptanceFailed, true);
+    assert.equal(result.diagnosticContinuationAllowed, true);
+    assert.equal(result.hardStopRequired, false);
+    assert.equal(result.continuationReason, 'below-35000-forward-progress-diagnostic-continuation');
+});
+
+test('non-202 responses fail acceptance without forcing an immediate hard stop', () => {
+    const result = diagnosticDecision({
+        aggregatePassed: true,
+        actualRps: 40_000,
+        non202: 10,
+        http5xx: 10,
+    });
+    assert.equal(result.checks.allCompletedResponsesAre202, false);
+    assert.equal(result.checks.http429And5xxZero, false);
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.acceptanceFailed, true);
+    assert.equal(result.diagnosticContinuationAllowed, true);
+    assert.equal(result.hardStopRequired, false);
+});
+
+test('any transport error fails strict acceptance but still permits diagnostic continuation', () => {
+    const result = diagnosticDecision({
+        aggregatePassed: true,
+        actualRps: 50_000,
+        transportErrors: 1,
+    });
+    assert.equal(result.checks.transportErrorsZero, false);
+    assert.equal(result.checks.transportErrorRateAtMostPoint001, true);
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.diagnosticContinuationAllowed, true);
+    assert.equal(result.hardStopRequired, false);
+});
+
+test('zero progress requires a hard stop instead of diagnostic continuation', () => {
+    const result = diagnosticDecision({ aggregatePassed: true, actualRps: 0 });
+    assert.equal(result.checks.forwardProgressObserved, false);
+    assert.equal(result.strictAcceptancePassed, false);
+    assert.equal(result.diagnosticContinuationAllowed, false);
+    assert.equal(result.hardStopRequired, true);
+    assert.match(result.continuationReason, /^hard-stop:/);
+});
+
+test('an explicit terminal signal overrides otherwise healthy forward progress', () => {
+    const result = diagnosticDecision({
+        aggregatePassed: true,
+        actualRps: 40_000,
+        terminalHardStopSignals: ['kcl-terminal-failure'],
+    });
+    assert.equal(result.checks.noTerminalHardStopSignal, false);
+    assert.equal(result.diagnosticContinuationAllowed, false);
+    assert.equal(result.hardStopRequired, true);
+    assert.deepEqual(result.hardStopSignals, ['kcl-terminal-failure']);
+});
+
+function diagnosticDecision({
+    aggregatePassed,
+    actualRps,
+    terminalHardStopSignals = [],
+    non202 = 0,
+    http5xx = 0,
+    transportErrors = 0,
+}) {
+    const completedRequests = actualRps * 300;
+    return evaluateDiagnosticStage({
+        stage: 'warmup',
+        invocationResults: [{ exitCode: 0 }],
+        aggregate: {
+            passed: aggregatePassed,
+            actualRps,
+            completedRequests,
+            http202: completedRequests - non202,
+            attemptedRequests: completedRequests + transportErrors,
+            transportErrors,
+            http429: 0,
+            http5xx,
+        },
+        payloadManifest: {
+            warmupScoreIdentitySeparated: true,
+            globalRequestEventIdUniquenessGuaranteed: false,
+            kinesisPartitioning: { rowsPerShard: { min: 4, max: 4 } },
+        },
+        archive: null,
+        startEpoch: 1_784_000_000,
+        durationSeconds: 180,
+        terminalHardStopSignals,
+    });
+}

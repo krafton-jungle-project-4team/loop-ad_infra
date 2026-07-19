@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260716_101059_phase4_clickhouse_lambda",
+  "phase": "phase4",
+  "category": "experiment",
+  "executedAt": "2026-07-16T10:10:59",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "abortReason.observedAccountLimit",
+      "value": 10,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.account",
+      "value": "742711170910",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "aborted",
+  "rawStatus": "aborted",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "aborted",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "abortReason.observedAccountLimit",
+      "value": 10,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.account",
+      "value": "742711170910",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.expectedFullLoadRecords",
+      "value": 15000000,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.npmProductionAudit.status",
+      "value": "passed",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.npmProductionAudit.moderate",
+      "value": 0,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.npmAllDependencyAudit.status",
+      "value": "one-dev-moderate",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.npmAllDependencyAudit.moderate",
+      "value": 1,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.jestTests.status",
+      "value": "passed",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.jestTests.passed",
+      "value": 20,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.phase4PythonTests.status",
+      "value": "passed",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.phase4PythonTests.passed",
+      "value": 20,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.qualifiedProducerTests.status",
+      "value": "passed",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.qualifiedProducerTests.passed",
+      "value": 14,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.smokeRecordsSent",
+      "value": 0,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.fullLoadRecordsSent",
+      "value": 0,
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.attributablePaidResourceCostUsd",
+      "value": "0.00",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.controlPlaneRequestCostUsd",
+      "value": "not measured",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.operationalMaximumUsd",
+      "value": "11.769042",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.cleanupReserveUsd",
+      "value": "3.000000",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.maximumIncludingCleanupUsd",
+      "value": "14.769042",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.hardCapUsd",
+      "value": "15.000000",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.newLoadStopThresholdUsd",
+      "value": "12.000000",
+      "source": "run_20260716_101059_phase4_clickhouse_lambda/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260716_101059_phase4_clickhouse_lambda"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260716_101059_phase4_clickhouse_lambda/commands.md",
+      "bytes": 6083,
+      "sha256": "2cd31d660518f67d9a2f368ca9675214a2c44afe2f8896d2b33b803cd76a93e4"
+    },
+    {
+      "path": "run_20260716_101059_phase4_clickhouse_lambda/infra.md",
+      "bytes": 3110,
+      "sha256": "53d3ac896441cd35b9b8331cca3f051df445c514e480cbe727f7f97e4037ed72"
+    },
+    {
+      "path": "run_20260716_101059_phase4_clickhouse_lambda/report.md",
+      "bytes": 3389,
+      "sha256": "a8e472fd0319c2ad6121812f8b3885fbadca07df68d0f7ab42dc99e65a48d542"
+    },
+    {
+      "path": "run_20260716_101059_phase4_clickhouse_lambda/run.json",
+      "bytes": 3111,
+      "sha256": "d5bc2a0b5a67661558539e0d9db5ad911c00bcee19b282cebe08fe36bb42e325"
+    }
+  ]
+}

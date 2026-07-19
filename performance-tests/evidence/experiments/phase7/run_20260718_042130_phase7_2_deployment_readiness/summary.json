@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260718_042130_phase7_2_deployment_readiness",
+  "phase": "phase7",
+  "category": "deployment_readiness",
+  "executedAt": "2026-07-18T04:21:30",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "passed",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260718-042130"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260718_042130_phase7_2_deployment_readiness"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260718_042130_phase7_2_deployment_readiness/commands.md",
+      "bytes": 1043,
+      "sha256": "1bcbaf379a3b440e20eecf2efa4025d40871a1b5c79f467005df121c1095bdf6"
+    },
+    {
+      "path": "run_20260718_042130_phase7_2_deployment_readiness/cost-model-final.json",
+      "bytes": 7439,
+      "sha256": "a5521ed5cf9665c3957b8049d1e148ce34f25ccded62bdb217387654f2544e16"
+    },
+    {
+      "path": "run_20260718_042130_phase7_2_deployment_readiness/cost-model.json",
+      "bytes": 7439,
+      "sha256": "b5fcdd25ca697874e534b4e994c93a4f195bc14b280815d708a01071fe853f2a"
+    },
+    {
+      "path": "run_20260718_042130_phase7_2_deployment_readiness/report.md",
+      "bytes": 1595,
+      "sha256": "69e20d5cbe220b43c066da95aea30f4bbdac9ee5ddc26169bffe7a3868cb0ecd"
+    }
+  ]
+}

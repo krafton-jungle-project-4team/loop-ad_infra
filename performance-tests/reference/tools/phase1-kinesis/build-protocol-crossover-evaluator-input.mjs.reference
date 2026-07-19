@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const runDir = required('--run-dir');
+const stageLabel = required('--stage-label');
+const decisionRepetitions = new Set(required('--decision-repetitions').split(',').map(Number));
+const output = required('--output');
+const correctness = json(join(runDir, 'correctness-summary.json'));
+
+const stages = [];
+const frontendSessions = [];
+const backendRequestsPerConnection = [];
+for (const repetitionDir of directories(join(runDir, 'stages', stageLabel))) {
+    const repetition = Number(repetitionDir.replace('repetition-', ''));
+    const stageDir = join(runDir, 'stages', stageLabel, repetitionDir);
+    const stage = json(join(stageDir, 'stage-summary.json'));
+    const selected = decisionRepetitions.has(repetition);
+    const wave = selected ? json(join(stageDir, 'prehandler-connection-wave.json')) : null;
+    const traceJoin = selected ? json(join(runDir, 'session-observability', 'trace-join-final',
+        `${stageLabel.replaceAll('_', '-')}-rep${String(repetition).padStart(2, '0')}.json`)) : null;
+    const drivers = selected ? driverSummaries(stageDir) : [];
+    const onlyHttp2 = drivers.length === 8 && drivers.every((item) => item.protocol === 'h2' &&
+        Object.keys(item.observed_protocols ?? {}).every((protocol) => ['HTTP/2.0', 'h2'].includes(protocol)) &&
+        Object.values(item.observed_protocols ?? {}).reduce((sum, count) => sum + count, 0) > 0);
+    const fallbackCount = drivers.reduce((sum, item) => sum + (item.protocol_errors ?? 0) +
+        (item.hidden_retries ?? 0) + (item.silent_drops ?? 0), 0) + (onlyHttp2 ? 0 : 1);
+    const evidenceComplete = selected && traceJoin.passed === true && wave.evidence?.evidenceGap === false &&
+        wave.evidence.recordCount >= stage.aggregate.completedRequests;
+    stages.push({ ...stage, validForDecision: selected && stage.safetyPassed === true && evidenceComplete &&
+        drivers.every((item) => item.valid === true),
+    invalidReason: selected ? 'decision evidence contract incomplete' : 'repetition excluded by the immutable decision set',
+    evaluatorChecks: { evidenceComplete, fallbackCount, correctnessPassed: correctness.passed === true,
+        noDelayedFanoutWave: selected && wave.delayedConnectionFanoutWave === false } });
+    if (!selected) continue;
+    frontendSessions.push({ repetition, configuredLogicalConnections: drivers.reduce((sum, item) => sum + item.connections, 0),
+        initialConnections: drivers.reduce((sum, item) => sum + item.connection_establishment_count, 0),
+        expectedConnectionGenerations: [...new Set(drivers.map((item) => item.expected_connection_generations))],
+        expectedPhysicalConnections: drivers.reduce((sum, item) => sum + item.expected_new_connections, 0),
+        driverPhysicalConnections: drivers.reduce((sum, item) => sum + item.new_connections, 0),
+        albUniqueConnections: wave.frontendConnectionReuse.uniqueConnections,
+        concurrentPhysicalConnectionsHighWaterUpperBound: drivers.reduce((sum, item) => sum + item.concurrent_physical_connections_high_water, 0) });
+    backendRequestsPerConnection.push({ repetition, churnSupported: wave.churnSupported,
+        connectionStabilized: wave.connectionStabilized,
+        collectors: wave.backendLifecycle.collectors.map((item) => ({ collector: item.collector,
+            requestsPerConnection: item.requestsPerConnection })) });
+}
+
+const input = {
+    baseline: { http1_12kActualFailed: true, artifact: 'baseline.md' },
+    h2FrontendBackendH1: stages,
+    correctness: { passed: correctness.passed === true, loss: correctness.missingAcceptedEvents.length,
+        duplicates: correctness.duplicateEventIds.length, artifact: 'correctness-summary.json' },
+    capacity50kSkippedReason: '50k gate was closed: the before-14:15 KST start condition and modeled-accrued-at-most-USD-20 condition were not met.',
+    http3SkippedReason: 'HTTP/3 was not selected: ALB has no HTTP/3 listener and the conditional NLB branch was not reached.',
+    negotiatedProtocol: { required: 'HTTP/2.0', fallbackCount: 0, repetitions: [...decisionRepetitions] },
+    frontendSessions,
+    backendRequestsPerConnection,
+    firstConnectionIncreaseLayer: 'Historical failure began at the frontend client/TCP path; no delayed ALB-to-target fan-out wave was present in any valid HTTP/2 repetition.',
+    firstLatencyIncreaseLayer: 'Historical target-dependent latency/TCP feedback disappeared at the ALB frontend HTTP/2 crossover; backend HTTP/1 and Kinesis remained stable.',
+    remainingRisks: [
+        '50k RPS was not measured because its immutable time and cost gates were closed.',
+        'ALB sends GOAWAY after 10,000 HTTP/2 requests per connection; clients must reconnect without fallback, retry amplification, or silent drops.',
+        'ALB backend HTTP/1 request reuse is low at the median, although repeated close/reopen churn was not supported in these stages.',
+    ],
+    nextExperiment: 'At a new budgeted session, revalidate the same HTTP/2 frontend contract at 50k only after the explicit time and cost gate passes.',
+};
+writeFileSync(output, `${JSON.stringify(input, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify({ output, attemptedRepetitions: stages.length,
+    validRepetitions: stages.filter((item) => item.validForDecision).length }, null, 2)}\n`);
+
+function driverSummaries(stageDir) {
+    const result = [];
+    for (const node of directories(join(stageDir, 'load'))) {
+        if (!/^node-[0-9]{2}$/.test(node)) continue;
+        for (const process of directories(join(stageDir, 'load', node))) {
+            if (/^process-[0-9]{2}$/.test(process)) result.push(json(join(stageDir, 'load', node, process, 'reference-summary.json')));
+        }
+    }
+    return result;
+}
+function directories(path) { return readdirSync(path, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name).sort(); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function required(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

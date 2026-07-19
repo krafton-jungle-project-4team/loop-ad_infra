@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-12T18:46:53",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "passed",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch/correctness-summary.json",
+      "bytes": 1033,
+      "sha256": "272c12a2370bf4bcebd4ddf3ac606e5f15880cd8b36efd501d23d4a21241631d"
+    }
+  ]
+}

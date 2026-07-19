@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-19T04:01:52Z",
+  "authorizationBasis": "다음 작업부터 소모 비용은 0달러로 초기화하고 새롭게 60달러 제한을 시행해주세요",
+  "effectivePaidBoundary": "attempt-17-image-preparation",
+  "startsAfterAttemptOrdinal": 16,
+  "activeEpoch": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-16",
+    "initialAccruedUpperBoundUsd": "0.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "preservedHistory": {
+    "attemptOrdinals": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+    ],
+    "lifetimeChargedUpperBoundUsd": "115.000000",
+    "excludedFromNewAdmission": true,
+    "attemptEntriesRewritten": false,
+    "ledgerHeadSha256": "ea457a2c153485b4ca66cd0c164e588e864189eaa523376fa76b74133604a54a"
+  },
+  "provisionalNextAttemptGate": {
+    "requiresFreshPriceRefresh": true,
+    "priorActiveEpochUpperBoundUsd": "0.000000",
+    "operationalUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "38.870718",
+    "remainingHardCapMarginAfterReservationUsd": "21.129282",
+    "passed": true,
+    "formula": "0.000000 + 33.870718 + 5.000000 = 38.870718 <= 60.000000; 0.000000 + 33.870718 < 55.000000"
+  },
+  "nextCostModelArgument": "--accrued-upper-bound-usd 0.000000"
+}

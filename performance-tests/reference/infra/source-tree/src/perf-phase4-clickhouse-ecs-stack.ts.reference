@@ -1,0 +1,1252 @@
+import {
+    CfnOutput,
+    Duration,
+    Fn,
+    RemovalPolicy,
+    Stack,
+    Tags,
+    type CfnTag,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Construct } from 'constructs';
+import {
+    PHASE4_ECS_ARCHIVE_PREFIX,
+    PHASE4_ECS_AVAILABILITY_ZONE,
+    PHASE4_ECS_CLICKHOUSE_DATABASE,
+    PHASE4_ECS_CLICKHOUSE_HTTP_PORT,
+    PHASE4_ECS_CLICKHOUSE_IMAGE,
+    PHASE4_ECS_CLICKHOUSE_INSTANCE_TYPE,
+    PHASE4_ECS_CLICKHOUSE_VOLUME_GIB,
+    PHASE4_ECS_CLICKHOUSE_VOLUME_IOPS,
+    PHASE4_ECS_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS,
+    PHASE4_ECS_HOST_COUNT,
+    PHASE4_ECS_HOST_INSTANCE_TYPE,
+    PHASE4_ECS_KINESIS_RETENTION_HOURS,
+    PHASE4_ECS_KINESIS_SHARD_COUNT,
+    PHASE4_ECS_LOG_RETENTION,
+    PHASE4_ECS_METRIC_NAMESPACE,
+    PHASE4_ECS_PRODUCER_INSTANCE_TYPE,
+    PHASE4_ECS_REGION,
+    PHASE4_ECS_TASK_COUNT,
+    PHASE4_ECS_TASK_CPU,
+    PHASE4_ECS_TASK_MEMORY_MIB,
+    PHASE4_ECS_TASK_STOP_TIMEOUT_SECONDS,
+    PHASE4_ECS_VPC_CIDR,
+    readPerfPhase4ClickHouseEcsConfig,
+    type PerfPhase4ClickHouseEcsConfig,
+} from './perf-phase4-clickhouse-ecs-config';
+
+const ROOT = join(__dirname, '..');
+const CLICKHOUSE_SCHEMA_PATH = join(ROOT, 'assets/clickhouse/phase4-schema.sql');
+const CLICKHOUSE_BOOTSTRAP_PATH = join(ROOT, 'assets/user-data/perf-phase4-clickhouse.sh');
+
+export class LoopAdPerfPhase4ClickHouseEcsImageStack extends Stack {
+    public readonly repository: ecr.Repository;
+
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        const config = readPerfPhase4ClickHouseEcsConfig(scope);
+        super(scope, id, {
+            ...props,
+            tags: { ...props?.tags, ...runTags(config, 'phase4-clickhouse-ecs-image') },
+        });
+        requirePhase4Region(this);
+        addRunTags(this, config, 'phase4-clickhouse-ecs-image');
+
+        this.repository = new ecr.Repository(this, 'ConsumerRepository', {
+            repositoryName: config.repositoryName,
+            imageScanOnPush: true,
+            imageTagMutability: ecr.TagMutability.IMMUTABLE,
+            emptyOnDelete: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+
+        new CfnOutput(this, 'ConsumerRepositoryName', {
+            value: this.repository.repositoryName,
+        });
+        new CfnOutput(this, 'ConsumerRepositoryUri', {
+            value: this.repository.repositoryUri,
+        });
+        new CfnOutput(this, 'ExpectedConsumerImageDigest', {
+            value: config.consumerImageDigest,
+        });
+    }
+}
+
+export interface LoopAdPerfPhase4ClickHouseEcsStackProps extends StackProps {
+    readonly consumerRepository: ecr.IRepository;
+}
+
+export class LoopAdPerfPhase4ClickHouseEcsStack extends Stack {
+    public readonly stream: kinesis.Stream;
+    public readonly cluster: ecs.Cluster;
+    public readonly service: ecs.Ec2Service;
+    public readonly clickHouseInstance: ec2.CfnInstance;
+    public readonly producerInstance: ec2.Instance;
+    public readonly failureBucket: s3.Bucket;
+    public readonly archiveBucket: s3.Bucket;
+    public readonly leaseTable: dynamodb.Table;
+    public readonly workerMetricsTable: dynamodb.Table;
+    public readonly coordinatorStateTable: dynamodb.Table;
+
+    public constructor(
+        scope: Construct,
+        id: string,
+        props: LoopAdPerfPhase4ClickHouseEcsStackProps,
+    ) {
+        const config = readPerfPhase4ClickHouseEcsConfig(scope);
+        super(scope, id, {
+            ...props,
+            tags: { ...props.tags, ...runTags(config, 'phase4-clickhouse-ecs') },
+        });
+        requirePhase4Region(this);
+        addRunTags(this, config, 'phase4-clickhouse-ecs');
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            ipAddresses: ec2.IpAddresses.cidr(PHASE4_ECS_VPC_CIDR),
+            availabilityZones: [PHASE4_ECS_AVAILABILITY_ZONE],
+            natGateways: 0,
+            restrictDefaultSecurityGroup: false,
+            subnetConfiguration: [
+                {
+                    name: 'ClickHouse',
+                    cidrMask: 24,
+                    subnetType: ec2.SubnetType.PUBLIC,
+                },
+                {
+                    name: 'Consumer',
+                    cidrMask: 24,
+                    subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+                },
+            ],
+        });
+        const consumerSubnets: ec2.SubnetSelection = {
+            subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        };
+
+        this.failureBucket = runBucket(this, 'FailureBucket');
+        this.archiveBucket = runBucket(this, 'ArchiveBucket');
+        const credentialsSecret = new secretsmanager.Secret(this, 'ClickHouseCredentials', {
+            description: `Run-scoped ClickHouse credentials for ${config.runId}.`,
+            generateSecretString: {
+                secretStringTemplate: JSON.stringify({ username: 'loopad_ingest' }),
+                generateStringKey: 'password',
+                passwordLength: 40,
+                excludePunctuation: true,
+            },
+        });
+        credentialsSecret.applyRemovalPolicy(RemovalPolicy.DESTROY);
+
+        this.stream = new kinesis.Stream(this, 'EventStream', {
+            encryption: kinesis.StreamEncryption.MANAGED,
+            retentionPeriod: Duration.hours(PHASE4_ECS_KINESIS_RETENTION_HOURS),
+            shardCount: PHASE4_ECS_KINESIS_SHARD_COUNT,
+            shardLevelMetrics: [
+                kinesis.ShardLevelMetrics.INCOMING_BYTES,
+                kinesis.ShardLevelMetrics.INCOMING_RECORDS,
+                kinesis.ShardLevelMetrics.ITERATOR_AGE_MILLISECONDS,
+                kinesis.ShardLevelMetrics.READ_PROVISIONED_THROUGHPUT_EXCEEDED,
+                kinesis.ShardLevelMetrics.WRITE_PROVISIONED_THROUGHPUT_EXCEEDED,
+            ],
+            streamMode: kinesis.StreamMode.PROVISIONED,
+        });
+        this.stream.applyRemovalPolicy(RemovalPolicy.DESTROY);
+
+        this.leaseTable = new dynamodb.Table(this, 'LeaseTable', {
+            partitionKey: { name: 'leaseKey', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            deletionProtection: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        this.leaseTable.addGlobalSecondaryIndex({
+            indexName: 'LeaseOwnerToLeaseKeyIndex',
+            partitionKey: { name: 'leaseOwner', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'leaseKey', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+        });
+        this.workerMetricsTable = new dynamodb.Table(this, 'WorkerMetricsTable', {
+            partitionKey: { name: 'wid', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            deletionProtection: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        this.coordinatorStateTable = new dynamodb.Table(this, 'CoordinatorStateTable', {
+            partitionKey: { name: 'key', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            deletionProtection: false,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+
+        const logGroup = new logs.LogGroup(this, 'ConsumerLogGroup', {
+            logGroupName: `/loop-ad/perf-phase4/${config.runId}/consumer`,
+            retention: PHASE4_ECS_LOG_RETENTION,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+
+        const taskRole = createTaskRole(this, {
+            config,
+            stream: this.stream,
+            leaseTable: this.leaseTable,
+            workerMetricsTable: this.workerMetricsTable,
+            coordinatorStateTable: this.coordinatorStateTable,
+            failureBucket: this.failureBucket,
+            credentialsSecret,
+        });
+        const executionRole = createExecutionRole(
+            this,
+            props.consumerRepository,
+            logGroup,
+        );
+        const hostRole = createHostRole(this);
+        const clickHouseRole = createClickHouseRole(
+            this,
+            credentialsSecret,
+            this.archiveBucket,
+        );
+        const producerRole = createProducerRole(
+            this,
+            config,
+            this.stream,
+            this.archiveBucket,
+        );
+
+        const clickHouseSecurityGroup = new ec2.SecurityGroup(
+            this,
+            'ClickHouseSecurityGroup',
+            {
+                vpc,
+                allowAllOutbound: false,
+                description: 'Phase 4 ECS ClickHouse; no public ingress.',
+            },
+        );
+        const taskSecurityGroup = new ec2.SecurityGroup(this, 'TaskSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 private ECS task egress.',
+        });
+        const hostSecurityGroup = new ec2.SecurityGroup(this, 'HostSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 private ECS container host egress.',
+        });
+        const endpointSecurityGroup = new ec2.SecurityGroup(this, 'EndpointSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 private interface endpoint ingress.',
+        });
+        const producerSecurityGroup = new ec2.SecurityGroup(this, 'ProducerSecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Phase 4 qualified producer; no ingress.',
+        });
+
+        clickHouseSecurityGroup.addIngressRule(
+            taskSecurityGroup,
+            ec2.Port.tcp(PHASE4_ECS_CLICKHOUSE_HTTP_PORT),
+            'Only ECS tasks may reach ClickHouse 8123.',
+        );
+        taskSecurityGroup.addEgressRule(
+            clickHouseSecurityGroup,
+            ec2.Port.tcp(PHASE4_ECS_CLICKHOUSE_HTTP_PORT),
+            'Insert into ClickHouse over its private address.',
+        );
+        for (const securityGroup of [taskSecurityGroup, hostSecurityGroup]) {
+            addVpcDnsEgress(securityGroup);
+            securityGroup.addEgressRule(
+                ec2.Peer.anyIpv4(),
+                ec2.Port.tcp(443),
+                'Private subnet HTTPS; routes exist only for run-owned endpoints.',
+            );
+            endpointSecurityGroup.addIngressRule(
+                securityGroup,
+                ec2.Port.tcp(443),
+                'Private workload may use interface endpoints.',
+            );
+        }
+        addVpcDnsEgress(clickHouseSecurityGroup);
+        clickHouseSecurityGroup.addEgressRule(
+            ec2.Peer.anyIpv4(),
+            ec2.Port.tcp(443),
+            'Bootstrap packages, pinned ClickHouse image, AWS APIs, and S3 archive.',
+        );
+        endpointSecurityGroup.addIngressRule(
+            clickHouseSecurityGroup,
+            ec2.Port.tcp(443),
+            'ClickHouse bootstrap may read the generated secret.',
+        );
+        addVpcDnsEgress(producerSecurityGroup);
+        producerSecurityGroup.addEgressRule(
+            ec2.Peer.anyIpv4(),
+            ec2.Port.tcp(443),
+            'Qualified producer bootstrap, AWS APIs, and evidence upload.',
+        );
+        endpointSecurityGroup.addIngressRule(
+            producerSecurityGroup,
+            ec2.Port.tcp(443),
+            'Qualified producer uses private-DNS AWS interface endpoints.',
+        );
+
+        const applicationName = `loopad-phase4-${config.runId}`;
+        const endpoints = createPrivateEndpoints(this, {
+            vpc,
+            subnets: consumerSubnets,
+            endpointSecurityGroup,
+            consumerRepository: props.consumerRepository,
+            logGroup,
+            credentialsSecret,
+            stream: this.stream,
+            leaseTable: this.leaseTable,
+            workerMetricsTable: this.workerMetricsTable,
+            coordinatorStateTable: this.coordinatorStateTable,
+            failureBucket: this.failureBucket,
+            archiveBucket: this.archiveBucket,
+            applicationName,
+            runId: config.runId,
+        });
+
+        this.clickHouseInstance = createClickHouseInstance(this, {
+            config,
+            vpc,
+            securityGroup: clickHouseSecurityGroup,
+            role: clickHouseRole,
+            secretArn: credentialsSecret.secretArn,
+        });
+        this.producerInstance = createProducerInstance(this, {
+            config,
+            vpc,
+            securityGroup: producerSecurityGroup,
+            role: producerRole,
+        });
+
+        this.cluster = new ecs.Cluster(this, 'ConsumerCluster', {
+            vpc,
+            clusterName: `loopad-${config.runId}-consumer`,
+            containerInsightsV2: ecs.ContainerInsights.ENABLED,
+        });
+        const autoScalingGroup = new autoscaling.AutoScalingGroup(
+            this,
+            'ConsumerAutoScalingGroup',
+            {
+                vpc,
+                vpcSubnets: consumerSubnets,
+                autoScalingGroupName: `loopad-${config.runId}-consumer`,
+                minCapacity: PHASE4_ECS_HOST_COUNT,
+                desiredCapacity: PHASE4_ECS_HOST_COUNT,
+                maxCapacity: PHASE4_ECS_HOST_COUNT,
+                ignoreUnmodifiedSizeProperties: false,
+                instanceType: new ec2.InstanceType(PHASE4_ECS_HOST_INSTANCE_TYPE),
+                machineImage: ec2.MachineImage.genericLinux({
+                    [PHASE4_ECS_REGION]: config.ecsAmiId,
+                }),
+                requireImdsv2: true,
+                role: hostRole,
+                securityGroup: hostSecurityGroup,
+                associatePublicIpAddress: false,
+                instanceMonitoring: autoscaling.Monitoring.DETAILED,
+            },
+        );
+        Tags.of(autoScalingGroup).add(
+            'Name',
+            `loopad-${config.runId}-consumer`,
+            { applyToLaunchedInstances: true },
+        );
+        const capacityProvider = new ecs.AsgCapacityProvider(
+            this,
+            'ConsumerCapacityProvider',
+            {
+                autoScalingGroup,
+                enableManagedDraining: false,
+                enableManagedScaling: false,
+                enableManagedTerminationProtection: false,
+            },
+        );
+        (this.cluster as unknown as {
+            addAutoScalingGroup(
+                group: autoscaling.AutoScalingGroup,
+                options: { readonly taskDrainTime: Duration },
+            ): void;
+        }).addAutoScalingGroup(autoScalingGroup, {
+            taskDrainTime: Duration.seconds(0),
+        });
+        const capacityProviderAssociation = new ecs.CfnClusterCapacityProviderAssociations(
+            this,
+            'ConsumerClusterCapacityProviders',
+            {
+                cluster: this.cluster.clusterName,
+                capacityProviders: [capacityProvider.capacityProviderName],
+                defaultCapacityProviderStrategy: [],
+            },
+        );
+        const cfnCapacityProvider = capacityProvider.node.findAll().find(
+            (child): child is ecs.CfnCapacityProvider => child instanceof ecs.CfnCapacityProvider,
+        );
+        if (!cfnCapacityProvider) {
+            throw new Error('Consumer capacity provider resource was not synthesized.');
+        }
+        capacityProviderAssociation.addDependency(cfnCapacityProvider);
+
+        const taskDefinition = new ecs.Ec2TaskDefinition(this, 'ConsumerTaskDefinition', {
+            family: `loopad-${config.runId}-consumer`,
+            networkMode: ecs.NetworkMode.AWS_VPC,
+            taskRole,
+            executionRole,
+        });
+        const linuxParameters = new ecs.LinuxParameters(this, 'ConsumerLinuxParameters', {
+            initProcessEnabled: true,
+        });
+        taskDefinition.addContainer('Consumer', {
+            containerName: 'consumer',
+            image: ecs.ContainerImage.fromRegistry(Fn.join('', [
+                props.consumerRepository.repositoryUri,
+                '@',
+                config.consumerImageDigest,
+            ])),
+            cpu: PHASE4_ECS_TASK_CPU,
+            memoryLimitMiB: PHASE4_ECS_TASK_MEMORY_MIB,
+            essential: true,
+            stopTimeout: Duration.seconds(PHASE4_ECS_TASK_STOP_TIMEOUT_SECONDS),
+            linuxParameters,
+            logging: ecs.LogDrivers.awsLogs({
+                logGroup,
+                streamPrefix: 'consumer',
+            }),
+            environment: {
+                AWS_REGION: PHASE4_ECS_REGION,
+                RUN_ID: config.runId,
+                METRIC_NAMESPACE: PHASE4_ECS_METRIC_NAMESPACE,
+                KINESIS_STREAM_NAME: this.stream.streamName,
+                KINESIS_STREAM_ARN: this.stream.streamArn,
+                KCL_APPLICATION_NAME: applicationName,
+                KCL_LEASE_TABLE_NAME: this.leaseTable.tableName,
+                KCL_WORKER_METRICS_TABLE_NAME: this.workerMetricsTable.tableName,
+                KCL_COORDINATOR_STATE_TABLE_NAME: this.coordinatorStateTable.tableName,
+                CLICKHOUSE_DATABASE: PHASE4_ECS_CLICKHOUSE_DATABASE,
+                CLICKHOUSE_HTTP_URL: Fn.join('', [
+                    'http://',
+                    this.clickHouseInstance.attrPrivateIp,
+                    `:${PHASE4_ECS_CLICKHOUSE_HTTP_PORT}`,
+                ]),
+                CLICKHOUSE_SECRET_ARN: credentialsSecret.secretArn,
+                FAILURE_BUCKET: this.failureBucket.bucketName,
+                FAILURE_PREFIX: `failures/${config.runId}/`,
+            },
+            healthCheck: {
+                command: [
+                    'CMD-SHELL',
+                    'test -f /tmp/loopad-phase4-ready && kill -0 1',
+                ],
+                interval: Duration.seconds(30),
+                timeout: Duration.seconds(5),
+                retries: 3,
+                startPeriod: Duration.seconds(120),
+            },
+        });
+        const cfnTaskDefinition = taskDefinition.node.defaultChild as ecs.CfnTaskDefinition;
+        cfnTaskDefinition.cpu = PHASE4_ECS_TASK_CPU.toString();
+        cfnTaskDefinition.memory = PHASE4_ECS_TASK_MEMORY_MIB.toString();
+        cfnTaskDefinition.runtimePlatform = {
+            cpuArchitecture: 'ARM64',
+            operatingSystemFamily: 'LINUX',
+        };
+
+        this.service = new ecs.Ec2Service(this, 'ConsumerService', {
+            cluster: this.cluster,
+            serviceName: `loopad-${config.runId}-consumer`,
+            taskDefinition,
+            desiredCount: PHASE4_ECS_TASK_COUNT,
+            placementConstraints: [ecs.PlacementConstraint.distinctInstances()],
+            capacityProviderStrategies: [{
+                capacityProvider: capacityProvider.capacityProviderName,
+                weight: 1,
+            }],
+            vpcSubnets: consumerSubnets,
+            securityGroups: [taskSecurityGroup],
+            assignPublicIp: false,
+            minHealthyPercent: 50,
+            maxHealthyPercent: 100,
+            availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
+            enableExecuteCommand: false,
+            enableECSManagedTags: true,
+            propagateTags: ecs.PropagatedTagSource.SERVICE,
+        });
+        this.service.node.addDependency(autoScalingGroup);
+        this.service.node.addDependency(capacityProviderAssociation);
+        this.service.node.addDependency(this.clickHouseInstance);
+        for (const endpoint of endpoints) this.service.node.addDependency(endpoint);
+
+        createAlarms(this, {
+            config,
+            stream: this.stream,
+            cluster: this.cluster,
+            service: this.service,
+            autoScalingGroup,
+        });
+
+        outputRunResources(this, {
+            config,
+            vpc,
+            consumerRepository: props.consumerRepository,
+            cluster: this.cluster,
+            service: this.service,
+            autoScalingGroup,
+            capacityProvider,
+            stream: this.stream,
+            clickHouseInstance: this.clickHouseInstance,
+            producerInstance: this.producerInstance,
+            credentialsSecret,
+            failureBucket: this.failureBucket,
+            archiveBucket: this.archiveBucket,
+            leaseTable: this.leaseTable,
+            workerMetricsTable: this.workerMetricsTable,
+            coordinatorStateTable: this.coordinatorStateTable,
+        });
+    }
+}
+
+function requirePhase4Region(stack: Stack): void {
+    if (stack.region !== PHASE4_ECS_REGION) {
+        throw new Error(`Phase 4 ECS must synthesize in ${PHASE4_ECS_REGION}.`);
+    }
+}
+
+function addRunTags(
+    scope: Construct,
+    config: PerfPhase4ClickHouseEcsConfig,
+    phase: string,
+): void {
+    for (const [key, value] of Object.entries(runTags(config, phase))) {
+        Tags.of(scope).add(key, value);
+    }
+}
+
+function runTags(
+    config: PerfPhase4ClickHouseEcsConfig,
+    phase: string,
+): Record<string, string> {
+    return {
+        Project: 'loop-ad',
+        CdkProject: 'loop-ad_aws_cdk',
+        Environment: 'perf-phase4-clickhouse-ecs',
+        Phase: phase,
+        RunId: config.runId,
+        SessionId: config.sessionId,
+        ManagedBy: 'codex',
+        Owner: 'loop-ad',
+        ResourceScope: 'run',
+    };
+}
+
+function runBucket(scope: Construct, id: string): s3.Bucket {
+    return new s3.Bucket(scope, id, {
+        autoDeleteObjects: false,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        enforceSSL: true,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+}
+
+interface TaskRoleInput {
+    readonly config: PerfPhase4ClickHouseEcsConfig;
+    readonly stream: kinesis.IStream;
+    readonly leaseTable: dynamodb.ITable;
+    readonly workerMetricsTable: dynamodb.ITable;
+    readonly coordinatorStateTable: dynamodb.ITable;
+    readonly failureBucket: s3.IBucket;
+    readonly credentialsSecret: secretsmanager.ISecret;
+}
+
+function createTaskRole(scope: Construct, input: TaskRoleInput): iam.Role {
+    const role = new iam.Role(scope, 'ConsumerTaskRole', {
+        assumedBy: ecsTasksPrincipal(scope),
+        description: 'Run-scoped KCL polling, checkpoint, ClickHouse secret, and failure archive role.',
+    });
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+            'kinesis:DescribeStream',
+            'kinesis:DescribeStreamSummary',
+            'kinesis:GetRecords',
+            'kinesis:GetShardIterator',
+            'kinesis:ListShards',
+        ],
+        resources: [input.stream.streamArn],
+    }));
+    const tableArns = [
+        input.leaseTable.tableArn,
+        `${input.leaseTable.tableArn}/index/LeaseOwnerToLeaseKeyIndex`,
+        input.workerMetricsTable.tableArn,
+        input.coordinatorStateTable.tableArn,
+    ];
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+            'dynamodb:DeleteItem',
+            'dynamodb:DescribeTable',
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:Query',
+            'dynamodb:Scan',
+            'dynamodb:UpdateItem',
+        ],
+        resources: tableArns,
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [input.credentialsSecret.secretArn],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [input.failureBucket.arnForObjects(`failures/${input.config.runId}/*`)],
+        conditions: {
+            StringEquals: {
+                's3:x-amz-server-side-encryption': 'AES256',
+                's3:ResourceAccount': Stack.of(scope).account,
+            },
+        },
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+            StringEquals: {
+                'cloudwatch:namespace': `loopad-phase4-${input.config.runId}`,
+            },
+        },
+    }));
+    return role;
+}
+
+function createExecutionRole(
+    scope: Construct,
+    repository: ecr.IRepository,
+    logGroup: logs.ILogGroup,
+): iam.Role {
+    const role = new iam.Role(scope, 'ConsumerExecutionRole', {
+        assumedBy: ecsTasksPrincipal(scope),
+        description: 'Run-scoped ECR image pull and CloudWatch Logs delivery role.',
+    });
+    repository.grantPull(role);
+    logGroup.grantWrite(role);
+    return role;
+}
+
+function createHostRole(scope: Construct): iam.Role {
+    const role = new iam.Role(scope, 'ConsumerHostRole', {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        description: 'Run-scoped private ECS container instance registration role.',
+    });
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+            'ecs:DeregisterContainerInstance',
+            'ecs:DiscoverPollEndpoint',
+            'ecs:Poll',
+            'ecs:RegisterContainerInstance',
+            'ecs:StartTelemetrySession',
+            'ecs:SubmitAttachmentStateChanges',
+            'ecs:SubmitContainerStateChange',
+            'ecs:SubmitTaskStateChange',
+            'ecs:UpdateContainerInstancesState',
+        ],
+        resources: ['*'],
+    }));
+    return role;
+}
+
+function createClickHouseRole(
+    scope: Construct,
+    secret: secretsmanager.ISecret,
+    archiveBucket: s3.IBucket,
+): iam.Role {
+    const role = new iam.Role(scope, 'ClickHouseInstanceRole', {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        managedPolicies: [
+            iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        ],
+    });
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [secret.secretArn],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['s3:GetBucketLocation', 's3:ListBucketMultipartUploads'],
+        resources: [archiveBucket.bucketArn],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [archiveBucket.bucketArn],
+        conditions: { StringLike: { 's3:prefix': [`${PHASE4_ECS_ARCHIVE_PREFIX}*`] } },
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+            's3:AbortMultipartUpload',
+            's3:GetObject',
+            's3:ListMultipartUploadParts',
+            's3:PutObject',
+        ],
+        resources: [archiveBucket.arnForObjects(`${PHASE4_ECS_ARCHIVE_PREFIX}*`)],
+    }));
+    return role;
+}
+
+function createProducerRole(
+    scope: Construct,
+    config: PerfPhase4ClickHouseEcsConfig,
+    stream: kinesis.IStream,
+    artifactBucket: s3.IBucket,
+): iam.Role {
+    const role = new iam.Role(scope, 'ProducerInstanceRole', {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        description: 'Run-scoped qualified producer bootstrap, Kinesis write, and evidence role.',
+        managedPolicies: [
+            iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        ],
+    });
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+            'kinesis:DescribeStream',
+            'kinesis:DescribeStreamSummary',
+            'kinesis:ListShards',
+            'kinesis:PutRecords',
+        ],
+        resources: [stream.streamArn],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [artifactBucket.arnForObjects(`producer/${config.runId}/*`)],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [artifactBucket.arnForObjects(`producer-evidence/${config.runId}/*`)],
+    }));
+    return role;
+}
+
+function ecsTasksPrincipal(scope: Construct): iam.ServicePrincipal {
+    const stack = Stack.of(scope);
+    return new iam.ServicePrincipal('ecs-tasks.amazonaws.com', {
+        conditions: {
+            ArnLike: { 'aws:SourceArn': stack.formatArn({ service: 'ecs', resource: '*' }) },
+            StringEquals: { 'aws:SourceAccount': stack.account },
+        },
+    });
+}
+
+function addVpcDnsEgress(securityGroup: ec2.SecurityGroup): void {
+    securityGroup.addEgressRule(
+        ec2.Peer.ipv4(PHASE4_ECS_VPC_CIDR),
+        ec2.Port.udp(53),
+        'VPC DNS over UDP.',
+    );
+    securityGroup.addEgressRule(
+        ec2.Peer.ipv4(PHASE4_ECS_VPC_CIDR),
+        ec2.Port.tcp(53),
+        'VPC DNS over TCP.',
+    );
+}
+
+interface EndpointInput {
+    readonly vpc: ec2.Vpc;
+    readonly subnets: ec2.SubnetSelection;
+    readonly endpointSecurityGroup: ec2.ISecurityGroup;
+    readonly consumerRepository: ecr.IRepository;
+    readonly logGroup: logs.ILogGroup;
+    readonly credentialsSecret: secretsmanager.ISecret;
+    readonly stream: kinesis.IStream;
+    readonly leaseTable: dynamodb.ITable;
+    readonly workerMetricsTable: dynamodb.ITable;
+    readonly coordinatorStateTable: dynamodb.ITable;
+    readonly failureBucket: s3.IBucket;
+    readonly archiveBucket: s3.IBucket;
+    readonly applicationName: string;
+    readonly runId: string;
+}
+
+function createPrivateEndpoints(
+    scope: Construct,
+    input: EndpointInput,
+): Construct[] {
+    const endpoints: Construct[] = [];
+    const addInterface = (
+        id: string,
+        service: ec2.InterfaceVpcEndpointService,
+        statements: iam.PolicyStatement[],
+    ): ec2.InterfaceVpcEndpoint => {
+        const endpoint = input.vpc.addInterfaceEndpoint(id, {
+            service,
+            open: false,
+            privateDnsEnabled: true,
+            securityGroups: [input.endpointSecurityGroup],
+            subnets: input.subnets,
+        });
+        for (const statement of statements) endpoint.addToPolicy(statement);
+        endpoints.push(endpoint);
+        return endpoint;
+    };
+    const anyPrincipal = [new iam.AnyPrincipal()];
+
+    addInterface('KinesisEndpoint', ec2.InterfaceVpcEndpointAwsService.KINESIS_STREAMS, [
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: [
+                'kinesis:DescribeStream',
+                'kinesis:DescribeStreamSummary',
+                'kinesis:GetRecords',
+                'kinesis:GetShardIterator',
+                'kinesis:ListShards',
+                'kinesis:PutRecords',
+            ],
+            resources: [input.stream.streamArn],
+        }),
+    ]);
+    const ecrStatements = [
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: ['ecr:GetAuthorizationToken'],
+            resources: ['*'],
+        }),
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: [
+                'ecr:BatchCheckLayerAvailability',
+                'ecr:BatchGetImage',
+                'ecr:GetDownloadUrlForLayer',
+            ],
+            resources: [input.consumerRepository.repositoryArn],
+        }),
+    ];
+    addInterface('EcrApiEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR, ecrStatements);
+    addInterface('EcrDkrEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER, ecrStatements);
+    addInterface('LogsEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS, [
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+            resources: [`${input.logGroup.logGroupArn}:*`],
+        }),
+    ]);
+    addInterface('SecretsManagerEndpoint', ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER, [
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: ['secretsmanager:GetSecretValue'],
+            resources: [input.credentialsSecret.secretArn],
+        }),
+    ]);
+    const ecsStatement = new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: [
+            'ecs:DeregisterContainerInstance',
+            'ecs:DiscoverPollEndpoint',
+            'ecs:Poll',
+            'ecs:RegisterContainerInstance',
+            'ecs:StartTelemetrySession',
+            'ecs:SubmitAttachmentStateChanges',
+            'ecs:SubmitContainerStateChange',
+            'ecs:SubmitTaskStateChange',
+            'ecs:UpdateContainerInstancesState',
+        ],
+        resources: ['*'],
+    });
+    addInterface('EcsEndpoint', ec2.InterfaceVpcEndpointAwsService.ECS, [ecsStatement]);
+    addInterface('EcsAgentEndpoint', ec2.InterfaceVpcEndpointAwsService.ECS_AGENT, [ecsStatement]);
+    addInterface('EcsTelemetryEndpoint', ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY, [ecsStatement]);
+    addInterface('CloudWatchEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_MONITORING, [
+        new iam.PolicyStatement({
+            principals: anyPrincipal,
+            actions: ['cloudwatch:PutMetricData'],
+            resources: ['*'],
+            conditions: {
+                StringEquals: { 'cloudwatch:namespace': input.applicationName },
+            },
+        }),
+    ]);
+
+    const s3Endpoint = input.vpc.addGatewayEndpoint('S3Endpoint', {
+        service: ec2.GatewayVpcEndpointAwsService.S3,
+        subnets: [
+            { subnetType: ec2.SubnetType.PUBLIC },
+            { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+        ],
+    });
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: ['s3:GetObject'],
+        resources: [`arn:${Stack.of(scope).partition}:s3:::prod-${PHASE4_ECS_REGION}-starport-layer-bucket/*`],
+    }));
+    // The fixed AL2023 producer host installs the qualified producer's pinned Python runtime.
+    // Its public repository traffic is routed through this gateway endpoint, so the endpoint
+    // policy must allow only the regional Amazon Linux repository objects it needs.
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: ['s3:GetObject'],
+        resources: [
+            `arn:${Stack.of(scope).partition}:s3:::al2023-repos-${PHASE4_ECS_REGION}-de612dc2/*`,
+        ],
+    }));
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: ['s3:PutObject'],
+        resources: [input.failureBucket.arnForObjects('*')],
+    }));
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: [
+            's3:GetBucketLocation',
+            's3:ListBucket',
+            's3:ListBucketMultipartUploads',
+        ],
+        resources: [input.archiveBucket.bucketArn],
+    }));
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: [
+            's3:AbortMultipartUpload',
+            's3:GetObject',
+            's3:ListMultipartUploadParts',
+            's3:PutObject',
+        ],
+        resources: [input.archiveBucket.arnForObjects(`${PHASE4_ECS_ARCHIVE_PREFIX}*`)],
+    }));
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: ['s3:GetObject'],
+        resources: [input.archiveBucket.arnForObjects(`producer/${input.runId}/*`)],
+    }));
+    s3Endpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: ['s3:PutObject'],
+        resources: [input.archiveBucket.arnForObjects(`producer-evidence/${input.runId}/*`)],
+    }));
+    endpoints.push(s3Endpoint);
+
+    const dynamoDbEndpoint = input.vpc.addGatewayEndpoint('DynamoDbEndpoint', {
+        service: ec2.GatewayVpcEndpointAwsService.DYNAMODB,
+        subnets: [{ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }],
+    });
+    dynamoDbEndpoint.addToPolicy(new iam.PolicyStatement({
+        principals: anyPrincipal,
+        actions: [
+            'dynamodb:DeleteItem',
+            'dynamodb:DescribeTable',
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:Query',
+            'dynamodb:Scan',
+            'dynamodb:UpdateItem',
+        ],
+        resources: [
+            input.leaseTable.tableArn,
+            `${input.leaseTable.tableArn}/index/LeaseOwnerToLeaseKeyIndex`,
+            input.workerMetricsTable.tableArn,
+            input.coordinatorStateTable.tableArn,
+        ],
+    }));
+    endpoints.push(dynamoDbEndpoint);
+    return endpoints;
+}
+
+interface ClickHouseInput {
+    readonly config: PerfPhase4ClickHouseEcsConfig;
+    readonly vpc: ec2.Vpc;
+    readonly securityGroup: ec2.ISecurityGroup;
+    readonly role: iam.IRole;
+    readonly secretArn: string;
+}
+
+interface ProducerInput {
+    readonly config: PerfPhase4ClickHouseEcsConfig;
+    readonly vpc: ec2.IVpc;
+    readonly securityGroup: ec2.ISecurityGroup;
+    readonly role: iam.IRole;
+}
+
+function createProducerInstance(scope: Construct, input: ProducerInput): ec2.Instance {
+    const instance = new ec2.Instance(scope, 'ProducerInstance', {
+        vpc: input.vpc,
+        vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+        instanceType: new ec2.InstanceType(PHASE4_ECS_PRODUCER_INSTANCE_TYPE),
+        machineImage: ec2.MachineImage.genericLinux({
+            [PHASE4_ECS_REGION]: input.config.clickHouseAmiId,
+        }),
+        role: input.role,
+        securityGroup: input.securityGroup,
+        associatePublicIpAddress: true,
+        requireImdsv2: true,
+        instanceName: `loopad-${input.config.runId}-producer`,
+        blockDevices: [{
+            deviceName: '/dev/xvda',
+            volume: ec2.BlockDeviceVolume.ebs(20, {
+                deleteOnTermination: true,
+                encrypted: true,
+                volumeType: ec2.EbsDeviceVolumeType.GP3,
+            }),
+        }],
+    });
+    Tags.of(instance).add('Workload', 'qualified-locust-kinesis-producer');
+    return instance;
+}
+
+function createClickHouseInstance(scope: Construct, input: ClickHouseInput): ec2.CfnInstance {
+    const userData = createClickHouseUserData({
+        AWS_REGION: PHASE4_ECS_REGION,
+        CLICKHOUSE_ALLOWED_CIDR: PHASE4_ECS_VPC_CIDR,
+        CLICKHOUSE_CREDENTIALS_SECRET_ARN: input.secretArn,
+        CLICKHOUSE_HTTP_PORT: PHASE4_ECS_CLICKHOUSE_HTTP_PORT.toString(),
+        CLICKHOUSE_IMAGE: PHASE4_ECS_CLICKHOUSE_IMAGE,
+        CLICKHOUSE_SCHEMA_PATH: '/opt/loop-ad/phase4-schema.sql',
+    });
+    const instanceProfile = new iam.CfnInstanceProfile(scope, 'ClickHouseInstanceProfile', {
+        roles: [input.role.roleName],
+    });
+    const launchTemplate = new ec2.CfnLaunchTemplate(scope, 'ClickHouseLaunchTemplate', {
+        launchTemplateData: {
+            blockDeviceMappings: [{
+                deviceName: '/dev/xvda',
+                ebs: {
+                    deleteOnTermination: true,
+                    encrypted: true,
+                    iops: PHASE4_ECS_CLICKHOUSE_VOLUME_IOPS,
+                    throughput: PHASE4_ECS_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS,
+                    volumeSize: PHASE4_ECS_CLICKHOUSE_VOLUME_GIB,
+                    volumeType: 'gp3',
+                },
+            }],
+            iamInstanceProfile: { name: instanceProfile.ref },
+            imageId: input.config.clickHouseAmiId,
+            instanceType: PHASE4_ECS_CLICKHOUSE_INSTANCE_TYPE,
+            metadataOptions: {
+                httpEndpoint: 'enabled',
+                httpPutResponseHopLimit: 2,
+                httpTokens: 'required',
+            },
+            networkInterfaces: [{
+                associatePublicIpAddress: true,
+                deviceIndex: 0,
+                groups: [input.securityGroup.securityGroupId],
+                subnetId: input.vpc.publicSubnets[0]!.subnetId,
+            }],
+            tagSpecifications: [
+                {
+                    resourceType: 'instance',
+                    tags: phase4ResourceTags(input.config, {
+                        Name: `loopad-${input.config.runId}-clickhouse`,
+                    }),
+                },
+                {
+                    resourceType: 'volume',
+                    tags: phase4ResourceTags(input.config, {
+                        Name: `loopad-${input.config.runId}-clickhouse-root`,
+                    }),
+                },
+            ],
+            userData: Fn.base64(userData.render()),
+        },
+    });
+    return new ec2.CfnInstance(scope, 'ClickHouseInstance', {
+        availabilityZone: PHASE4_ECS_AVAILABILITY_ZONE,
+        launchTemplate: {
+            launchTemplateId: launchTemplate.ref,
+            version: launchTemplate.attrLatestVersionNumber,
+        },
+    });
+}
+
+function createClickHouseUserData(environment: Record<string, string>): ec2.UserData {
+    const schema = readFileSync(CLICKHOUSE_SCHEMA_PATH, 'utf8').trimEnd();
+    const script = readFileSync(CLICKHOUSE_BOOTSTRAP_PATH, 'utf8').trimEnd();
+    const schemaMarker = 'LOOP_AD_PHASE4_SCHEMA_EOF';
+    const scriptMarker = 'LOOP_AD_PHASE4_CLICKHOUSE_EOF';
+    if (schema.split('\n').includes(schemaMarker) || script.split('\n').includes(scriptMarker)) {
+        throw new Error('Phase 4 ClickHouse assets contain a reserved heredoc marker.');
+    }
+    const userData = ec2.UserData.forLinux();
+    userData.addCommands(
+        'set -euo pipefail',
+        'mkdir -p /opt/loop-ad',
+        `cat > /opt/loop-ad/phase4-schema.sql <<'${schemaMarker}'\n${schema}\n${schemaMarker}`,
+        `cat > /opt/loop-ad/perf-phase4-clickhouse.sh <<'${scriptMarker}'\n${script}\n${scriptMarker}`,
+        'chmod 600 /opt/loop-ad/phase4-schema.sql',
+        'chmod 700 /opt/loop-ad/perf-phase4-clickhouse.sh',
+        [
+            'env \\',
+            ...Object.entries(environment).map(([key, value]) => `  ${key}=${shellQuote(value)} \\`),
+            '  /opt/loop-ad/perf-phase4-clickhouse.sh',
+        ].join('\n'),
+    );
+    return userData;
+}
+
+interface AlarmInput {
+    readonly config: PerfPhase4ClickHouseEcsConfig;
+    readonly stream: kinesis.IStream;
+    readonly cluster: ecs.ICluster;
+    readonly service: ecs.Ec2Service;
+    readonly autoScalingGroup: autoscaling.IAutoScalingGroup;
+}
+
+function createAlarms(scope: Construct, input: AlarmInput): void {
+    const common = {
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    } as const;
+    const greaterThan = cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD;
+    new cloudwatch.Alarm(scope, 'TaskCpuP95Alarm', {
+        ...common,
+        metric: input.service.metricCpuUtilization({ period: Duration.minutes(1), statistic: 'p95' }),
+        threshold: 70,
+        comparisonOperator: greaterThan,
+    });
+    new cloudwatch.Alarm(scope, 'TaskMemoryP95Alarm', {
+        ...common,
+        metric: input.service.metricMemoryUtilization({ period: Duration.minutes(1), statistic: 'p95' }),
+        threshold: 70,
+        comparisonOperator: greaterThan,
+    });
+    new cloudwatch.Alarm(scope, 'HostCpuP95Alarm', {
+        ...common,
+        metric: new cloudwatch.Metric({
+            namespace: 'AWS/EC2',
+            metricName: 'CPUUtilization',
+            dimensionsMap: { AutoScalingGroupName: input.autoScalingGroup.autoScalingGroupName },
+            period: Duration.minutes(1),
+            statistic: 'p95',
+        }),
+        threshold: 70,
+        comparisonOperator: greaterThan,
+    });
+    new cloudwatch.Alarm(scope, 'RunningTaskCountAlarm', {
+        ...common,
+        metric: new cloudwatch.Metric({
+            namespace: 'ECS/ContainerInsights',
+            metricName: 'RunningTaskCount',
+            dimensionsMap: {
+                ClusterName: input.cluster.clusterName,
+                ServiceName: input.service.serviceName,
+            },
+            period: Duration.minutes(1),
+            statistic: 'Minimum',
+        }),
+        threshold: PHASE4_ECS_TASK_COUNT,
+        comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+    });
+    new cloudwatch.Alarm(scope, 'KinesisIteratorAgeAlarm', {
+        ...common,
+        metric: input.stream.metricGetRecordsIteratorAgeMilliseconds({
+            period: Duration.minutes(1),
+            statistic: 'Maximum',
+        }),
+        threshold: 60_000,
+        comparisonOperator: greaterThan,
+    });
+    new cloudwatch.Alarm(scope, 'KinesisReadThrottleAlarm', {
+        ...common,
+        metric: input.stream.metric('ReadProvisionedThroughputExceeded', {
+            period: Duration.minutes(1),
+            statistic: 'Sum',
+        }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+    for (const metricName of ['TerminalFailure', 'CheckpointError'] as const) {
+        new cloudwatch.Alarm(scope, `${metricName}Alarm`, {
+            ...common,
+            metric: new cloudwatch.Metric({
+                namespace: PHASE4_ECS_METRIC_NAMESPACE,
+                metricName,
+                dimensionsMap: { RunId: input.config.runId },
+                period: Duration.minutes(1),
+                statistic: 'Sum',
+            }),
+            threshold: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        });
+    }
+}
+
+interface OutputInput {
+    readonly config: PerfPhase4ClickHouseEcsConfig;
+    readonly vpc: ec2.IVpc;
+    readonly consumerRepository: ecr.IRepository;
+    readonly cluster: ecs.ICluster;
+    readonly service: ecs.Ec2Service;
+    readonly autoScalingGroup: autoscaling.IAutoScalingGroup;
+    readonly capacityProvider: ecs.AsgCapacityProvider;
+    readonly stream: kinesis.IStream;
+    readonly clickHouseInstance: ec2.CfnInstance;
+    readonly producerInstance: ec2.Instance;
+    readonly credentialsSecret: secretsmanager.ISecret;
+    readonly failureBucket: s3.IBucket;
+    readonly archiveBucket: s3.IBucket;
+    readonly leaseTable: dynamodb.ITable;
+    readonly workerMetricsTable: dynamodb.ITable;
+    readonly coordinatorStateTable: dynamodb.ITable;
+}
+
+function outputRunResources(scope: Construct, input: OutputInput): void {
+    const outputs: Record<string, string> = {
+        RunId: input.config.runId,
+        SessionId: input.config.sessionId,
+        AvailabilityZone: PHASE4_ECS_AVAILABILITY_ZONE,
+        VpcId: input.vpc.vpcId,
+        ConsumerRepositoryName: input.consumerRepository.repositoryName,
+        ConsumerImageUri: Fn.join('', [
+            input.consumerRepository.repositoryUri,
+            '@',
+            input.config.consumerImageDigest,
+        ]),
+        ConsumerClusterName: input.cluster.clusterName,
+        ConsumerServiceName: input.service.serviceName,
+        ConsumerAutoScalingGroupName: input.autoScalingGroup.autoScalingGroupName,
+        ConsumerCapacityProviderName: input.capacityProvider.capacityProviderName,
+        ConsumerEcsAmiId: input.config.ecsAmiId,
+        ClickHouseAmiId: input.config.clickHouseAmiId,
+        ClickHouseInstanceId: input.clickHouseInstance.attrInstanceId,
+        ProducerInstanceId: input.producerInstance.instanceId,
+        ClickHousePrivateUrl: Fn.join('', [
+            'http://',
+            input.clickHouseInstance.attrPrivateIp,
+            `:${PHASE4_ECS_CLICKHOUSE_HTTP_PORT}`,
+        ]),
+        ClickHouseSecretArn: input.credentialsSecret.secretArn,
+        StreamName: input.stream.streamName,
+        StreamArn: input.stream.streamArn,
+        LeaseTableName: input.leaseTable.tableName,
+        WorkerMetricsTableName: input.workerMetricsTable.tableName,
+        CoordinatorStateTableName: input.coordinatorStateTable.tableName,
+        FailureBucketName: input.failureBucket.bucketName,
+        ArchiveBucketName: input.archiveBucket.bucketName,
+    };
+    for (const [id, value] of Object.entries(outputs)) new CfnOutput(scope, id, { value });
+}
+
+function phase4ResourceTags(
+    config: PerfPhase4ClickHouseEcsConfig,
+    extra: Record<string, string> = {},
+): CfnTag[] {
+    return Object.entries({
+        Project: 'loop-ad',
+        CdkProject: 'loop-ad_aws_cdk',
+        Environment: 'perf-phase4-clickhouse-ecs',
+        Phase: 'phase4-clickhouse-ecs',
+        RunId: config.runId,
+        SessionId: config.sessionId,
+        ManagedBy: 'codex',
+        Owner: 'loop-ad',
+        ResourceScope: 'run',
+        ...extra,
+    }).map(([key, value]) => ({ key, value }));
+}
+
+function shellQuote(value: string): string {
+    return `'${value.replace(/'/g, String.raw`'\''`)}'`;
+}

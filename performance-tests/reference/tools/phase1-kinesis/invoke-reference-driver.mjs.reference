@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
+import { isRunScopedProtocolLoadBalancerUrl } from './protocol-load-balancer-url.mjs';
+
+const REGION = 'ap-northeast-2';
+const scripts = dirname(fileURLToPath(import.meta.url));
+const instanceId = requiredOption('--instance-id');
+const targetBaseUrl = requiredOption('--target-base-url');
+const targetPath = requiredOption('--target-path');
+const directTargetIp = optionValue('--direct-target-ip');
+const runId = requiredOption('--run-id');
+const rps = requiredInteger('--rps');
+const connections = requiredInteger('--connections');
+const durationSeconds = requiredInteger('--duration-seconds');
+const warmupSeconds = Number(optionValue('--warmup-seconds') ?? 0);
+const startEpoch = requiredInteger('--start-epoch');
+const nodeId = requiredOption('--node-id');
+const stageLabel = requiredOption('--stage-label');
+const repetition = requiredOption('--repetition');
+const evidenceBucket = requiredOption('--evidence-bucket');
+const evidencePrefix = requiredOption('--evidence-prefix').replace(/\/$/, '');
+const binaryS3Uri = requiredOption('--binary-s3-uri');
+const binarySha256 = requiredOption('--binary-sha256');
+const randomSeed = requiredInteger('--random-seed');
+const protocol = optionValue('--protocol') ?? 'h1';
+const streamsPerConnection = Number(optionValue('--streams-per-connection') ?? 1);
+const caCertificatePath = requiredOption('--ca-certificate');
+const tlsServerName = optionValue('--tls-server-name') ?? 'loopad-protocol.internal';
+const outputDir = requiredOption('--output-dir');
+
+if (!/^i-[0-9a-f]+$/.test(instanceId) || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid instance or run ID');
+if (!isRunScopedProtocolLoadBalancerUrl(targetBaseUrl)) throw new Error('invalid run-scoped load balancer URL');
+if (!['/events', '/__collector_control', '/__decode_control', '/__batch_control?ack_delay=0', '/__batch_control?ack_delay=20',
+    '/__delay_control?delay=0', '/__delay_control?delay=50', '/__delay_control?delay=100',
+    '/__delay_control?delay=200', '/__delay_control?delay=300'].includes(targetPath)) throw new Error('invalid reference target path');
+if (directTargetIp && !/^10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}$/.test(directTargetIp)) throw new Error('invalid direct target IP');
+if (!/^node-[0-9]{2}$/.test(nodeId) || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel) || !/^[0-9]{1,3}$/.test(repetition)) throw new Error('invalid stage identity');
+const ownershipPrefix = evidencePrefix.split('/diagnostics/')[0];
+const toolingPrefix = 's3://' + evidenceBucket + '/' + ownershipPrefix + '/tooling/reference-driver';
+const toolingVersion = binaryS3Uri.startsWith(toolingPrefix + '-v') ? binaryS3Uri.slice((toolingPrefix + '-v').length) : '';
+const validToolingObject = binaryS3Uri === toolingPrefix || /^[1-9][0-9]*$/.test(toolingVersion);
+if (!ownershipPrefix || !evidencePrefix.startsWith(ownershipPrefix + '/diagnostics/') || !/^[0-9a-f]{64}$/.test(binarySha256) || !validToolingObject) throw new Error('invalid immutable reference binary');
+if (rps < 1 || connections < 1 || durationSeconds < 1 || !Number.isInteger(warmupSeconds) || warmupSeconds < 0 || rps % 2 !== 0 || connections % 2 !== 0) throw new Error('reference topology must divide across two processes');
+if (!['h1', 'h2', 'h3'].includes(protocol) || streamsPerConnection !== 1) throw new Error('independent protocol topology requires one stream per connection');
+if (!targetBaseUrl.startsWith('https://') || !/^[a-z0-9.-]+$/.test(tlsServerName)) throw new Error('protocol and TLS identity are inconsistent');
+
+const poolPath = join(scripts, 'payloads', 'sdk-compatible-event-bodies.ndjson');
+const pool = readFileSync(poolPath);
+const poolSha256 = createHash('sha256').update(pool).digest('hex');
+const payloadGzipBase64 = gzipSync(pool, { level: 9 }).toString('base64');
+const caCertificate = readFileSync(caCertificatePath);
+const caCertificateSha256 = createHash('sha256').update(caCertificate).digest('hex');
+const caCertificateBase64 = caCertificate.toString('base64');
+const hostHeader = new URL(targetBaseUrl).host;
+const connectBaseUrl = directTargetIp ? (protocol === 'h1' ? 'http://' + directTargetIp + ':8080' : 'https://' + directTargetIp + ':8443') : targetBaseUrl;
+mkdirSync(outputDir, { recursive: true });
+
+const command = [
+    'sudo -n env',
+    'RUN_ID=' + quote(runId),
+    'QUERY_PER_SECOND=' + quote(rps),
+    'DURATION_SECONDS=' + quote(durationSeconds),
+	'WARMUP_SECONDS=' + quote(warmupSeconds),
+    'CONNECTIONS=' + quote(connections),
+    'PROCESSES_PER_NODE=' + quote(2),
+    'START_EPOCH=' + quote(startEpoch),
+    'NODE_ID=' + quote(nodeId),
+    'TARGET_CONNECT_BASE_URL=' + quote(connectBaseUrl),
+    'TARGET_HOST_HEADER=' + quote(hostHeader),
+    'TARGET_PATH=' + quote(targetPath),
+    'STAGE_LABEL=' + quote(stageLabel),
+    'REPETITION=' + quote(repetition),
+    'PAYLOAD_GZIP_BASE64=' + quote(payloadGzipBase64),
+    'EXPECTED_POOL_SHA256=' + quote(poolSha256),
+    'REFERENCE_BINARY_S3_URI=' + quote(binaryS3Uri),
+    'REFERENCE_BINARY_SHA256=' + quote(binarySha256),
+    'EVIDENCE_BUCKET=' + quote(evidenceBucket),
+    'EVIDENCE_PREFIX=' + quote(evidencePrefix),
+    'RANDOM_SEED=' + quote(randomSeed),
+    'REFERENCE_PROTOCOL=' + quote(protocol),
+    'STREAMS_PER_CONNECTION=' + quote(streamsPerConnection),
+    'CA_CERTIFICATE_BASE64=' + quote(caCertificateBase64),
+    'CA_CERTIFICATE_SHA256=' + quote(caCertificateSha256),
+    'TLS_SERVER_NAME=' + quote(tlsServerName),
+    '/opt/loop-ad-phase1/run-ec2-reference-worker.sh',
+].join(' ');
+const timeoutSeconds = warmupSeconds + durationSeconds + 480;
+const send = awsJson(['ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript', '--instance-ids', instanceId,
+    '--timeout-seconds', String(timeoutSeconds), '--parameters', JSON.stringify({ commands: [command], executionTimeout: [String(timeoutSeconds)] }),
+    '--comment', 'loop-ad ' + runId + ' reference ' + stageLabel + ' ' + nodeId]);
+writeJson(join(outputDir, 'ssm-command.json'), {
+    createdAt: new Date().toISOString(), commandId: send.Command.CommandId, instanceId, nodeId,
+    runId, stageLabel, repetition, warmupSeconds, durationSeconds, startEpoch,
+});
+const invocation = await waitForInvocation(send.Command.CommandId, instanceId, timeoutSeconds);
+writeJson(join(outputDir, 'ssm-invocation.json'), {
+    commandId: send.Command.CommandId, instanceId, status: invocation.Status, responseCode: invocation.ResponseCode,
+    executionStartDateTime: invocation.ExecutionStartDateTime, executionEndDateTime: invocation.ExecutionEndDateTime,
+	    rps, connections, warmupSeconds, durationSeconds, startEpoch, nodeId, stageLabel, repetition, targetPath, directTargetIp: directTargetIp ?? null,
+    targetBaseUrl, connectBaseUrl, hostHeader, binaryS3Uri, binarySha256, poolSha256, randomSeed, protocol, streamsPerConnection,
+    caCertificateSha256, tlsServerName,
+});
+writeFileSync(join(outputDir, 'ssm-stdout.log'), invocation.StandardOutputContent ?? '', 'utf8');
+writeFileSync(join(outputDir, 'ssm-stderr.log'), invocation.StandardErrorContent ?? '', 'utf8');
+const artifactLine = (invocation.StandardOutputContent ?? '').split('\n').find((line) => line.startsWith('ARTIFACT_S3_URI='));
+const expectedArtifact = 's3://' + evidenceBucket + '/' + evidencePrefix + '/' + nodeId + '/artifacts.tgz';
+if (!artifactLine || artifactLine.slice('ARTIFACT_S3_URI='.length) !== expectedArtifact) throw new Error('reference worker did not return the expected artifact URI');
+const archive = join(outputDir, 'artifacts.tgz');
+execFileSync('aws', ['s3', 'cp', expectedArtifact, archive, '--region', REGION, '--only-show-errors']);
+execFileSync('tar', ['-xzf', archive, '-C', outputDir]);
+const summary = json(join(outputDir, 'reference-summary.json'));
+unlinkSync(archive);
+if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0 || !summary.valid) process.exitCode = 2;
+process.stdout.write(JSON.stringify({ commandId: send.Command.CommandId, status: invocation.Status, responseCode: invocation.ResponseCode, summary, outputDir }, null, 2) + '\n');
+
+async function waitForInvocation(commandId, id, seconds) {
+    const deadline = Date.now() + seconds * 1_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        try {
+            const result = awsJson(['ssm', 'get-command-invocation', '--region', REGION, '--command-id', commandId, '--instance-id', id]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(result.Status)) return result;
+        } catch (error) {
+            if (!String(error.stderr ?? '').includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error('reference command ' + commandId + ' timed out');
+}
+function quote(value) { const text = String(value); if (!/^[A-Za-z0-9_./:=?+-]+$/.test(text)) throw new Error('unsafe shell value'); return "'" + text + "'"; }
+function awsJson(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function writeJson(path, value) { writeFileSync(path, JSON.stringify(value, null, 2) + '\n', 'utf8'); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(name + ' is required'); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(name + ' must be an integer'); return value; }

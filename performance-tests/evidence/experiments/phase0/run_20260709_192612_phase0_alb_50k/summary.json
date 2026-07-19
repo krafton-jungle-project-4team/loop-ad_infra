@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_192612_phase0_alb_50k",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-09T19:26:12",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "target_rps",
+      "value": 50000,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 300,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "target_rps",
+      "value": 50000,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "event_per_request",
+      "value": 1,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 300,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "load_generator.cpu",
+      "value": 4,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "load_generator.memory_gib",
+      "value": 8,
+      "source": "run_20260709_192612_phase0_alb_50k/run.json"
+    },
+    {
+      "name": "status",
+      "value": "failed_before_worker_start",
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "target_rps",
+      "value": 50000,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "worker_cpu",
+      "value": 4,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "worker_memory_gib",
+      "value": 8,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "requested_fargate_spot_vcpu",
+      "value": 80,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "fargate_spot_vcpu_quota",
+      "value": 30,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    },
+    {
+      "name": "http_requests_observed",
+      "value": 0,
+      "source": "run_20260709_192612_phase0_alb_50k/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_192612_phase0_alb_50k"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/artifacts.md",
+      "bytes": 404,
+      "sha256": "c9b579d75bbb282ea1e6da2babb5db79852aa376474e936e1a3724c462b29938"
+    },
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/commands.md",
+      "bytes": 1609,
+      "sha256": "08e77a9927d1957351b92b3e962340bc942674484730a521f26b6c6864127472"
+    },
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/infra.md",
+      "bytes": 735,
+      "sha256": "d4b96c08832158e2ded8c8cc0634cb0173ddbe16312938eaf7021198a143b84a"
+    },
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/metrics-summary.json",
+      "bytes": 886,
+      "sha256": "2dcff7c0c01bdb31cab5e9df2d68a52f358479a02ccfa7821aaa64843cb378fc"
+    },
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/report.md",
+      "bytes": 837,
+      "sha256": "570d8835f88864b50ec97a5ef7809020a1ea02db87a349ef6ac553738f51bd8b"
+    },
+    {
+      "path": "run_20260709_192612_phase0_alb_50k/run.json",
+      "bytes": 899,
+      "sha256": "00b228b8c1bad52113dbc2f64dd268d3706782b38550f798ef72136c7e63bb57"
+    }
+  ]
+}

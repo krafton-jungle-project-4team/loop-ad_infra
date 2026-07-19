@@ -1,0 +1,1039 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-19T16:36:53Z",
+  "policy": {
+    "defaultValidationOrder": [
+      "record-issue-and-raw-evidence",
+      "apply-focused-fix-after-cleanup-zero",
+      "run-focused-local-and-static-deployment-gates",
+      "run-fresh-full-stack-scoped-aws-diagnostic",
+      "build-composite-phase8-handoff-after-scoped-pass",
+      "run-focused-unpaid-phase8-finalization"
+    ],
+    "itemRetention": "never-delete; append diagnostic and local-batch history",
+    "dedicatedDiagnosticStack": {
+      "status": "retired-no-future-deployments",
+      "effectiveAt": "2026-07-19T09:50:54Z",
+      "reason": "The dedicated archive diagnostic stack introduced a second bootstrap implementation and two paid deployment failures before the archive hypothesis was reached.",
+      "historicalAttempts": [
+        18,
+        19
+      ],
+      "replacement": "Deploy the Attempt 17 LoopAdPerfPhase7IntegrationStack definition under a fresh standard identity and run only the failed path plus its prerequisites.",
+      "policyEvidence": "performance-tests/phase7_2-stabilization/full-stack-scoped-diagnostic-policy-20260719.json"
+    },
+    "monolithicStrictCandidateFastPath": "disabled by the active composite policy; any future certification requires a new explicit authorization artifact and a new budget contract",
+    "targetedDiagnosticPromotionEligible": false,
+    "fullStackScopedDiagnosticPromotionEligible": false,
+    "strictPromotionRequiresBatchedLocalHandoff": false,
+    "activeCompositePromotion": {
+      "status": "user-authorized",
+      "policyEvidence": "performance-tests/phase7_2-stabilization/phase8-composite-promotion-policy-20260719.json",
+      "new50kWarmupScoreAttempts": 0,
+      "futureStrictOperationalReservationUsd": "0.000000",
+      "performanceEvidenceAttemptOrdinal": 17,
+      "freshArchiveAttemptType": "aws-full-stack-scoped-diagnostic",
+      "preserveAttemptVerdicts": true,
+      "phase8PaidAwsExperiment": false
+    }
+  },
+  "activeBatch": {
+    "batchId": "attempt-20-archive-operational-headroom-20260719",
+    "status": "attempt20-failed-cleaned-fix-sealed-awaiting-fresh-admission",
+    "issueIds": [
+      "attempt15-clickhouse-archive-memory",
+      "attempt18-targeted-ecs-cloud-final-restart",
+      "attempt19-targeted-readiness-aws-cli-missing",
+      "strict-paid-cli-policy-bypass",
+      "composite-handoff-missing-external-anchors",
+      "attempt20-archive-query-operational-headroom",
+      "attempt20-failure-evidence-datetime",
+      "attempt20-stopped-task-tagging-tombstone"
+    ],
+    "implementationCommit": "e1aa96d07b185b7b56eab5e0c6404b0f2254ff4b",
+    "implementationTreeSha256": "736a8b683dcc5cf32105e0b722ad989fd0da6302a9f733120c101e399634ec63",
+    "targetedDiagnosticImplementation": {
+      "commit": "7c46d73000c86769862fb2c710f9dbde61ccd617",
+      "gitTree": "484910087293cf8d05d4ef5b7af3efe78f16b153",
+      "archiveImageSourceClosureSha256": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378",
+      "scope": "one r7g.2xlarge host, one 500 GiB gp3 volume, ClickHouse service, 15M seed, one retain-source archive task, one verifier task, one archive ECR repository; no NAT/NLB/Kinesis/DynamoDB/load path",
+      "focusedGates": {
+        "phase6Archive": "15/15 passed",
+        "phase7ArchiveRuntimeAndTargetedTooling": "9/9 focused targeted tests passed; prior archive coverage remains deferred to the batched whole-local handoff",
+        "targetedAndStrictCdk": "21/21 passed",
+        "typescriptBuild": "passed",
+        "decodedUserDataUpperBoundBytes": 8681,
+        "blockingEcsRestartAbsent": true,
+        "awsCliBootstrapBeforeSignals": true,
+        "asgAndExactRegistrationSignals": "passed",
+        "cfnLint": "six accepted assembly-only E1022 findings; zero unexpected findings"
+      },
+      "promotionEligible": false,
+      "sourceDropEnabled": false,
+      "status": "historical-retired-after-attempt19",
+      "futureDeploymentAuthorized": false
+    },
+    "nextScopedDiagnostic": {
+      "attemptType": "aws-full-stack-scoped-diagnostic",
+      "promotionEligible": false,
+      "stackDefinition": "LoopAdPerfPhase7IntegrationImageStack plus LoopAdPerfPhase7IntegrationStack",
+      "topologyBaseline": "Attempt 17 full Phase 7 integration topology",
+      "stagePlan": [
+        "deploy",
+        "verify",
+        "seed-15000000",
+        "retain-source-archive",
+        "committed-and-pre-drop-equivalence",
+        "collect",
+        "cleanup"
+      ],
+      "zeroAttemptStages": [
+        "correctness",
+        "replacement",
+        "warmup",
+        "score",
+        "source-drop"
+      ],
+      "freshIdentityRequired": true,
+      "unavoidableResourcesRecorded": true,
+      "sourceSeal": {
+        "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-source-20260719T144300Z.json",
+        "sha256": "2c11be0f125b48debf6fc79aed53d51768c7e45cebc9fb7edd2606d1888eb76a",
+        "gitCommit": "e1aa96d07b185b7b56eab5e0c6404b0f2254ff4b",
+        "gitTree": "918a2dd202fae60224d42711c5e07df59251607a",
+        "implementationTreeSha256": "736a8b683dcc5cf32105e0b722ad989fd0da6302a9f733120c101e399634ec63",
+        "focusedGateCount": 4,
+        "status": "passed-current-source"
+      }
+    },
+    "preAttemptAbortedIdentities": [
+      {
+        "candidateOrdinal": 20,
+        "runId": "run_20260719_094035_phase7_archive_diagnostic",
+        "sessionId": "phase7-archive-diagnostic-20260719T094035Z",
+        "path": "performance-tests/run_20260719_094035_phase7_2_aws_targeted_diagnostic",
+        "paidBoundaryCrossed": false,
+        "runOwnedResourcesCreated": 0,
+        "reason": "The identity was abandoned before AWS preflight because the retired targeted cost path hardcoded the active prior to zero; it is never reusable."
+      }
+    ],
+    "wholeLocalHandoff": {
+      "path": "performance-tests/run_20260719_041439_phase7_1_local_integration/local-handoff.json",
+      "sha256": "acfc85301a155a99e4351567f9aa618d16a7fe707adf2284b1a8b0290246674e",
+      "status": "passed-for-pre-attempt17-implementation-only",
+      "realAwsRequestCount": 0,
+      "cleanupInventoryZero": true,
+      "gitHeadAtFinalization": "59a72cf6d2b5d64d2a5a3acdb1930836d29ddbf0"
+    },
+    "latestFailedWholeLocalHandoff": {
+      "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/local-handoff.json",
+      "sha256": "986306b63239551df712d15cc36e35f402dfbdf2383cfcedcd403e68923ec283",
+      "status": "failed-localstack-bootstrap",
+      "realAwsRequestCount": null,
+      "cleanupInventoryZero": true
+    },
+    "wholeLocalHandoffHistory": [
+      {
+        "path": "performance-tests/run_20260719_012539_phase7_1_local_integration/local-handoff.json",
+        "sha256": "f0869a7fb2353508f5ccbfaf07100b209334e3a316f57c8c147cdab97ec7555c",
+        "status": "superseded-by-attempt16-tooling-change"
+      },
+      {
+        "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/local-handoff.json",
+        "sha256": "986306b63239551df712d15cc36e35f402dfbdf2383cfcedcd403e68923ec283",
+        "status": "failed-localstack-bootstrap"
+      },
+      {
+        "path": "performance-tests/run_20260719_041439_phase7_1_local_integration/local-handoff.json",
+        "sha256": "acfc85301a155a99e4351567f9aa618d16a7fe707adf2284b1a8b0290246674e",
+        "status": "passed"
+      }
+    ],
+    "nextWholeLocalHandoffRequired": false,
+    "nextWholeLocalHandoffDisposition": "superseded-for-current-campaign-by-user-authorized-composite-phase8-policy; deferred coverage remains retained in this register"
+  },
+  "issues": [
+    {
+      "issueId": "attempt15-collector-admission-429",
+      "sourceAttemptOrdinal": 15,
+      "sourceRunId": "run_20260718_225218_phase7_integration",
+      "observedStages": [
+        "warmup",
+        "score"
+      ],
+      "symptom": "HTTP 429 was nonzero at otherwise greater-than-50k throughput.",
+      "diagnosis": "All six collectors reached the exact 1024 admission cap; oha 429, HAProxy 4xx, collector /events 4xx and collector admissionRejected counts were identical. Producer queues, Kinesis final ACK, HAProxy queues and host resources retained headroom.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+          "sha256": "fca064407365a1ecd3ecec8f659c7a2e7ff9a4fa9da8d5eeefe65b2b77829d60"
+        },
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/score/postmortem-aggregate.json",
+          "sha256": "6cd58128ec2a8f76f7a889ff3f36d381e2e291f98bdd40b684dcc117b235fd01"
+        },
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-15-load-failure-diagnosis.json",
+          "sha256": "54451d394799e1d4ab206570f8f2322c9eb11978c7f013c40c458d7a9678b757"
+        }
+      ],
+      "fix": {
+        "summary": "Raise only Phase 7 collector max in-flight requests from 1024 to 4096 while preserving bounded admission.",
+        "commit": "11f747ada2ba8df30455c13a9d0270eaddd48bdd"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-15-load-fix-validation/verification-summary.json",
+        "sha256": "5c8fe1f1f755ed5499a9a92585b920577137d433ab864a4edfb1699120f37e5a",
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "real Phase 7 collector/HAProxy/Kinesis/load-generator path at 50000 requested RPS; require HTTP 429 zero and exact final-ACK accounting",
+        "attempts": [
+          {
+            "ordinal": 16,
+            "runId": "run_20260719_020156_phase7_integration",
+            "stage": "warmup",
+            "outcome": "inconclusive",
+            "reason": "all remote workers succeeded but local SSM observers failed before aggregate response and admission evidence was recovered"
+          },
+          {
+            "ordinal": 17,
+            "runId": "run_20260719_043415_phase7_integration",
+            "stage": "warmup",
+            "outcome": "passed",
+            "reason": "real 50000 requested RPS produced zero HTTP 429/5xx and exact 8999999 HTTP/Kinesis/KCL/ClickHouse accounting; one transport timeout was unrelated to the collector admission issue"
+          }
+        ],
+        "status": "passed-attempt17-warmup"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "synth collector environment and aggregate admission capacity",
+          "full Phase 7 unit/build",
+          "whole local handoff"
+        ],
+        "status": "passed-by-batch-handoff-041439"
+      },
+      "currentState": "resolved-real-aws-attempt17"
+    },
+    {
+      "issueId": "attempt15-oha-duration-deadline",
+      "sourceAttemptOrdinal": 15,
+      "sourceRunId": "run_20260718_225218_phase7_integration",
+      "observedStages": [
+        "warmup",
+        "score"
+      ],
+      "symptom": "Pinned oha reported 8587 warmup and 8824 score transport errors, all labeled aborted due to deadline.",
+      "diagnosis": "oha 1.14.0 HTTP/2 duration mode closes its worker semaphore at the duration boundary and reports active workers as deadline errors despite successful process exit; this is not evidence of a network outage but violates the strict zero-transport contract.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+          "sha256": "fca064407365a1ecd3ecec8f659c7a2e7ff9a4fa9da8d5eeefe65b2b77829d60"
+        },
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/score/postmortem-aggregate.json",
+          "sha256": "6cd58128ec2a8f76f7a889ff3f36d381e2e291f98bdd40b684dcc117b235fd01"
+        },
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-15-load-failure-diagnosis.json",
+          "sha256": "54451d394799e1d4ab206570f8f2322c9eb11978c7f013c40c458d7a9678b757"
+        }
+      ],
+      "fix": {
+        "summary": "Use exact Phase 7 request counts equal to target RPS times duration while retaining the QPS limiter and latency correction.",
+        "commit": "11f747ada2ba8df30455c13a9d0270eaddd48bdd"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-15-load-fix-validation/verification-summary.json",
+        "sha256": "5c8fe1f1f755ed5499a9a92585b920577137d433ab864a4edfb1699120f37e5a",
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "real Phase 7 pinned-oha HTTP/2 load with exact request count; require attempted count identity and transport errors zero",
+        "attempts": [
+          {
+            "ordinal": 16,
+            "runId": "run_20260719_020156_phase7_integration",
+            "stage": "warmup",
+            "outcome": "inconclusive",
+            "reason": "exact-count remote commands succeeded but worker artifacts and aggregate attempted/transport accounting were not recovered"
+          },
+          {
+            "ordinal": 17,
+            "runId": "run_20260719_043415_phase7_integration",
+            "stage": "warmup",
+            "outcome": "failed",
+            "reason": "exact 9000000 attempts were recovered but one request timed out, so strict zero-transport acceptance failed"
+          },
+          {
+            "ordinal": 17,
+            "runId": "run_20260719_043415_phase7_integration",
+            "stage": "score",
+            "outcome": "passed",
+            "reason": "offline deterministic aggregation of the preserved one-shot worker artifacts proved exact 15000000 attempts, 15000000 HTTP 202 and zero transport/429/5xx without rerunning traffic"
+          }
+        ],
+        "status": "passed-attempt17-score"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "worker exact-count contract",
+          "aggregator exact attempted-count contract",
+          "full Phase 7 unit/build",
+          "whole local handoff"
+        ],
+        "status": "passed-by-batch-handoff-041439"
+      },
+      "currentState": "resolved-real-aws-attempt17"
+    },
+    {
+      "issueId": "attempt15-clickhouse-archive-memory",
+      "sourceAttemptOrdinal": 15,
+      "sourceRunId": "run_20260718_225218_phase7_integration",
+      "observedStages": [
+        "score_archive"
+      ],
+      "symptom": "The one overlapping archive task failed with ClickHouse code 241 MEMORY_LIMIT_EXCEEDED before COMMITTED.",
+      "diagnosis": "A 5120 MiB container and 5261334937-byte server cap left insufficient headroom for the 4831838208-byte archive query during concurrent ingest, merge and Parquet re-read.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/archive-failure-diagnosis.json",
+          "sha256": "d8ccb9eadea185ca7d87f3ba84bf8e1d858b652615151b2125cc53d33dd8bd70"
+        },
+        {
+          "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/control/score_archive.attempt-1.stderr.log",
+          "sha256": "d9efed354d8075f77b55a145d7488433449f106089b679728d4cef0851efa97b"
+        }
+      ],
+      "priorFixes": [
+        {
+          "summary": "Raise only Phase 7 ClickHouse container memory to 8192 MiB and server memory to 7516192768 bytes while retaining the 4831838208-byte query cap.",
+          "commit": "6ab37d964d8af9c0794e11df023ec095d5a04eae",
+          "awsOutcome": "Attempt 17 moved the binding limit from the server cap to the retained 4.5 GiB per-query cap."
+        }
+      ],
+      "fix": {
+        "summary": "Raise only the Phase 7 archive per-query ClickHouse ceiling from 4.5 GiB to 5 GiB while retaining the 7 GiB server and 8 GiB container caps.",
+        "commit": "ed2cd79697db117a037cea3ff319d9327117a4b9"
+      },
+      "priorFocusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-15-fix-verification.json",
+        "sha256": "487e1c06c9fb3fd90c57753f953461bcd6a3f19cd9f81f9466946bbd2663091a",
+        "status": "passed"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-17-fix-verification.json",
+        "sha256": "f92950ce5df91b6a990c162a1c72ee722614450966a9ccd359ddb8ce453924e5",
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh Attempt 17 full Phase 7 stack topology with a 15000000-row seed and one retain-source archive task; require COMMITTED re-read and no code 241 or restart, run no correctness/warmup/score, and do not execute source DROP",
+        "attempts": [
+          {
+            "ordinal": 16,
+            "runId": "run_20260719_020156_phase7_integration",
+            "stage": "score_archive",
+            "outcome": "not-started",
+            "reason": "warmup orchestration hard stop entered cleanup-only"
+          },
+          {
+            "ordinal": 17,
+            "runId": "run_20260719_043415_phase7_integration",
+            "stage": "score_archive",
+            "outcome": "failed",
+            "reason": "the single overlapping task hit ClickHouse Code 241 while re-reading part-00000.parquet because the stale 4.5 GiB per-query cap was exceeded by a 6.04 MiB allocation; COMMITTED was not re-read and DROP was not executed"
+          },
+          {
+            "ordinal": 18,
+            "runId": "run_20260719_071857_phase7_archive_diagnostic",
+            "stage": "runtime-deploy",
+            "outcome": "not-evaluated",
+            "reason": "the targeted-only user data blocked in systemctl restart ecs until rollback; no ECS task, seed, archive, verifier or source DROP started"
+          },
+          {
+            "ordinal": 19,
+            "runId": "run_20260719_083356_phase7_archive_diagnostic",
+            "stage": "runtime-deploy-readiness",
+            "outcome": "not-evaluated",
+            "reason": "the host reached ECS registration but the readiness script failed because aws was absent; no ClickHouse, seed, archive, verifier or source DROP started"
+          }
+        ],
+        "status": "full-stack-scoped-retry-pending-aws-cli-fixed"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "container/server/query memory invariants",
+          "full Phase 7 unit/build",
+          "whole local handoff"
+        ],
+        "status": "pending-next-batched-whole-local"
+      },
+      "currentState": "full-stack-scoped-probe-not-yet-evaluated-attempt19-aws-cli-fixed"
+    },
+    {
+      "issueId": "attempt18-targeted-ecs-cloud-final-restart",
+      "sourceAttemptOrdinal": 18,
+      "sourceRunId": "run_20260719_071857_phase7_archive_diagnostic",
+      "observedStages": [
+        "runtime-deploy"
+      ],
+      "symptom": "The one targeted runtime deploy rolled back with zero registered ECS container instances and zero started tasks.",
+      "diagnosis": "Targeted-only EC2 user data invoked blocking systemctl restart ecs from cloud-init modules:final. The command remained blocked until rollback terminated the host; EC2 console output recorded Job for ecs.service canceled and scripts-user failure after 219.60 seconds.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-18-targeted-deploy-failure-diagnosis.json",
+          "sha256": "ef92729ef32673bd1aace46632b7e988bcd6a5a4ce2ad63283ddfd14fa530a99"
+        },
+        {
+          "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/failure.json",
+          "sha256": "6a89c1202d57a896e9fc91d0360a9c48ec1814c3772fedcc2dc10da32178abf9"
+        }
+      ],
+      "fix": {
+        "summary": "Remove the blocking restart and reuse the strict stack's two-stage ASG/ECS exact capacity-provider readiness signals before service creation.",
+        "commit": "3a1bc11fa3aa14b990ce4d0da7a2fe033b46c584"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-18-fix-verification.json",
+        "sha256": "4d254382a60694546b8eae63c53887e6284687d67f4c2fa84667e6d3140df871",
+        "requiredCoverage": [
+          "no systemctl restart ecs in targeted user data",
+          "ASG ResourceSignal and exact capacity-provider WaitCondition",
+          "service DependsOn the exact registration condition",
+          "decoded user data at or below 15360 bytes"
+        ],
+        "targetedPythonToolingTests": "7/7 passed",
+        "targetedAndStrictCdkTests": "21/21 passed",
+        "decodedUserDataUpperBoundBytes": 8581,
+        "cfnLintUnexpectedFindings": 0,
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh targeted archive diagnostic after focused fix",
+        "attempts": [
+          {
+            "ordinal": 18,
+            "runId": "run_20260719_071857_phase7_archive_diagnostic",
+            "outcome": "failed",
+            "reason": "one immutable runtime deploy rolled back before ECS registration"
+          },
+          {
+            "ordinal": 19,
+            "runId": "run_20260719_083356_phase7_archive_diagnostic",
+            "outcome": "passed-for-this-issue",
+            "reason": "the Launch Template completed, EC2 became InService/Healthy and the ECS container instance registered without a blocking restart; a separate missing AWS CLI issue then stopped readiness"
+          }
+        ],
+        "status": "passed-attempt19-ecs-registration"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "focused targeted CDK test and exact synth now",
+          "batched whole Phase 7-1 handoff only after real-AWS targeted confirmation"
+        ],
+        "status": "focused-fix-passed-whole-local-deferred"
+      },
+      "currentState": "resolved-real-aws-attempt19"
+    },
+    {
+      "issueId": "attempt19-targeted-readiness-aws-cli-missing",
+      "sourceAttemptOrdinal": 19,
+      "sourceRunId": "run_20260719_083356_phase7_archive_diagnostic",
+      "observedStages": [
+        "runtime-deploy-readiness"
+      ],
+      "symptom": "The one targeted runtime deploy created a healthy ECS-registered host, but the ASG readiness systemd unit exited 127 and CloudFormation could not complete.",
+      "diagnosis": "The selected Amazon Linux 2 ECS-optimized ARM64 AMI did not expose an aws executable. Both shared Phase 7 readiness scripts assumed AWS CLI was available; the first failed at CloudFormation SignalResource and prevented the exact capacity-provider signal unit from starting.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/failure.json",
+          "sha256": "e6f96a49241c75fd3796f9f3e0eed5731a3c4044f3098b3c86d6b07aeef99155"
+        },
+        {
+          "path": "performance-tests/run_20260719_083356_phase7_2_aws_targeted_diagnostic/readiness-failure-diagnostic.json",
+          "sha256": "5db04318f96bf907bbf06154fc2d270b4d01bcce4549fc02ea6942c7b53d3df0"
+        }
+      ],
+      "fix": {
+        "summary": "Before enabling any shared Phase 7 readiness unit, fail closed unless aws is present or yum install -y awscli succeeds. Validate bootstrap ordering for both AWS calls and record KeyboardInterrupt as failed while cleanup still runs.",
+        "commit": "7c46d73000c86769862fb2c710f9dbde61ccd617"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-19-fix-verification.json",
+        "sha256": "af307f2bb609bd839daabfb65aa84d8bb8aeb4c5cec36e01672585ed454068fa",
+        "targetedPythonToolingTests": "9/9 passed",
+        "targetedAndStrictCdkTests": "21/21 passed",
+        "typescriptBuild": "passed",
+        "decodedUserDataUpperBoundBytes": 8681,
+        "cfnLintUnexpectedFindings": 0,
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh Attempt 17 full-stack scoped archive diagnostic; require aws CLI bootstrap, all full-stack readiness signals, 15M retain-source archive validation and authoritative cleanup zero",
+        "attempts": [
+          {
+            "ordinal": 19,
+            "runId": "run_20260719_083356_phase7_archive_diagnostic",
+            "outcome": "failed",
+            "reason": "aws command was absent before the fix"
+          }
+        ],
+        "status": "fresh-full-stack-scoped-retry-pending"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "shared strict/targeted readiness bootstrap ordering",
+          "interrupt reporting and cleanup",
+          "batched whole Phase 7-1 handoff after real-AWS targeted confirmation"
+        ],
+        "status": "focused-fix-passed-whole-local-deferred"
+      },
+      "currentState": "focused-fix-passed-fresh-full-stack-scoped-aws-retry-pending"
+    },
+    {
+      "issueId": "attempt18-targeted-terminal-residual-cleanup",
+      "sourceAttemptOrdinal": 18,
+      "sourceRunId": "run_20260719_071857_phase7_archive_diagnostic",
+      "observedStages": [
+        "cleanup"
+      ],
+      "symptom": "CloudFormation and all 15 service classes were zero, but RunId and SessionId Tagging API inventories retained eight terminal tombstones.",
+      "diagnosis": "The first targeted cleanup implementation did not delete inactive ECS task definitions or remove exact ownership tags from terminal ECS/EC2 tombstones.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/cleanup-verification.json",
+          "sha256": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c"
+        },
+        {
+          "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-terminal-attempt-3.json",
+          "sha256": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9"
+        }
+      ],
+      "fix": {
+        "summary": "Validate every terminal ARN, delete inactive task definitions, safely reactivate the empty cluster and desiredCount=0 service only to remove ownership tags, then delete them again and untag deleted EC2 tombstones through Resource Groups Tagging API.",
+        "commit": "594ca45d570c941b7eab0dcc230034d2a1ea3399"
+      },
+      "focusedVerification": {
+        "pythonCompile": "passed",
+        "targetedToolingTests": "5/5 passed",
+        "status": "passed"
+      },
+      "targetedAws": {
+        "attempts": [
+          {
+            "ordinal": 18,
+            "stage": "cleanup-attempt-3",
+            "outcome": "passed",
+            "reason": "15 service classes and both Tagging API inventories were zero at 2026-07-19T07:57:07.484Z"
+          }
+        ],
+        "status": "passed-attempt18-cleanup"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "add mock regression for inactive service reactivation cleanup before the next strict candidate"
+        ],
+        "status": "pending-batched-local"
+      },
+      "currentState": "resolved-real-aws-attempt18-cleanup"
+    },
+    {
+      "issueId": "attempt16-ssm-observation-timeout",
+      "sourceAttemptOrdinal": 16,
+      "sourceRunId": "run_20260719_020156_phase7_integration",
+      "observedStages": [
+        "warmup"
+      ],
+      "symptom": "All eight local load observers exited while polling GetCommandInvocation, so worker artifacts and the aggregate warmup summary were not recovered.",
+      "diagnosis": "Five observers hit SSM endpoint connect timeout and three hit read timeout. The helper retried only OAuth2 rate-limit errors. Exact reconciliation later proved all eight one-shot SSM commands were Success with response code 0 and terminal worker cleanup.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/control/warmup.attempt-1.stderr.log",
+          "sha256": "eab20ae61baeeacb54e722968ce4a76bb15c7002596ae83b4d0c431d6f65e3d1"
+        },
+        {
+          "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/warmup/ssm-command-reconciliation.json",
+          "sha256": "bcc0c8348606f9e19bd156d3891e3345d229037f190798d55566010f7d79c442"
+        },
+        {
+          "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/warmup/cancellation-evidence.json",
+          "sha256": "609d410b8642122903cfd749476da38545863be83ea35d5e3a6db7b90655e3bf"
+        },
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+          "sha256": "76d5e0851ef50e2687f1346eaf4e85df15abe5c51351869d25c9f410124508f0"
+        }
+      ],
+      "fix": {
+        "summary": "Keep SendCommand exactly once and add deadline-bounded transient retry only to read-only GetCommandInvocation and exact S3-to-local artifact recovery, with retry evidence and immediate credential/authorization/validation failure.",
+        "commit": "0a8238b2af2494733f8dcdec26e817cf276285e0"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-16-fix-verification.json",
+        "sha256": "fa6512eb5400be1cf9aab4690d45b445aa32eb2c8fe931aa309661a052537473",
+        "status": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh Phase 7 warmup with eight simultaneous observers; require exact one-shot command identity, recovered worker artifacts, zero unhandled transient observation failures and trustworthy aggregate acceptance",
+        "attempts": [
+          {
+            "ordinal": 17,
+            "runId": "run_20260719_043415_phase7_integration",
+            "stage": "warmup-and-score",
+            "outcome": "passed",
+            "reason": "all eight one-shot workers were observed and their artifacts recovered for both stages; warmup produced a normal stage summary and preserved score artifacts supported deterministic complete aggregation without an SSM observer failure"
+          }
+        ],
+        "status": "passed-attempt17"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "bounded retry classifier and absolute deadline",
+          "eight concurrent observer recovery",
+          "one-shot SendCommand contract",
+          "implementation source-closure manifest",
+          "whole local handoff before strict deployment"
+        ],
+        "status": "passed-by-batch-handoff-041439"
+      },
+      "currentState": "resolved-real-aws-attempt17"
+    },
+    {
+      "issueId": "local-034506-localstack-bootstrap-race",
+      "sourceAttemptOrdinal": null,
+      "sourceRunId": "run_20260719_034506_phase7_1_local_integration",
+      "observedStages": [
+        "docker-compose-readiness"
+      ],
+      "symptom": "LocalStack reported ResourceInUseException for phase7-local-events, the ready hook exited 255 before writing its completion marker, and Compose declared the service unhealthy before local_runner.py started.",
+      "diagnosis": "LocalStack ready-hook resource creation was non-idempotent and not safe against a repeated or overlapping hook invocation.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_034506_phase7_1_local_integration/compose.log",
+          "sha256": "4cbc76d4ad32c51f3d9ce19ffdb92ee6f7504495be2dea676df27541029dd7c1"
+        },
+        {
+          "path": "performance-tests/phase7_2-stabilization/local-handoff-20260719-034506-failure-diagnosis.json",
+          "sha256": "dfb56104f230f9621d004cfa039dc6676bfd4ee5eaea9beffc595cf7ce46620f"
+        }
+      ],
+      "fix": {
+        "summary": "Make stream, secret and bucket initialization check-before-create and race-safe, while preserving fail-closed behavior for unconfirmed errors.",
+        "commit": "43863d9560bd3d075a228385c2f566d860ced710"
+      },
+      "focusedVerification": {
+        "status": "passed",
+        "shellSyntax": "passed",
+        "localRunnerTestsPassed": 12,
+        "doubleBootstrapRegression": "passed",
+        "diffCheck": "passed"
+      },
+      "targetedAws": {
+        "declaredProbe": "none; this is an isolated LocalStack bootstrap defect",
+        "attempts": [],
+        "status": "not-applicable"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "fresh whole Phase 7-1 handoff after the focused bootstrap fix"
+        ],
+        "status": "passed-by-batch-handoff-041439"
+      },
+      "currentState": "resolved-local-regression-passed"
+    },
+    {
+      "issueId": "strict-paid-cli-policy-bypass",
+      "sourceAttemptOrdinal": null,
+      "sourceRunId": null,
+      "observedStages": [
+        "preflight",
+        "image-preparation",
+        "strict-runner-new-work"
+      ],
+      "symptom": "Legacy strict CLI paths could bypass the active no-new-50k composite policy and start paid work without a new certification authorization or budget contract.",
+      "diagnosis": "The composite policy and campaign-ledger admission checks existed only on the fresh scoped branch.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-tooling-audit-20260719.json",
+          "sha256": "1f228e1895f8376116db8a94b3cc954a95c74df5e201f3bd4e5d2e493c802f60"
+        }
+      ],
+      "fix": {
+        "summary": "Fail-close strict handoff preflight/image preparation and strict runner new-work stages under the active composite policy while preserving cleanup execution.",
+        "commit": "e1ae6a3a55738d5d59700615a2f5046de45df9b5"
+      },
+      "focusedVerification": {
+        "status": "passed-committed",
+        "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+        "sha256": "43e55d286392f584e8f2917ec18e89b4f18378adc44238c99d24c68d8c486fb2",
+        "pythonRegression": "strict new-work rejected independent of persisted preflight contents; cleanup admitted",
+        "readOnlyReAudit": "P0=0, P1=0"
+      },
+      "targetedAws": {
+        "declaredProbe": "none; this is an unpaid tooling authorization defect",
+        "attempts": [],
+        "status": "not-applicable"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [
+          "future certification authorization artifact contract if strict work is re-enabled"
+        ],
+        "status": "recorded"
+      },
+      "currentState": "resolved-focused-regression-passed-committed"
+    },
+    {
+      "issueId": "composite-handoff-missing-external-anchors",
+      "sourceAttemptOrdinal": null,
+      "sourceRunId": null,
+      "observedStages": [
+        "phase8-composite-handoff"
+      ],
+      "symptom": "A self-consistent rewritten ledger could supply an unanchored fresh source or entry to the Phase 8 composite handoff.",
+      "diagnosis": "The builder trusted the ledger's internal hash chain without exact equality against immutable entry artifacts and without revalidating the fresh scoped source seal bindings.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-tooling-audit-20260719.json",
+          "sha256": "1f228e1895f8376116db8a94b3cc954a95c74df5e201f3bd4e5d2e493c802f60"
+        }
+      ],
+      "fix": {
+        "summary": "Bind Attempt 17 and the fresh scoped head to immutable entry artifacts and revalidate exact source policy, commit, Git tree, implementation tree and image source closures.",
+        "commit": "ab1b62fe8aae6d133e1280537497ca421fc0ae39"
+      },
+      "focusedVerification": {
+        "status": "passed-committed",
+        "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+        "sha256": "43e55d286392f584e8f2917ec18e89b4f18378adc44238c99d24c68d8c486fb2",
+        "pythonRegression": "rewritten entry and source bindings rejected"
+      },
+      "targetedAws": {
+        "declaredProbe": "none; this is an unpaid promotion-integrity defect",
+        "attempts": [],
+        "status": "not-applicable"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "resolved-focused-regression-passed-committed"
+    },
+    {
+      "issueId": "attempt20-archive-query-operational-headroom",
+      "sourceAttemptOrdinal": 20,
+      "sourceRunId": "run_20260719_125547_phase7_integration",
+      "observedStages": [
+        "archive-parquet-reread"
+      ],
+      "symptom": "The only archive task exited 1 while Parquet re-read attempted 5.01 GiB against the entrypoint's 5.00 GiB per-query ceiling.",
+      "diagnosis": "The standard stack, minimal smoke and 15M deterministic seed passed. The query ceiling, not the retained 7 GiB server or 8 GiB container ceiling, was binding by one 6.04 MiB allocation.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-20-archive-memory-diagnosis.json",
+          "sha256": "9436e65ec842b8d999042e6b92cf8b6103505c079a8e7534ca14dc4bdfee65af"
+        }
+      ],
+      "fix": {
+        "summary": "Set the current archive query ceiling to 6 GiB, but validate a minimum and server safety envelope rather than exact point equality. Preserve strict correctness, equivalence and DROP safety.",
+        "commit": "53b521eab141e074fc97e0077afd5c0fceac150f"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-20-fix-verification.json",
+        "sha256": "8599a31907475abf43ef17322861f0927045918f40e3034da4437af78366fd3c",
+        "status": "passed",
+        "python": "62/62",
+        "cdkJest": "16/16",
+        "build": "passed",
+        "exactSynth": "passed",
+        "cfnLintUnexpectedFindings": 0
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh standard full-stack identity; minimal verify, deterministic 15M seed and one retain-source archive only",
+        "attempts": [],
+        "status": "awaiting-fresh-scoped-attempt"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "superseded-by-user-authorized-composite-policy"
+      },
+      "currentState": "focused-regression-passed-awaiting-fresh-aws"
+    },
+    {
+      "issueId": "attempt20-failure-evidence-datetime",
+      "sourceAttemptOrdinal": 20,
+      "sourceRunId": "run_20260719_125547_phase7_integration",
+      "observedStages": [
+        "failure-evidence-collection"
+      ],
+      "symptom": "The pre-cleanup failure evidence bundle could not be written because a raw ECS describe_tasks response contained datetime values.",
+      "diagnosis": "collect_failure_evidence normalized selected timestamps but assigned the complete raw task response directly to a JSON document.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/failure-evidence-collection-error.json",
+          "sha256": "14b21a60f6ac6976d9d793e56fe6e4738def5c176770ba121e5d5fd2d3e60b00"
+        }
+      ],
+      "fix": {
+        "summary": "Recursively convert datetimes in nested mappings and sequences to UTC ISO-8601 strings before immutable JSON persistence.",
+        "commit": "53b521eab141e074fc97e0077afd5c0fceac150f"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-20-fix-verification.json",
+        "sha256": "8599a31907475abf43ef17322861f0927045918f40e3034da4437af78366fd3c",
+        "status": "passed",
+        "regression": "nested boto3 datetimes serialize through json.dumps"
+      },
+      "targetedAws": {
+        "declaredProbe": "none on the pass path; any future failure must persist the bundle before cleanup",
+        "attempts": [],
+        "status": "unpaid-regression-passed"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "resolved-focused-regression-passed"
+    },
+    {
+      "issueId": "attempt20-stopped-task-tagging-tombstone",
+      "sourceAttemptOrdinal": 20,
+      "sourceRunId": "run_20260719_125547_phase7_integration",
+      "observedStages": [
+        "cleanup",
+        "authoritative-inventory"
+      ],
+      "symptom": "All 35 service-class counts reached zero, but the deleted archive task remained in Resource Groups Tagging API for about one hour. ECS and Tagging API both rejected direct untag because the task was already absent.",
+      "diagnosis": "cleanup listed only RUNNING/PENDING archive tasks and deleted the cluster without removing ownership tags from an already STOPPED one-shot task.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/cleanup-post-terminal-final.json",
+          "sha256": "2029deabae199fa60d24cf6bfb7c7fc207f598237a7252fc82013ca6b8625704"
+        },
+        {
+          "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/post-cleanup-global-inventory.json",
+          "sha256": "959218be9352536d7dcaaff83cf0264e4629b9b73cf5d4c7906ac0a3baf526e7"
+        }
+      ],
+      "fix": {
+        "summary": "Discover STOPPED as well as active archive tasks, verify exact task definition and six ownership tags, wait for STOPPED, untag and re-read tag state before stack/cluster deletion.",
+        "commit": "53b521eab141e074fc97e0077afd5c0fceac150f"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-20-fix-verification.json",
+        "sha256": "8599a31907475abf43ef17322861f0927045918f40e3034da4437af78366fd3c",
+        "status": "passed",
+        "regression": "already-stopped exact-owned task is untagged without a redundant stop and active tasks are waited then untagged"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh scoped attempt cleanup must reach service and Tagging API zero without waiting for a deleted-task tombstone",
+        "attempts": [],
+        "status": "awaiting-fresh-cleanup-proof"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "focused-regression-passed-awaiting-fresh-cleanup-proof"
+    },
+    {
+      "issueId": "attempt21-shared-archive-validator-rejected-6gib",
+      "sourceAttemptOrdinal": 21,
+      "sourceRunId": "run_20260719_144544_phase7_integration",
+      "observedStages": [
+        "archive"
+      ],
+      "symptom": "The archive task exited before querying ClickHouse with ValueError: ClickHouse query memory must be at most 5 GiB.",
+      "diagnosis": "The Phase 7 entrypoint supplied the intended 6 GiB value, but the shared Phase 6 archive module retained a 5 GiB hard maximum. Attempt 20's entrypoint-only fix therefore did not reach the common validator.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-21-archive-memory-diagnosis.json",
+          "sha256": "42460516b384cb71d307de22bbb748aa03293d729d5b05c47099903f342ebb7a"
+        }
+      ],
+      "fix": {
+        "summary": "Preserve the shared 5 GiB default while accepting positive query memory through 6.5 GiB, leaving at least 512 MiB below the 7 GiB server cap.",
+        "commit": "44776d309631b84f3d5b3c2b0d00baeea3914aa9"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-21-fix-verification.json",
+        "sha256": "ddc88420d81e9b24ef62b3aece5bb229e0751e8779d94befabde0aa3971257f9",
+        "status": "passed",
+        "python": "99/99"
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh standard full-stack identity; minimal verify, deterministic 15M seed and one retain-source archive only",
+        "attempts": [],
+        "status": "awaiting-fresh-scoped-attempt"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "focused-regression-passed-awaiting-fresh-aws"
+    },
+    {
+      "issueId": "attempt21-stopped-ecs-task-cannot-be-untagged",
+      "sourceAttemptOrdinal": 21,
+      "sourceRunId": "run_20260719_144544_phase7_integration",
+      "observedStages": [
+        "cleanup",
+        "authoritative-inventory"
+      ],
+      "symptom": "Three cleanup attempts failed because ECS UntagResource rejects a STOPPED task, while the deleted task remained temporarily visible in Resource Groups Tagging API.",
+      "diagnosis": "Attempt 20's proposed stopped-task untag behavior is not supported by the live ECS API. A stopped task mapping is an immutable AWS tombstone and must age out under authoritative polling after all paid service inventory is zero.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/cleanup-post-terminal-final.json",
+          "sha256": "979574dce5ebf7a3af5639d977b05bd62ea9c49e0fae9d2be3e0f2620bfa9350"
+        }
+      ],
+      "fix": {
+        "summary": "Classify exact stopped-task mappings as immutable tombstones, skip the unsupported untag call and continue authoritative cleanup polling until both service and Tagging API inventories are zero.",
+        "commit": "44776d309631b84f3d5b3c2b0d00baeea3914aa9"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-21-fix-verification.json",
+        "sha256": "ddc88420d81e9b24ef62b3aece5bb229e0751e8779d94befabde0aa3971257f9",
+        "status": "passed",
+        "authoritativeCleanupZero": true
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh scoped attempt cleanup must reach zero under tombstone polling semantics",
+        "attempts": [],
+        "status": "awaiting-fresh-cleanup-proof"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "focused-regression-passed-awaiting-fresh-cleanup-proof"
+    },
+    {
+      "issueId": "attempt21-cloudwatch-get-log-events-paginator",
+      "sourceAttemptOrdinal": 21,
+      "sourceRunId": "run_20260719_144544_phase7_integration",
+      "observedStages": [
+        "failure-evidence-collection"
+      ],
+      "symptom": "The logs and CloudTrail subcollection failed because boto3 does not provide a paginator for CloudWatch Logs GetLogEvents.",
+      "diagnosis": "The collector requested a nonexistent get_log_events paginator instead of following nextForwardToken directly.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/failure-evidence.json",
+          "sha256": "89bb1ded4b45d29effc7e52d1ab1ccd63a5e5c838a3846220703f9ffcc6d99e9"
+        }
+      ],
+      "fix": {
+        "summary": "Follow nextForwardToken manually and freeze endTime so collection terminates even if the stream is still receiving events.",
+        "commit": "44776d309631b84f3d5b3c2b0d00baeea3914aa9"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-21-fix-verification.json",
+        "sha256": "ddc88420d81e9b24ef62b3aece5bb229e0751e8779d94befabde0aa3971257f9",
+        "status": "passed",
+        "regression": "bounded nextForwardToken traversal"
+      },
+      "targetedAws": {
+        "declaredProbe": "none on the pass path; future failure collection uses the corrected traversal",
+        "attempts": [],
+        "status": "unpaid-regression-passed"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "resolved-focused-regression-passed"
+    },
+    {
+      "issueId": "attempt21-repriced-ledger-entry-self-hash",
+      "sourceAttemptOrdinal": 21,
+      "sourceRunId": "run_20260719_144544_phase7_integration",
+      "observedStages": [
+        "terminal-ledger-append"
+      ],
+      "symptom": "The first unpaid terminalization pass rejected the repriced Attempt 21 ledger entry with a canonical hash mismatch.",
+      "diagnosis": "The retry repricing branch included the old entrySha256 field when computing its replacement, but the ledger hash definition excludes entrySha256.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-21-ledger-repricing-diagnosis.json",
+          "sha256": "f07152f0d2fb1861fcad146c4d64186de9058b536b8fb77ba19259b092a55430"
+        }
+      ],
+      "fix": {
+        "summary": "Remove the old entrySha256 before repriced canonical hashing and cover the fix-record finalizer branch.",
+        "commit": "038b6f8727e758eab49e6e3dcdc966db421a63d2"
+      },
+      "focusedVerification": {
+        "status": "passed",
+        "python": "25/25",
+        "terminalLedgerEntrySha256": "e7cd7e5c7d85b4c1862372a3842fa549d06ecceb771848b38f28c32a26735c57"
+      },
+      "targetedAws": {
+        "declaredProbe": "none; this is unpaid campaign tooling",
+        "attempts": [],
+        "status": "not-applicable"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "resolved-focused-regression-passed"
+    },
+    {
+      "issueId": "attempt22-ecr-name-used-as-local-collector-repository",
+      "sourceAttemptOrdinal": 22,
+      "sourceRunId": "run_20260719_162701_phase7_integration",
+      "observedStages": [
+        "image-preparation"
+      ],
+      "symptom": "The run-owned image stack was created, then image preparation failed before any image push because --collector-repository contained an ECR name rather than a local Git working tree.",
+      "diagnosis": "The option name was ambiguous and the pinned collector commit check ran after the paid marker and image stack deployment.",
+      "confidence": "high",
+      "rawEvidence": [
+        {
+          "path": "performance-tests/phase7_2-stabilization/attempt-22-image-preparation-diagnosis.json",
+          "sha256": "1a47b78de11c491b566b978fad855fb7080a6fdeef6b3da03e70008976ba85e0"
+        }
+      ],
+      "fix": {
+        "summary": "Require the existing ../loop-ad_event_collector working tree and pinned commit before the paid-start marker or any AWS resource creation, and clarify the CLI help.",
+        "commit": "54858fe5c03801f489ba8a521abf0069594a6983"
+      },
+      "focusedVerification": {
+        "path": "performance-tests/phase7_2-stabilization/attempt-22-fix-verification.json",
+        "sha256": "6ac6177f1e40228ed219116dc315ec80a0e84181bbe66f72a2b7d2ae8c5b4dd2",
+        "status": "passed",
+        "python": "42/42",
+        "authoritativeCleanupZero": true
+      },
+      "targetedAws": {
+        "declaredProbe": "fresh standard full-stack scoped attempt after a new active budget epoch",
+        "attempts": [],
+        "status": "awaiting-fresh-scoped-attempt"
+      },
+      "deferredLocal": {
+        "requiredCoverage": [],
+        "status": "not-required"
+      },
+      "currentState": "focused-regression-passed-awaiting-fresh-aws"
+    }
+  ]
+}

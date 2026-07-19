@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "runId": "local_20260710_210531_phase1_debug_metrics",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-10T21:05:31",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-local-20260710-210531-phase1-debug-metrics"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "local_20260710_210531_phase1_debug_metrics"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "local_20260710_210531_phase1_debug_metrics/commands.md",
+      "bytes": 1010,
+      "sha256": "0bba4d4de468b8a24cca78d91b6fca00b2cdd9e6cf3e855c3b1f011d2a71145a"
+    },
+    {
+      "path": "local_20260710_210531_phase1_debug_metrics/hypothesis.md",
+      "bytes": 1395,
+      "sha256": "d97cdfe1067b1c9ae2322c2cf824740c9fdbdf2054efd5f1e7151d260be8555c"
+    },
+    {
+      "path": "local_20260710_210531_phase1_debug_metrics/verdict.md",
+      "bytes": 1479,
+      "sha256": "0125f11f1434586588e8c1b1291d818216bf27ee661bdcaf7fd2e70477b60a67"
+    }
+  ]
+}

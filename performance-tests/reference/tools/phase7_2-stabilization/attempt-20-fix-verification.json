@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "recordType": "focused-fix-verification",
+  "attemptOrdinal": 20,
+  "sourceRunId": "run_20260719_125547_phase7_integration",
+  "sourceSessionId": "phase7-integration-20260719T125547Z",
+  "verifiedAt": "2026-07-19T14:38:08Z",
+  "status": "passed",
+  "summary": "Raise the standard Phase 7 archive query ceiling from 5 GiB to a current 6 GiB operational value while validating a lower-bound/safety envelope instead of exact point equality; recursively normalize boto3 datetimes before failure-evidence persistence; untag exact-owned stopped archive tasks before deleting their ECS cluster.",
+  "fixCommit": "53b521eab141e074fc97e0077afd5c0fceac150f",
+  "fixGitTree": "7dbd12a80d4bee0c1d645f62ee0c4d115176f332",
+  "diagnosis": {
+    "path": "performance-tests/phase7_2-stabilization/attempt-20-archive-memory-diagnosis.json",
+    "sha256": "9436e65ec842b8d999042e6b92cf8b6103505c079a8e7534ca14dc4bdfee65af"
+  },
+  "changes": {
+    "archiveQueryMemory": {
+      "currentBytes": 6442450944,
+      "minimumBytes": 6442450944,
+      "serverBytes": 7516192768,
+      "containerBytes": 8589934592,
+      "minimumQueryToServerHeadroomBytes": 536870912,
+      "exactPointAcceptance": false
+    },
+    "failureEvidence": "boto3 datetime values in nested mappings and sequences become UTC ISO-8601 strings before write_json",
+    "cleanup": "RUNNING/PENDING/STOPPED archive tasks are exact task-definition and ownership checked; stopped tasks lose all six ownership tags and are re-read before stack deletion",
+    "strictGatesRetained": [
+      "performance baseline",
+      "count and fingerprint correctness",
+      "bidirectional archive equivalence",
+      "immutable COMMITTED re-read",
+      "source DROP safety",
+      "ownership",
+      "authoritative cleanup zero",
+      "budget"
+    ]
+  },
+  "focusedTests": {
+    "python": {
+      "commandScope": [
+        "test_phase7_archive_runtime.py",
+        "test_full_stack_scoped_archive.py",
+        "test_phase7_cleanup_contract.py"
+      ],
+      "passed": 62,
+      "failed": 0
+    },
+    "cdkJest": {
+      "suite": "test/perf-phase7-integration.test.ts",
+      "passed": 16,
+      "failed": 0
+    },
+    "typescriptBuild": "passed"
+  },
+  "exactContextSynth": {
+    "validationOnlyRunId": "run_20260719_143208_phase7_integration",
+    "validationOnlySessionId": "phase7-integration-20260719T143208Z",
+    "awsRequests": 0,
+    "resourceCount": 150,
+    "launchTemplateCount": 5,
+    "taskDefinitionCount": 5,
+    "kinesisShards": 120,
+    "templateSha256": "f7bfefb2de07aa98f3c6fa257c2570a4036d181b37b1350eaa477cff79d09c65",
+    "repositoryTemplateValidator": "passed",
+    "decodedUserDataByteUpperBounds": [
+      {"role": "collector", "bytes": 7805},
+      {"role": "haproxy", "bytes": 9524},
+      {"role": "load-generator", "bytes": 15316},
+      {"role": "clickhouse", "bytes": 8527},
+      {"role": "consumer", "bytes": 7779}
+    ],
+    "allDecodedUserDataAtOrBelowEc2Limit": true,
+    "loadGeneratorAtOrBelow15360Bytes": true
+  },
+  "cfnLint": {
+    "version": "1.53.0",
+    "rawExitCode": 6,
+    "acceptedFindings": {
+      "E1022AssemblyOnlyFnGetStackOutput": 8,
+      "W3005RedundantDependsOn": 3
+    },
+    "unexpectedFindings": 0,
+    "passed": true
+  },
+  "cleanup": {
+    "attemptFinalInventory": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/cleanup-post-terminal-final.json",
+      "sha256": "2029deabae199fa60d24cf6bfb7c7fc207f598237a7252fc82013ca6b8625704",
+      "serviceClassCount": 35,
+      "allZero": true
+    },
+    "globalInventory": {
+      "path": "performance-tests/run_20260719_125547_phase7_2_aws_integration/post-cleanup-global-inventory.json",
+      "sha256": "959218be9352536d7dcaaff83cf0264e4629b9b73cf5d4c7906ac0a3baf526e7",
+      "allZero": true
+    }
+  },
+  "wholeLocalPhase7Chain": {
+    "run": false,
+    "reason": "User-authorized AWS-first composite policy requires only focused changed-surface tests before a fresh standard-stack scoped archive attempt."
+  },
+  "nextAwsScope": {
+    "freshIdentityRequired": true,
+    "stackDefinitions": [
+      "LoopAdPerfPhase7IntegrationImageStack",
+      "LoopAdPerfPhase7IntegrationStack"
+    ],
+    "stages": [
+      "deploy",
+      "minimal-verify",
+      "seed-15000000",
+      "retain-source-archive",
+      "collect",
+      "cleanup"
+    ],
+    "zeroAttemptStages": [
+      "correctness",
+      "replacement",
+      "warmup",
+      "score",
+      "source-drop"
+    ]
+  }
+}

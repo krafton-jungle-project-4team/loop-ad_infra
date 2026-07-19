@@ -1,0 +1,220 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const startTime = requiredOption('--start-time');
+const endTime = requiredOption('--end-time');
+const outputDir = requiredOption('--output-dir');
+const expectedCollectorCount = integerOption('--expected-collector-count', 1);
+const expectedLoadGeneratorCount = integerOption('--expected-load-generator-count', 1);
+const includeShards = process.argv.includes('--include-shards');
+const loadBalancerName = optionValue('--load-balancer-name') ?? 'perf-phase1-loop-ad-alb';
+const targetGroupArn = optionValue('--target-group-arn');
+const loadBalancerKind = optionValue('--load-balancer-kind') ?? 'alb';
+if (!['alb', 'nlb'].includes(loadBalancerKind)) throw new Error('invalid --load-balancer-kind');
+if (targetGroupArn && !/^arn:aws:elasticloadbalancing:ap-northeast-2:[0-9]{12}:targetgroup\/[a-z0-9-]+\/[0-9a-f]+$/.test(targetGroupArn)) throw new Error('invalid --target-group-arn');
+if (!Number.isFinite(Date.parse(startTime)) || !Number.isFinite(Date.parse(endTime)) || Date.parse(endTime) <= Date.parse(startTime)) {
+    throw new Error('invalid metric time range');
+}
+const queryStartTime = new Date(Math.floor(Date.parse(startTime) / 60_000) * 60_000).toISOString();
+const queryEndTime = new Date(Math.ceil(Date.parse(endTime) / 60_000) * 60_000).toISOString();
+
+const loadBalancer = awsJson(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', loadBalancerName]).LoadBalancers[0];
+const targetGroup = awsJson(['elbv2', 'describe-target-groups', '--region', REGION,
+    ...(targetGroupArn ? ['--target-group-arns', targetGroupArn] : ['--names', 'perf-phase1-loop-ad-collector'])]).TargetGroups[0];
+const loadBalancerDimension = loadBalancer.LoadBalancerArn.split(':loadbalancer/')[1];
+const targetGroupDimension = targetGroup.TargetGroupArn.split(':').at(-1);
+const collectorInstanceIds = instanceIds('perf-phase1-loop-ad-collector');
+const loadGeneratorInstanceIds = instanceIds(
+    'perf-phase1-loop-ad-load-generator',
+    'perf-phase1-loop-ad-load-generator-2a',
+    'perf-phase1-loop-ad-load-generator-2c',
+);
+if (loadGeneratorInstanceIds.length !== expectedLoadGeneratorCount) {
+    throw new Error(`expected exactly ${expectedLoadGeneratorCount} load generator instances, found ${loadGeneratorInstanceIds.length}`);
+}
+if (collectorInstanceIds.length !== expectedCollectorCount) {
+    throw new Error(`expected exactly ${expectedCollectorCount} collector instances, found ${collectorInstanceIds.length}`);
+}
+
+const queries = [];
+addMetric('kinesis_incoming_records_sum', 'Kinesis IncomingRecords Sum', 'AWS/Kinesis', 'IncomingRecords', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Sum');
+addMetric('kinesis_incoming_bytes_sum', 'Kinesis IncomingBytes Sum', 'AWS/Kinesis', 'IncomingBytes', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Sum');
+addMetric('kinesis_write_throttle_sum', 'Kinesis WriteProvisionedThroughputExceeded Sum', 'AWS/Kinesis', 'WriteProvisionedThroughputExceeded', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Sum');
+addMetric('kinesis_put_latency_avg', 'Kinesis PutRecord.Latency Average', 'AWS/Kinesis', 'PutRecord.Latency', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Average');
+addMetric('kinesis_put_latency_p95', 'Kinesis PutRecord.Latency p95', 'AWS/Kinesis', 'PutRecord.Latency', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'p95');
+addMetric('kinesis_put_success_avg', 'Kinesis PutRecord.Success Average', 'AWS/Kinesis', 'PutRecord.Success', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Average');
+addMetric('kinesis_put_records_latency_avg', 'Kinesis PutRecords.Latency Average', 'AWS/Kinesis', 'PutRecords.Latency', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Average');
+addMetric('kinesis_put_records_latency_p95', 'Kinesis PutRecords.Latency p95', 'AWS/Kinesis', 'PutRecords.Latency', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'p95');
+addMetric('kinesis_put_records_success_avg', 'Kinesis PutRecords.Success Average', 'AWS/Kinesis', 'PutRecords.Success', [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }], 'Average');
+if (includeShards) {
+    const openShards = (awsJson([
+        'kinesis', 'list-shards', '--region', REGION,
+        '--stream-name', 'perf-phase1-loop-ad-events', '--shard-filter', 'Type=AT_LATEST',
+    ]).Shards ?? []).toSorted((left, right) => left.ShardId.localeCompare(right.ShardId));
+    for (const [index, shard] of openShards.entries()) {
+        const shardId = shard.ShardId;
+        const dimensions = [{ Name: 'StreamName', Value: 'perf-phase1-loop-ad-events' }, { Name: 'ShardId', Value: shardId }];
+        const prefix = `shard_${index.toString().padStart(3, '0')}`;
+        addMetric(`${prefix}_incoming_records_sum`, `${shardId} IncomingRecords Sum`, 'AWS/Kinesis', 'IncomingRecords', dimensions, 'Sum');
+        addMetric(`${prefix}_incoming_bytes_sum`, `${shardId} IncomingBytes Sum`, 'AWS/Kinesis', 'IncomingBytes', dimensions, 'Sum');
+        addMetric(`${prefix}_write_throttle_sum`, `${shardId} WriteProvisionedThroughputExceeded Sum`, 'AWS/Kinesis', 'WriteProvisionedThroughputExceeded', dimensions, 'Sum');
+    }
+}
+
+const loadBalancerDimensions = [{ Name: 'LoadBalancer', Value: loadBalancerDimension }];
+const targetDimensions = [...loadBalancerDimensions, { Name: 'TargetGroup', Value: targetGroupDimension }];
+if (loadBalancerKind === 'alb') for (const [id, name] of [
+    ['alb_requests_sum', 'RequestCount'],
+    ['alb_target_2xx_sum', 'HTTPCode_Target_2XX_Count'],
+    ['alb_target_4xx_sum', 'HTTPCode_Target_4XX_Count'],
+    ['alb_target_5xx_sum', 'HTTPCode_Target_5XX_Count'],
+    ['alb_elb_4xx_sum', 'HTTPCode_ELB_4XX_Count'],
+    ['alb_elb_5xx_sum', 'HTTPCode_ELB_5XX_Count'],
+    ['alb_rejected_connections_sum', 'RejectedConnectionCount'],
+    ['alb_target_connection_errors_sum', 'TargetConnectionErrorCount'],
+    ['alb_new_connections_sum', 'NewConnectionCount'],
+    ['alb_active_connections_sum', 'ActiveConnectionCount'],
+    ['alb_processed_bytes_sum', 'ProcessedBytes'],
+    ['alb_peak_lcus_sum', 'PeakLCUs'],
+    ['alb_consumed_lcus_sum', 'ConsumedLCUs'],
+]) addMetric(id, `ALB ${name} Sum`, 'AWS/ApplicationELB', name, loadBalancerDimensions, 'Sum');
+if (loadBalancerKind === 'alb') for (const stat of ['p50', 'p95', 'p99']) {
+    addMetric(`alb_target_response_${stat}`, `ALB TargetResponseTime ${stat}`, 'AWS/ApplicationELB', 'TargetResponseTime', targetDimensions, stat);
+}
+if (loadBalancerKind === 'alb') {
+    addMetric('alb_healthy_hosts_min', 'ALB HealthyHostCount Minimum', 'AWS/ApplicationELB', 'HealthyHostCount', targetDimensions, 'Minimum');
+    addMetric('alb_unhealthy_hosts_max', 'ALB UnHealthyHostCount Maximum', 'AWS/ApplicationELB', 'UnHealthyHostCount', targetDimensions, 'Maximum');
+} else {
+    for (const [id, name, stat] of [
+        ['nlb_active_flows_max', 'ActiveFlowCount', 'Maximum'],
+        ['nlb_new_flows_sum', 'NewFlowCount', 'Sum'],
+        ['nlb_rejected_flows_sum', 'RejectedFlowCount', 'Sum'],
+        ['nlb_target_reset_sum', 'TCP_Target_Reset_Count', 'Sum'],
+        ['nlb_client_reset_sum', 'TCP_Client_Reset_Count', 'Sum'],
+        ['nlb_elb_reset_sum', 'TCP_ELB_Reset_Count', 'Sum'],
+    ]) addMetric(id, `NLB ${name} ${stat}`, 'AWS/NetworkELB', name, loadBalancerDimensions, stat);
+    addMetric('nlb_healthy_hosts_min', 'NLB HealthyHostCount Minimum', 'AWS/NetworkELB', 'HealthyHostCount', targetDimensions, 'Minimum');
+    addMetric('nlb_unhealthy_hosts_max', 'NLB UnHealthyHostCount Maximum', 'AWS/NetworkELB', 'UnHealthyHostCount', targetDimensions, 'Maximum');
+}
+
+const ecsDimensions = [
+    { Name: 'ClusterName', Value: 'perf-phase1-loop-ad-collector-cluster' },
+    { Name: 'ServiceName', Value: 'perf-phase1-loop-ad-collector' },
+];
+for (const metricName of ['CPUUtilization', 'MemoryUtilization']) {
+    for (const stat of ['Average', 'Maximum']) {
+        addMetric(`ecs_${metricName.toLowerCase()}_${stat.toLowerCase()}`, `ECS ${metricName} ${stat}`, 'AWS/ECS', metricName, ecsDimensions, stat);
+    }
+}
+
+for (const [index, instanceId] of collectorInstanceIds.entries()) {
+    addInstanceMetrics(`collector_${(index + 1).toString().padStart(2, '0')}`, instanceId);
+}
+for (const [index, instanceId] of loadGeneratorInstanceIds.entries()) {
+    const prefix = loadGeneratorInstanceIds.length === 1
+        ? 'load_generator'
+        : `load_generator_${(index + 1).toString().padStart(2, '0')}`;
+    addInstanceMetrics(prefix, instanceId);
+}
+
+mkdirSync(outputDir, { recursive: true });
+if (queries.length > 500) throw new Error(`CloudWatch GetMetricData supports at most 500 queries, generated ${queries.length}.`);
+writeFileSync(`${outputDir}/metric-data-queries.json`, `${JSON.stringify(queries, null, 2)}\n`, 'utf8');
+const response = awsJson([
+    'cloudwatch', 'get-metric-data', '--region', REGION,
+    '--start-time', queryStartTime, '--end-time', queryEndTime,
+    '--metric-data-queries', `file://${outputDir}/metric-data-queries.json`,
+    '--scan-by', 'TimestampAscending',
+]);
+writeFileSync(`${outputDir}/cloudwatch-metrics.json`, `${JSON.stringify(response, null, 2)}\n`, 'utf8');
+
+const summary = {
+    collectedAt: new Date().toISOString(),
+    startTime,
+    endTime,
+    queryStartTime,
+    queryEndTime,
+    collectorInstanceCount: collectorInstanceIds.length,
+    loadGeneratorInstanceCount: loadGeneratorInstanceIds.length,
+    shardMetricsIncluded: includeShards,
+    shardMetricCount: includeShards ? queries.filter((query) => query.Id.startsWith('shard_')).length : 0,
+    metrics: Object.fromEntries(response.MetricDataResults.map((metric) => [metric.Id, summarize(metric)])),
+};
+writeFileSync(`${outputDir}/cloudwatch-summary.json`, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+
+function addInstanceMetrics(prefix, instanceId) {
+    const dimensions = [{ Name: 'InstanceId', Value: instanceId }];
+    addMetric(`${prefix}_cpu_avg`, `${prefix} EC2 CPUUtilization Average`, 'AWS/EC2', 'CPUUtilization', dimensions, 'Average');
+    addMetric(`${prefix}_cpu_max`, `${prefix} EC2 CPUUtilization Maximum`, 'AWS/EC2', 'CPUUtilization', dimensions, 'Maximum');
+    addMetric(`${prefix}_network_in_sum`, `${prefix} EC2 NetworkIn Sum`, 'AWS/EC2', 'NetworkIn', dimensions, 'Sum');
+    addMetric(`${prefix}_network_out_sum`, `${prefix} EC2 NetworkOut Sum`, 'AWS/EC2', 'NetworkOut', dimensions, 'Sum');
+    addMetric(`${prefix}_status_check_max`, `${prefix} EC2 StatusCheckFailed Maximum`, 'AWS/EC2', 'StatusCheckFailed', dimensions, 'Maximum');
+}
+
+function addMetric(id, label, namespace, metricName, dimensions, stat) {
+    queries.push({
+        Id: id,
+        Label: label,
+        MetricStat: {
+            Metric: { Namespace: namespace, MetricName: metricName, Dimensions: dimensions },
+            Period: 60,
+            Stat: stat,
+        },
+        ReturnData: true,
+    });
+}
+
+function summarize(metric) {
+    const values = metric.Values ?? [];
+    return {
+        label: metric.Label,
+        statusCode: metric.StatusCode,
+        messages: metric.Messages ?? [],
+        sampleCount: values.length,
+        sum: values.reduce((sum, value) => sum + value, 0),
+        min: values.length > 0 ? Math.min(...values) : null,
+        max: values.length > 0 ? Math.max(...values) : null,
+        average: values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+        first: values[0] ?? null,
+        last: values.at(-1) ?? null,
+    };
+}
+
+function instanceIds(...nameTags) {
+    return awsJson([
+        'ec2', 'describe-instances', '--region', REGION,
+        '--filters', `Name=tag:Name,Values=${nameTags.join(',')}`, 'Name=instance-state-name,Values=running',
+        '--query', 'Reservations[].Instances[].InstanceId',
+    ]).sort();
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index < 0 ? undefined : process.argv[index + 1];
+}
+
+function integerOption(name, fallback) {
+    const index = process.argv.indexOf(name);
+    if (index < 0) return fallback;
+    const value = Number(process.argv[index + 1]);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}

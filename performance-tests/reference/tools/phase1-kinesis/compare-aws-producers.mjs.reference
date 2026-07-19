@@ -1,0 +1,296 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const outputPath = requiredOption('--output');
+const candidates = [
+    candidate('go-sync', requiredOption('--go-sync-dir')),
+    candidate('go-batch', requiredOption('--go-batch-dir')),
+    candidate('java-kpl', requiredOption('--java-kpl-dir')),
+];
+const byName = Object.fromEntries(candidates.map((item) => [item.candidate, item]));
+
+const result = {
+    generatedAt: new Date().toISOString(),
+    comparison: {
+        region: 'ap-northeast-2',
+        targetRps: 1000,
+        collectorTopology: '1 x c6i.xlarge ECS on EC2 task',
+        loadGeneratorTopology: '1 x c6in.large oha',
+        repetitionsPerCandidate: 10,
+        durationSecondsPerRepetition: 60,
+        sharedKinesisShards: 80,
+    },
+    candidates,
+    allCorrectnessEligible: candidates.every((item) => item.eligibility.passed),
+    cleanupPassed: candidates.every((item) => item.lifecycle.runCleanupPassed) &&
+        candidates.at(-1).lifecycle.sharedStreamRemoved &&
+        candidates.at(-1).lifecycle.candidateImagesRemoved,
+    conservativeCumulativeUpperBoundUsd: candidates.at(-1).cost.projectedCumulativeUpperBoundUsd,
+    derivedComparisons: {
+        goBatchVersusGoSync: {
+            apiCallsPerEventReductionPercent: reduction(
+                byName['go-sync'].performance.apiCallsPerAcceptedEvent.median,
+                byName['go-batch'].performance.apiCallsPerAcceptedEvent.median,
+            ),
+            goAllocatedBytesPerEventReductionPercent: reduction(
+                byName['go-sync'].runtime.goAllocatedBytesPerAcceptedEvent.median,
+                byName['go-batch'].runtime.goAllocatedBytesPerAcceptedEvent.median,
+            ),
+            ecsCpuMedianReductionPercent: reduction(
+                byName['go-sync'].infrastructure.ecsCpuAveragePercent.median,
+                byName['go-batch'].infrastructure.ecsCpuAveragePercent.median,
+            ),
+            httpP95MedianIncreasePercent: increase(
+                byName['go-sync'].performance.httpLatencyP95Ms.median,
+                byName['go-batch'].performance.httpLatencyP95Ms.median,
+            ),
+        },
+        javaKplVersusGoBatch: {
+            apiCallsPerEventReductionPercent: reduction(
+                byName['go-batch'].performance.apiCallsPerAcceptedEvent.median,
+                byName['java-kpl'].performance.apiCallsPerAcceptedEvent.median,
+            ),
+            httpP95MedianIncreasePercent: increase(
+                byName['go-batch'].performance.httpLatencyP95Ms.median,
+                byName['java-kpl'].performance.httpLatencyP95Ms.median,
+            ),
+            ecsMemoryMedianMultiplier: ratio(
+                byName['java-kpl'].infrastructure.ecsMemoryAveragePercent.median,
+                byName['go-batch'].infrastructure.ecsMemoryAveragePercent.median,
+            ),
+            imageSizeMultiplier: ratio(
+                byName['java-kpl'].image.sizeBytes,
+                byName['go-batch'].image.sizeBytes,
+            ),
+        },
+    },
+};
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function candidate(name, directory) {
+    const summary = json(join(directory, 'comparison-summary.json'));
+    const correctness = json(join(directory, 'correctness-summary.json'));
+    const image = json(join(directory, 'image.json'));
+    const cleanup = json(join(directory, 'cleanup-verification.json'));
+    const cost = json(join(directory, 'cost-realtime.json'));
+    const smoke = json(join(directory, 'smoke', 'load', 'oha-summary.json'));
+    const repetitions = repetitionDirectories(directory).map((repetitionDirectory, index) =>
+        repetition(name, repetitionDirectory, summary.repetitions[index]));
+    const values = (selector) => repetitions.map(selector).filter(Number.isFinite);
+    return {
+        candidate: name,
+        runId: summary.repetitions.length === 10 ? directory.split('/').at(-1) : null,
+        image: {
+            sizeBytes: image.imageSizeBytes,
+            architecture: image.architecture,
+            digest: image.imageDigest,
+            runtimeBaseComparable: name !== 'java-kpl',
+        },
+        eligibility: {
+            actualKinesisCorrectnessPassed: correctness.passed === true,
+            lossZero: correctness.missingAcceptedEvents?.length === 0,
+            duplicateZero: correctness.duplicateEventIds?.length === 0,
+            originalBytesPreserved: correctness.bodyMismatches?.length === 0,
+            partitionKeysPreserved: correctness.partitionKeyMismatches?.length === 0,
+            preAckSuccessZero: correctness.http202BeforeApproximateArrival?.length === 0,
+            aggregationDisabled: correctness.aggregationDisabled === true,
+            shutdownFlushPassed: correctness.shutdown?.flushObserved === true,
+            commonLoadTenRepetitionsPassed: summary.passed === true,
+            passed: correctness.passed === true && summary.passed === true,
+        },
+        smoke: {
+            actualRps: smoke.actualRps,
+            http202: smoke.http202,
+            errors: smoke.transportErrors + smoke.http429 + smoke.http5xx,
+            latencyMs: smoke.latencyMs,
+        },
+        performance: {
+            actualRps: distribution(values((item) => item.actualRps)),
+            acceptedRps: distribution(values((item) => item.acceptedRps)),
+            httpLatencyP50Ms: distribution(values((item) => item.httpLatencyP50Ms)),
+            httpLatencyP95Ms: distribution(values((item) => item.httpLatencyP95Ms)),
+            httpLatencyP99Ms: distribution(values((item) => item.httpLatencyP99Ms)),
+            ackP50BucketUpperBoundMs: distribution(values((item) => item.ackP50BucketUpperBoundMs)),
+            ackP95BucketUpperBoundMs: distribution(values((item) => item.ackP95BucketUpperBoundMs)),
+            ackP99BucketUpperBoundMs: distribution(values((item) => item.ackP99BucketUpperBoundMs)),
+            producerApiCalls: distribution(values((item) => item.producerApiCalls)),
+            recordsPerApiCall: distribution(values((item) => item.recordsPerApiCall)),
+            apiCallsPerAcceptedEvent: distribution(values((item) => item.apiCallsPerAcceptedEvent)),
+            queueHighWater: distribution(values((item) => item.queueHighWater)),
+            retries: distribution(values((item) => item.retries)),
+            partialFailures: distribution(values((item) => item.partialFailures)),
+        },
+        infrastructure: {
+            ecsCpuAveragePercent: distribution(values((item) => item.ecsCpuAveragePercent)),
+            ecsCpuMaximumPercent: distribution(values((item) => item.ecsCpuMaximumPercent)),
+            ecsMemoryAveragePercent: distribution(values((item) => item.ecsMemoryAveragePercent)),
+            ecsMemoryMaximumPercent: distribution(values((item) => item.ecsMemoryMaximumPercent)),
+            collectorHostCpuAveragePercent: distribution(values((item) => item.collectorHostCpuAveragePercent)),
+            networkInBytes: distribution(values((item) => item.networkInBytes)),
+            networkOutBytes: distribution(values((item) => item.networkOutBytes)),
+        },
+        runtime: name === 'java-kpl' ? {
+            startupMs: distribution(values((item) => item.startupMs)),
+            jvmHeapAfterBytes: distribution(values((item) => item.jvmHeapAfterBytes)),
+            jvmGcCount: distribution(values((item) => item.jvmGcCount)),
+            jvmGcTimeMs: distribution(values((item) => item.jvmGcTimeMs)),
+            jvmPeakThreads: distribution(values((item) => item.jvmPeakThreads)),
+            kplChildRssBytes: distribution(values((item) => item.kplChildRssBytes)),
+            kplChildCpuNanoseconds: distribution(values((item) => item.kplChildCpuNanoseconds)),
+            kplChildRestarts: distribution(values((item) => item.kplChildRestarts)),
+        } : {
+            goHeapAfterBytes: distribution(values((item) => item.goHeapAfterBytes)),
+            goAllocatedBytes: distribution(values((item) => item.goAllocatedBytes)),
+            goAllocatedBytesPerAcceptedEvent: distribution(values((item) => item.goAllocatedBytesPerAcceptedEvent)),
+            goGcCount: distribution(values((item) => item.goGcCount)),
+            goGcPauseMs: distribution(values((item) => item.goGcPauseMs)),
+            goroutinesAfter: distribution(values((item) => item.goroutinesAfter)),
+        },
+        correctness: {
+            expectedEvents: correctness.expectedEvents,
+            acceptedEvents: correctness.acceptedEvents,
+            observedMatchingRecords: correctness.observedMatchingRecords,
+            shutdownAttempted: correctness.shutdown?.attempted,
+            shutdownAccepted: correctness.shutdown?.accepted,
+        },
+        lifecycle: {
+            runCleanupPassed: cleanup.passed === true,
+            sharedStreamRemoved: cleanup.retainSharedStream === false && cleanup.checks?.sharedStreamLifecycleCorrect === true,
+            candidateImagesRemoved: optionalJson(join(directory, 'ecr-cleanup-verification.json'))?.passed === true,
+        },
+        cost: {
+            runUpperBoundUsd: cost.runUpperBoundUsd,
+            projectedCumulativeUpperBoundUsd: cost.projectedCumulativeUpperBoundUsd,
+            costExplorerAvailability: json(join(directory, 'cost-explorer.json')).availability,
+        },
+        measurementNotes: {
+            ackLatency: name === 'go-batch'
+                ? 'not measured: the Go batch debug snapshot exposed no populated per-event ACK histogram; HTTP latency remains measured'
+                : 'histogram-derived bucket upper bounds, not interpolated quantiles',
+            javaRuntimeBase: name === 'java-kpl'
+                ? 'JVM-compatible digest-pinned base differs from the two Go images and its overhead is retained'
+                : 'same Go Dockerfile and runtime base',
+        },
+    };
+}
+
+function repetition(name, directory, summary) {
+    const cloudwatch = json(join(directory, 'metrics', 'cloudwatch-summary.json')).metrics;
+    const pre = onlyCollector(join(directory, 'debug-vars', 'pre-load'));
+    const post = onlyCollector(join(directory, 'debug-vars', 'post-load'));
+    const accepted = summary.http.status202;
+    const ack = ackQuantiles(summary.producer.ackLatency);
+    const base = {
+        actualRps: summary.http.actualRps,
+        acceptedRps: summary.http.acceptedRps,
+        httpLatencyP50Ms: summary.http.latencyMs.p50,
+        httpLatencyP95Ms: summary.http.latencyMs.p95,
+        httpLatencyP99Ms: summary.http.latencyMs.p99,
+        ackP50BucketUpperBoundMs: ack.p50,
+        ackP95BucketUpperBoundMs: ack.p95,
+        ackP99BucketUpperBoundMs: ack.p99,
+        producerApiCalls: summary.producer.apiCalls,
+        recordsPerApiCall: summary.producer.recordsPerCall,
+        apiCallsPerAcceptedEvent: summary.producer.callsPerAcceptedEvent,
+        queueHighWater: summary.producer.queueHighWater,
+        retries: summary.producer.retries,
+        partialFailures: summary.producer.partialFailures,
+        ecsCpuAveragePercent: metric(cloudwatch, 'ecs_cpuutilization_average', 'average'),
+        ecsCpuMaximumPercent: metric(cloudwatch, 'ecs_cpuutilization_maximum', 'max'),
+        ecsMemoryAveragePercent: metric(cloudwatch, 'ecs_memoryutilization_average', 'average'),
+        ecsMemoryMaximumPercent: metric(cloudwatch, 'ecs_memoryutilization_maximum', 'max'),
+        collectorHostCpuAveragePercent: metric(cloudwatch, 'collector_01_cpu_avg', 'average'),
+        networkInBytes: metric(cloudwatch, 'collector_01_network_in_sum', 'sum'),
+        networkOutBytes: metric(cloudwatch, 'collector_01_network_out_sum', 'sum'),
+    };
+    if (name !== 'java-kpl') {
+        return {
+            ...base,
+            goHeapAfterBytes: summary.runtime.goHeapAfterBytes,
+            goAllocatedBytes: summary.runtime.goAllocBytes,
+            goAllocatedBytesPerAcceptedEvent: summary.runtime.goAllocBytes / accepted,
+            goGcCount: summary.runtime.goGcCount,
+            goGcPauseMs: summary.runtime.goGcPauseNanoseconds / 1_000_000,
+            goroutinesAfter: summary.runtime.goroutinesAfter,
+        };
+    }
+    return {
+        ...base,
+        startupMs: post.startup.startup_ms,
+        jvmHeapAfterBytes: post.jvm.heap_used_bytes,
+        jvmGcCount: sum(post.jvm.gc, 'collection_count') - sum(pre.jvm.gc, 'collection_count'),
+        jvmGcTimeMs: sum(post.jvm.gc, 'collection_time_ms') - sum(pre.jvm.gc, 'collection_time_ms'),
+        jvmPeakThreads: post.jvm.peak_thread_count,
+        kplChildRssBytes: sum(post.native.children, 'rss_bytes'),
+        kplChildCpuNanoseconds: sum(post.native.children, 'cpu_nanoseconds') - sum(pre.native.children, 'cpu_nanoseconds'),
+        kplChildRestarts: post.native.restart_count - pre.native.restart_count,
+    };
+}
+
+function ackQuantiles(histogram = {}) {
+    const entries = Object.entries(histogram)
+        .map(([key, count]) => ({ upperMs: bucketMs(key), count }))
+        .filter((item) => Number.isFinite(item.upperMs) && Number.isFinite(item.count))
+        .sort((left, right) => left.upperMs - right.upperMs);
+    const total = entries.at(-1)?.count ?? 0;
+    if (total <= 0) return { p50: null, p95: null, p99: null };
+    const quantile = (fraction) => entries.find((item) => item.count >= total * fraction)?.upperMs ?? null;
+    return { p50: quantile(0.5), p95: quantile(0.95), p99: quantile(0.99) };
+}
+
+function bucketMs(key) {
+    if (key === 'le_inf') return Number.POSITIVE_INFINITY;
+    const ms = /^le_([0-9]+)ms$/.exec(key);
+    if (ms) return Number(ms[1]);
+    const ns = /^le_([0-9]+)ns$/.exec(key);
+    if (ns) return Number(ns[1]) / 1_000_000;
+    return NaN;
+}
+
+function distribution(values) {
+    if (values.length === 0) return { measured: false };
+    const sorted = [...values].sort((left, right) => left - right);
+    const q1 = quantile(sorted, 0.25);
+    const q3 = quantile(sorted, 0.75);
+    return {
+        measured: true,
+        count: sorted.length,
+        min: sorted[0],
+        median: quantile(sorted, 0.5),
+        max: sorted.at(-1),
+        q1,
+        q3,
+        iqr: q3 - q1,
+    };
+}
+
+function quantile(sorted, fraction) {
+    const index = (sorted.length - 1) * fraction;
+    const lower = Math.floor(index);
+    const remainder = index - lower;
+    return sorted[lower] + (sorted[lower + 1] === undefined ? 0 : remainder * (sorted[lower + 1] - sorted[lower]));
+}
+
+function repetitionDirectories(directory) {
+    return readdirSync(join(directory, 'repetitions'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^repetition-[0-9]{2}$/.test(entry.name))
+        .map((entry) => join(directory, 'repetitions', entry.name)).sort();
+}
+
+function onlyCollector(directory) {
+    const files = readdirSync(directory).filter((name) => /^collector-[0-9]{2}\.json$/.test(name));
+    if (files.length !== 1) throw new Error(`expected one collector snapshot in ${directory}`);
+    return json(join(directory, files[0]));
+}
+
+function metric(metrics, name, field) { return metrics[name]?.[field] ?? null; }
+function ratio(value, baseline) { return value / baseline; }
+function reduction(baseline, value) { return (baseline - value) / baseline * 100; }
+function increase(baseline, value) { return (value - baseline) / baseline * 100; }
+function sum(items = [], field) { return items.reduce((total, item) => total + Math.max(0, item[field] ?? 0), 0); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function optionalJson(path) { try { return json(path); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} is required.`); return value; }

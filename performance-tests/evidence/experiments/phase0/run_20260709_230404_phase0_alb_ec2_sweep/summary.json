@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_230404_phase0_alb_ec2_sweep",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-09T23:04:04",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/run.json"
+    },
+    {
+      "name": "highest_passed_step",
+      "value": "p1_500",
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/run.json"
+    },
+    {
+      "name": "steps[0].plannedRps",
+      "value": 500,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].durationSeconds",
+      "value": 60,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].plannedRequests",
+      "value": 30000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].requests",
+      "value": 30000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].p95MaxMs",
+      "value": 1,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].p99MaxMs",
+      "value": 6,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].successRatePercent",
+      "value": 100,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[0].passedFixedResponseCriteria",
+      "value": true,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].plannedRps",
+      "value": 4000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].durationSeconds",
+      "value": 90,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].plannedRequests",
+      "value": 360000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].requests",
+      "value": 360000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].p95MaxMs",
+      "value": 354.3,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].p99MaxMs",
+      "value": 713.5,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].successRatePercent",
+      "value": 1.2006,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[1].passedFixedResponseCriteria",
+      "value": false,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].plannedRps",
+      "value": 12000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].durationSeconds",
+      "value": 120,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].plannedRequests",
+      "value": 1440000,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].requests",
+      "value": 536003,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].p95MaxMs",
+      "value": 179.5,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].p99MaxMs",
+      "value": 247.2,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].successRatePercent",
+      "value": 0.1509,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "steps[2].passedFixedResponseCriteria",
+      "value": false,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "cloudwatch.ec2CpuAverageMaxPercent",
+      "value": 78.996,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    },
+    {
+      "name": "cloudwatch.ec2CpuMaximumMaxPercent",
+      "value": 87.715,
+      "source": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_230404_phase0_alb_ec2_sweep"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/artifacts.md",
+      "bytes": 1155,
+      "sha256": "898138c41755a1c55436edb98d2715b51cb9d52fc5b245327a2fcfb1d99c5e6e"
+    },
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/commands.md",
+      "bytes": 2905,
+      "sha256": "0fdb26b7d271f5dd2873b370e3c74f63b8f90412bcdaa94502bd5d6524038117"
+    },
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/infra.md",
+      "bytes": 1568,
+      "sha256": "1a7c9932da4ef502a22d807d500db552a199dc47f3e0386f283572756383a3bb"
+    },
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/metrics-summary.json",
+      "bytes": 1861,
+      "sha256": "0d1cf885ce775e0b377761f6ec0bb8bc30794316030fa5f44331b7d6414c3c09"
+    },
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/report.md",
+      "bytes": 2544,
+      "sha256": "a4c852d2f915248877e22e801488e81a101d0b78c428c150cea0e0e911c6264d"
+    },
+    {
+      "path": "run_20260709_230404_phase0_alb_ec2_sweep/run.json",
+      "bytes": 466,
+      "sha256": "6403b3b140bafc52bf58f6f654e3820e0dfd6d68b02234bc6a511cd02a6f6bc4"
+    }
+  ]
+}

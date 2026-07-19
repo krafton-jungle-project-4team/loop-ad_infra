@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-10T01:37:53",
+  "purpose": "sustain at least 50000 HTTP requests per second for at least 60 seconds",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "payload.sample_count",
+      "value": 192,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "load_generator.instance_count",
+      "value": 4,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "blocked",
+  "rawStatus": "planned",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "payload.sample_count",
+      "value": 192,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "payload.size_bytes.p50",
+      "value": 1476,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "payload.size_bytes.p95",
+      "value": 1526,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "load_generator.instance_count",
+      "value": 4,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "load_generator.vcpus_total",
+      "value": 32,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "load_generator.requests_per_vu",
+      "value": 750,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "status",
+      "value": "planned",
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json"
+    },
+    {
+      "name": "generatedAtUtc",
+      "value": "2026-07-09T16:59:54.059Z",
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.fixedResponseCountTotal",
+      "value": 7186918,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.maxOneMinute.rps",
+      "value": 49305.75,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.fixedResponseCountPoints[0].rps",
+      "value": 31949.533333333333,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.fixedResponseCountPoints[1].rps",
+      "value": 49305.75,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.fixedResponseCountPoints[2].rps",
+      "value": 38526.683333333334,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.newConnectionCountTotal",
+      "value": 10000,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.activeConnectionCountMax",
+      "value": 11755,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "alb.rejectedConnectionCountTotal",
+      "value": 0,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "generatorToAlb.generatorRequests",
+      "value": 7186918,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "generatorToAlb.albFixedResponseCount",
+      "value": 7186918,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "ec2.cpuAverageMaxPercent",
+      "value": 21.517777777777777,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "successCriteria.sustained50000RpsAtLeast60s",
+      "value": false,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    },
+    {
+      "name": "successCriteria.successRateAtLeast999",
+      "value": true,
+      "source": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/artifacts.md",
+      "bytes": 726,
+      "sha256": "f98c3e092cbc4143677dfe84ef309ec8652f01a6e518669eb9db662c66c7eb9d"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/commands.md",
+      "bytes": 1997,
+      "sha256": "c62cd00e713356e7a1804237588bc4e8494986f8f8ac6bd572e0cc715c0a8363"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/cost.md",
+      "bytes": 1082,
+      "sha256": "a3eac8d768e6479c60a8c3c1ced46458261a9ec49eb5a368abfb4e695b716f5f"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/infra.md",
+      "bytes": 3297,
+      "sha256": "9a4f33611948a1874dfd45122bfb15bb4c6da45166dbe79273a0dceeea3b1fdc"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/metrics-summary.json",
+      "bytes": 2845,
+      "sha256": "71db0dba4bedaddc5412b4b67037b78853a48f351dcd597157c6cdd86bbec25f"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/report.md",
+      "bytes": 2412,
+      "sha256": "e69f43d5686842aa3492c7a9df13e6add530370ac38c1561d9e1f68811787003"
+    },
+    {
+      "path": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/run.json",
+      "bytes": 875,
+      "sha256": "d533b1f4f14e577f304fbaee2f5a64951f0ee563cb2086d86ab39b2d97e1e731"
+    }
+  ]
+}

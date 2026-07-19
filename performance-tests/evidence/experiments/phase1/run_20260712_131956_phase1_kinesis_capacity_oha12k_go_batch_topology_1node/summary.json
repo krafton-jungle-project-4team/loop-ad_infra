@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-12T13:19:56",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/cleanup-verification.json",
+      "bytes": 1244,
+      "sha256": "61a54938011e62e02f3fe767321c827503286c12a431f59e5b50a7da7da4e86d"
+    },
+    {
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/correctness-summary.json",
+      "bytes": 1033,
+      "sha256": "9dc7a7b4409181bc7cc8c4961059b2ed5a16464c2b73aeba995c45f06208856e"
+    },
+    {
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/cost-after-topology1.json",
+      "bytes": 1811,
+      "sha256": "52fae18602b38ed739f6b0d6957051e2060ba0bda8a9700e30dd38e09fdf1e52"
+    },
+    {
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/cost-before-topology1.json",
+      "bytes": 1787,
+      "sha256": "1ff1ac0d274cc2a642a30b448718f254f7d50aff9d25f86bc0101c63dd229862"
+    },
+    {
+      "path": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/cost-initial-plan.json",
+      "bytes": 1790,
+      "sha256": "bf636825d34af5ba7c455315f39c72c90fc850c2a20d84b7aa000dc158decedb"
+    }
+  ]
+}

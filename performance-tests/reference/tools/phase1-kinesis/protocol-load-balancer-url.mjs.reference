@@ -1,0 +1,6 @@
+const ALB_URL = /^https:\/\/internal-perf-phase1-loop-ad-alb-[a-z0-9-]+\.ap-northeast-2\.elb\.amazonaws\.com$/;
+const NLB_URL = /^https:\/\/perf-p1-protocol-n[23]-[a-z0-9-]+\.elb\.ap-northeast-2\.amazonaws\.com$/;
+
+export function isRunScopedProtocolLoadBalancerUrl(value) {
+    return ALB_URL.test(value) || NLB_URL.test(value);
+}

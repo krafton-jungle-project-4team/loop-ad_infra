@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
+const HYPOTHESIS_CRITERIA = {
+    H1: { positiveEvidenceCondition: 'A 100-300ms synthetic target delay reproduces actual-like RPS loss, timeout, SYN_SENT, and 460.', falsificationCondition: 'The 300ms delay control remains stable.' },
+    H2: { positiveEvidenceCondition: 'oha fails while a pinned reference driver with the same schedule and sockets succeeds.', falsificationCondition: 'Both drivers fail at the same threshold with reference offered-load accuracy >=99%.' },
+    H3: { positiveEvidenceCondition: 'Increasing connections materially improves RPS or materially worsens churn at a repeatable boundary.', falsificationCondition: '6k/12k/24k connection results are equivalent across independent repetitions.' },
+    H4: { positiveEvidenceCondition: 'Direct succeeds while ALB fails, or stagger/gradual ramp succeeds while sudden ramp fails.', falsificationCondition: 'ALB/direct and ramp variants fail equivalently.' },
+    H5: { positiveEvidenceCondition: 'Collector control fails with ALB target latency before middleware plus backend connection fan-out while handler and target kernel queues remain fast.', falsificationCondition: 'Direct target fails equivalently or collector handler/accept queue is the first latency source.' },
+    H6: { positiveEvidenceCondition: 'Collector control succeeds and decode control fails with body/decode phase growth.', falsificationCondition: 'Decode control remains stable at the failing offered load.' },
+    H7: { positiveEvidenceCondition: 'Admission wait/high-water reaches the limit or rejections correlate with failure.', falsificationCondition: 'Admission utilization stays low with zero rejection and increasing max_in_flight does not improve throughput.' },
+    H8: { positiveEvidenceCondition: 'Decode succeeds and isolated batch control fails with queue/sender/lock growth.', falsificationCondition: 'Batch controls remain stable at the failing offered load.' },
+    H9: { positiveEvidenceCondition: 'SDK connection-acquire/DNS/connect/TLS/retry phase grows while Kinesis service latency remains low.', falsificationCondition: 'SDK phases remain low and track service latency.' },
+    H10: { positiveEvidenceCondition: 'Shard skew, throttle, partial failure, or service latency correlates with failure.', falsificationCondition: 'All shards are balanced with zero throttle/failure and low service latency at failure.' },
+    H11: { positiveEvidenceCondition: 'Runtime/kernel/cgroup counters or profiles rise before latency and disappear under a targeted bypass.', falsificationCondition: 'No queue/drop/throttle/runtime hotspot appears while latency occurs before middleware.' },
+    H12: { positiveEvidenceCondition: 'Failure follows a repeatable source instance/AZ/frontend/cross-AZ mapping.', falsificationCondition: 'The crossover matrix is equivalent after frontend exchange.' },
+    H13: { positiveEvidenceCondition: 'Instrumentation or logging-off improves throughput/latency by more than 2%.', falsificationCondition: 'On/off difference stays within 2% at the failing load.' },
+};
+
+const runDir = requiredOption('--run-dir');
+const output = requiredOption('--output');
+const stages = loadStages(runDir);
+const hypotheses = Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`H${index + 1}`, verdict('inconclusive', [], [], ['required crossover was not measured'])]));
+const stage = (name) => stages[name]?.toSorted((a, b) => a.repetition - b.repetition)[0];
+const qualifiedStage = (name) => stages[name]?.toSorted((a, b) => b.repetition - a.repetition).find((value) => value.safetyPassed === true && value.checks?.recoveryPassed === true && value.checks?.collectorTelemetryComplete === true);
+const stable = (name) => stage(name)?.safetyPassed === true;
+const failed = (name) => stage(name) && stage(name).safetyPassed === false;
+const artifact = (name) => stage(name)?.evidence.stageDir ?? null;
+const pilotBoundary = evaluateCollectorPilotBoundary(runDir, stage('pilot_10k_on'));
+
+const delayStages = [0, 50, 100, 200, 300].map((delay) => ({ delay, value: stage(`a_delay_${delay}`) })).filter((item) => item.value);
+const firstDelayFailure = delayStages.find((item) => !item.value.safetyPassed);
+if (stable('a_delay_300')) hypotheses.H1 = verdict('not-supported', [artifact('a_delay_300')], [artifact('a_delay_300')], []);
+else if (firstDelayFailure && failed('b_events') && similarFailure(firstDelayFailure.value, stage('b_events'))) hypotheses.H1 = verdict('supported', [firstDelayFailure.value.evidence.stageDir, artifact('b_events')], [], []);
+else if (firstDelayFailure) hypotheses.H1 = verdict('inconclusive', [firstDelayFailure.value.evidence.stageDir], [], ['actual /events failure-shape comparison missing or dissimilar']);
+
+if (stage('e_reference') && stage('e_oha')) {
+    hypotheses.H2 = stable('e_reference') && failed('e_oha') ? verdict('supported', [artifact('e_reference'), artifact('e_oha')], [], []) :
+        similarFailure(stage('e_reference'), stage('e_oha')) ? verdict('not-supported', [artifact('e_reference'), artifact('e_oha')], [artifact('e_reference')], []) : hypotheses.H2;
+}
+const connectionStages = [6000, 12000, 24000].map((count) => stage(`d_connections_${count}`)).filter(Boolean);
+if (connectionStages.length >= 2) {
+    const best = connectionStages.toSorted((a, b) => b.aggregate.actualRps - a.aggregate.actualRps)[0];
+    const worst = connectionStages.toSorted((a, b) => a.aggregate.actualRps - b.aggregate.actualRps)[0];
+    if (best.aggregate.actualRps > worst.aggregate.actualRps * 1.05) hypotheses.H3 = verdict('supported', [best.evidence.stageDir, worst.evidence.stageDir], [], []);
+    else hypotheses.H3 = verdict('not-supported', connectionStages.map((item) => item.evidence.stageDir), connectionStages.map((item) => item.evidence.stageDir), []);
+}
+if (stage('c_direct_events') && stage('b_events')) {
+    if (stable('c_direct_events') && failed('b_events')) {
+        hypotheses.H4 = verdict('supported', [artifact('c_direct_events'), artifact('b_events')], [], []);
+        hypotheses.H5 = verdict('supported', [artifact('c_direct_events'), artifact('b_events')], [], []);
+    } else if (failed('c_direct_events') && failed('b_events')) hypotheses.H4 = verdict('not-supported', [artifact('c_direct_events')], [artifact('c_direct_events')], []);
+}
+if (stage('f_stagger') && stage('f_sudden')) hypotheses.H4 = stable('f_stagger') && failed('f_sudden') ? verdict('supported', [artifact('f_stagger'), artifact('f_sudden')], [], []) : hypotheses.H4;
+if (stable('b_generator') && failed('b_collector')) hypotheses.H5 = verdict('supported', [artifact('b_generator'), artifact('b_collector')], [], []);
+else if (stable('b_collector')) hypotheses.H5 = verdict('inconclusive', [artifact('b_collector')], [artifact('b_collector')], ['collector control passed; ALB/direct crossover required']);
+if (pilotBoundary?.supported) hypotheses.H5 = verdict('supported', pilotBoundary.artifacts, [], ['ALB/direct crossover was blocked by the pilot safety gate']);
+
+if (stable('b_collector') && failed('b_decode')) hypotheses.H6 = verdict('supported', [artifact('b_collector'), artifact('b_decode')], [], []);
+else if (stable('b_decode')) hypotheses.H6 = verdict('not-supported', [artifact('b_decode')], [artifact('b_decode')], []);
+
+if (failed('b_events')) {
+    const after = collectorAfter(stage('b_events'));
+    if (after.length > 0 && after.every((snapshot) => snapshot.admission.rejected_total === 0 && snapshot.admission.high_water_in_flight < snapshot.admission.max_in_flight)) {
+        hypotheses.H7 = verdict('not-supported', [artifact('b_events')], [artifact('b_events')], []);
+    }
+}
+if (optionalJson(join(runDir, 'baseline.json'))) hypotheses.H7 = verdict('not-supported', [join(runDir, 'baseline.json')], [join(runDir, 'baseline.json')], []);
+if (stable('b_decode') && failed('b_batch_0')) hypotheses.H8 = verdict('supported', [artifact('b_decode'), artifact('b_batch_0')], [], []);
+else if (stable('b_batch_0')) hypotheses.H8 = verdict('not-supported', [artifact('b_batch_0')], [artifact('b_batch_0')], []);
+
+if (stable('b_batch_0') && failed('b_events')) {
+    const sdk = sdkDelta(stage('b_events'), 'connection_acquire');
+    if (sdk.count > 0 && sdk.p95UpperNanoseconds >= 50e6) hypotheses.H9 = verdict('supported', [artifact('b_events')], [], []);
+    else if (sdk.count > 0 && sdk.p95UpperNanoseconds <= 20e6) hypotheses.H9 = verdict('not-supported', [artifact('b_events')], [artifact('b_events')], []);
+}
+if (failed('b_events')) {
+    const metrics = optionalJson(join(stage('b_events').evidence.stageDir, 'metrics', 'cloudwatch-summary.json'));
+    const throttle = metrics?.metrics?.kinesis_write_throttle_sum?.sum;
+    const serviceP95 = metrics?.metrics?.kinesis_put_records_latency_p95?.max;
+    if (throttle > 0 || serviceP95 >= 100) hypotheses.H10 = verdict('supported', [artifact('b_events')], [], []);
+    else if (throttle === 0 && Number.isFinite(serviceP95) && serviceP95 < 50) hypotheses.H10 = verdict('not-supported', [artifact('b_events')], [artifact('b_events')], []);
+}
+if (stage('g_instrumentation_off') && stage('g_instrumentation_on')) hypotheses.H13 = stage('g_instrumentation_off').aggregate.actualRps > stage('g_instrumentation_on').aggregate.actualRps * 1.02 ? verdict('supported', [artifact('g_instrumentation_off'), artifact('g_instrumentation_on')], [], []) : verdict('not-supported', [artifact('g_instrumentation_off'), artifact('g_instrumentation_on')], [artifact('g_instrumentation_off')], []);
+const pilotOverhead = optionalJson(join(runDir, 'pilots', 'instrumentation-overhead-1k.json'));
+if (pilotOverhead?.passed && hypotheses.H13.verdict === 'inconclusive') hypotheses.H13 = verdict('inconclusive', [join(runDir, 'pilots', 'instrumentation-overhead-1k.json')], [join(runDir, 'pilots', 'instrumentation-overhead-1k.json')], ['10k instrumentation-off pilot was blocked after the 10k instrumentation-on safety failure']);
+if (stage('f_source_frontend')) hypotheses.H12 = verdict('inconclusive', [artifact('f_source_frontend')], [], ['matrix-specific evaluator not supplied']);
+
+const ladder = ['b_generator', 'b_collector', 'b_decode', 'b_batch_0', 'b_batch_20', 'b_events'];
+const divergence = ladder.find((name) => failed(name)) ?? null;
+const lastPass = divergence ? ladder.slice(0, ladder.indexOf(divergence)).filter((name) => stable(name)).at(-1) ?? null : ladder.filter((name) => stable(name)).at(-1) ?? null;
+const measured = Object.values(stages).flat().length;
+const qualifiedMeasured = Object.values(stages).flat().filter((value) => value.checks?.recoveryPassed === true && value.checks?.collectorTelemetryComplete === true).length;
+for (const [hypothesis, value] of Object.entries(hypotheses)) Object.assign(value, HYPOTHESIS_CRITERIA[hypothesis]);
+const result = {
+    evaluatedAt: new Date().toISOString(), runDir, attemptedStageResults: measured, qualifiedMeasuredStages: qualifiedMeasured, hypotheses,
+    baseline: { actualRps: 21250, actualTransportErrorRate: .066, fixedControlRps: 29968, fixedControlTransportErrorRate: .000148, targetDependentLatencyTcpFeedback: 'supported', maxInFlightIncrease: 'not-supported' },
+    firstLatencyIncreaseLayer: pilotBoundary?.supported ? 'ALB-to-target/backend connection path before collector middleware' : divergence ? layer(divergence) : null,
+    firstQueueIncreaseLayer: pilotBoundary?.supported ? { layer: 'ALB backend connection fan-out', artifact: pilotBoundary.artifacts[0] } : queueIncrease(stages),
+    firstConnectionChurnLayer: pilotBoundary?.supported ? { layer: 'ALB-to-target backend connections', minimumCollectorFdIncrease: pilotBoundary.minimumCollectorFdIncrease, clientMaxSynSent: stage('pilot_10k_on').aggregate.maxSynSent, artifact: pilotBoundary.artifacts[0] } : connectionChurn(stages),
+    actualControlDivergence: divergence ? { lastPassingStage: lastPass, firstFailingStage: divergence } : { baselineActualTargetRps: 21250, baselineFixedControlRps: 29968, newSyntheticBoundary: pilotBoundary?.supported ? 'collector-control at 10k/12k connections' : null },
+    albDirectDifference: comparison('b_events', 'c_direct_events'), ohaReferenceDifference: comparison('e_oha', 'e_reference'),
+    sourceFrontendInstanceDependence: stage('f_source_frontend') ? 'measured-see-artifact' : pilotBoundary?.supported ? 'all four source nodes reproduced; source/frontend crossover not measured' : 'not-measured',
+    kinesisServiceVsSdk: kinesisSdkComparison(stage('b_events')) ?? { baselineKinesisPutRecordsP95Milliseconds: 16.65, newSessionSdkEndToEndMilliseconds: null, comparison: 'not measured in the stopped pilot' },
+    smallestReproductionCondition: pilotBoundary?.supported ? { targetPath: '/__collector_control', offeredRps: 10000, connections: 12000, durationSeconds: 30, instrumentation: 'on', artifact: pilotBoundary.artifacts[0] } : firstDelayFailure ? { targetPath: firstDelayFailure.value.targetPath, delayMs: firstDelayFailure.delay, artifact: firstDelayFailure.value.evidence.stageDir } : divergence ? { stage: divergence, artifact: artifact(divergence) } : null,
+    smallestMitigationCondition: qualifiedStage('pilot_1k_on') ? { targetPath: '/__collector_control', offeredRps: 1000, connections: 12000, artifact: qualifiedStage('pilot_1k_on').evidence.stageDir, note: 'diagnostic stable condition, not a production recommendation' } : lastPass ? { stage: lastPass, artifact: artifact(lastPass) } : null,
+    remainingInconclusive: Object.entries(hypotheses).filter(([, value]) => value.verdict === 'inconclusive').map(([name]) => name),
+    nextPriorityExperiment: pilotBoundary?.supported ? 'In a fresh guarded session, run /__collector_control at 10k/12k connections through ALB versus direct target before any parameter sweep.' : nextExperiment(hypotheses, divergence),
+    productionChangeRecommended: false,
+    productionChangeReason: 'The layer boundary is supported, but direct-target crossover and an independent repetition of the 10k boundary were blocked by the safety gate.',
+    diagnosticComplete: Object.values(hypotheses).some((value) => value.verdict === 'supported') || measured > 0 && Object.values(hypotheses).every((value) => value.verdict !== 'inconclusive'),
+    stoppedByPilotSafetyGate: failed('pilot_10k_on'),
+    pilotBoundary,
+};
+writeJson(output, result);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function verdict(value, supporting, falsifying, unmeasured) { return { verdict: value, supportingArtifacts: supporting.filter(Boolean), falsifyingArtifacts: falsifying.filter(Boolean), unmeasured }; }
+function evaluateCollectorPilotBoundary(directory, value) {
+    if (!value || value.targetPath !== '/__collector_control' || value.safetyPassed || value.aggregate.latencyMs.p95 < 500) return null;
+    const joinPath = join(directory, 'session-observability', 'trace-join', 'join.json');
+    const joined = optionalJson(joinPath)?.joined?.filter((row) => row.stage === value.stageLabel && String(row.repetition) === String(value.repetition)) ?? [];
+    if (joined.length === 0) return null;
+    const appP95Nanoseconds = percentile(joined.map((row) => row.requestTotalNanoseconds).filter(Number.isFinite), .95);
+    const albRequestP95Seconds = percentile(joined.map((row) => row.alb?.requestProcessingTime).filter(Number.isFinite), .95);
+    const albTargetP95Seconds = percentile(joined.map((row) => row.alb?.targetProcessingTime).filter(Number.isFinite), .95);
+    const fdIncreases = collectorIndexes(value).map((index) => processFdIncrease(join(value.evidence.stageDir, 'collector-telemetry', `collector-${String(index).padStart(2, '0')}`, 'process.tsv')));
+    const minimumCollectorFdIncrease = Math.min(...fdIncreases);
+    const supported = appP95Nanoseconds < 1e6 && albTargetP95Seconds >= .15 && minimumCollectorFdIncrease >= 1000;
+    return { supported, joinedTraceCount: joined.length, appP95Nanoseconds, albRequestP95Seconds, albTargetP95Seconds, collectorFdIncreases: fdIncreases, minimumCollectorFdIncrease,
+        artifacts: [value.evidence.stageDir, joinPath, join(value.evidence.stageDir, 'access-logs', 'analysis.json'), join(value.evidence.stageDir, 'flow-logs', 'summary.json')] };
+}
+function processFdIncrease(path) { const lines=readFileSync(path,'utf8').trim().split('\n'); const header=lines.shift()?.split('\t')??[]; const index=header.indexOf('open_fds'); const values=lines.map((line)=>Number(line.split('\t')[index])).filter(Number.isFinite); return values.length ? Math.max(...values)-values[0] : 0; }
+function percentile(values, q) { if (!values.length) return null; const sorted=values.toSorted((a,b)=>a-b); return sorted[Math.min(sorted.length-1,Math.floor(sorted.length*q))]; }
+function similarFailure(left, right) { return !left.safetyPassed && !right.safetyPassed && Math.abs(left.aggregate.actualRps - right.aggregate.actualRps) / Math.max(1, right.aggregate.actualRps) <= .15 && Math.abs(left.aggregate.transportErrorRate - right.aggregate.transportErrorRate) <= .05; }
+function loadStages(directory) { const result = {}; for (const name of safeDirectories(join(directory, 'stages'))) for (const repetition of safeDirectories(join(directory, 'stages', name))) { const value = optionalJson(join(directory, 'stages', name, repetition, 'stage-summary.json')); if (value) (result[name] ??= []).push(value); } return result; }
+function collectorIndexes(value) {
+    if (!value) return [];
+    const indexes = new Set();
+    for (const entry of safeEntries(join(value.evidence.stageDir, 'debug', 'after'))) {
+        const match = /^collector-([0-9]+)\.json$/.exec(entry.name);
+        if (entry.isFile() && match) indexes.add(Number(match[1]));
+    }
+    for (const entry of safeEntries(join(value.evidence.stageDir, 'collector-telemetry'))) {
+        const match = /^collector-([0-9]+)$/.exec(entry.name);
+        if (entry.isDirectory() && match) indexes.add(Number(match[1]));
+    }
+    return [...indexes].toSorted((left, right) => left - right);
+}
+function collectorAfter(value) { return collectorIndexes(value).map((index) => optionalJson(join(value.evidence.stageDir, 'debug', 'after', `collector-${String(index).padStart(2, '0')}.json`))).filter(Boolean); }
+function sdkDelta(value, phase) { if (!value) return { count: 0, p95UpperNanoseconds: 0, p95Overflow: false }; let count=0; const buckets={}; for (const index of collectorIndexes(value)) { const a=optionalJson(join(value.evidence.stageDir,'debug','after',`collector-${String(index).padStart(2,'0')}.json`))?.sdk?.phases?.[phase]; const b=optionalJson(join(value.evidence.stageDir,'debug','before',`collector-${String(index).padStart(2,'0')}.json`))?.sdk?.phases?.[phase]; if (!a) continue; count += a.count-(b?.count??0); for (const [key,val] of Object.entries(a.cumulative_buckets??{})) buckets[key]=(buckets[key]??0)+val-(b?.cumulative_buckets?.[key]??0); } const p95=quantileUpper(buckets,count,.95); return { count, p95UpperNanoseconds: p95.upperNanoseconds, p95Overflow: p95.overflow }; }
+function quantileUpper(buckets,count,q){if(count<=0)return{upperNanoseconds:0,overflow:false};const threshold=Math.ceil(count*q);const ordered=Object.entries(buckets).map(([key,value])=>{const match=/^le_([0-9]+)ns$/.exec(key);return{upper:match?Number(match[1]):null,overflow:key==='inf'||key==='le_inf',value};}).filter((item)=>item.overflow||Number.isFinite(item.upper)).sort((a,b)=>(a.overflow?1:0)-(b.overflow?1:0)||a.upper-b.upper);const finiteMaximum=Math.max(0,...ordered.filter((item)=>!item.overflow).map((item)=>item.upper));const found=ordered.find((item)=>item.value>=threshold);return{upperNanoseconds:found?.overflow?finiteMaximum:(found?.upper??finiteMaximum),overflow:found?.overflow??true};}
+function layer(name) { return ({ b_generator:'generator/ALB fixed response', b_collector:'ALB-to-collector HTTP/body-read', b_decode:'payload decode/validation', b_batch_0:'batch queue/sender', b_batch_20:'batch ACK latency', b_events:'AWS SDK/Kinesis final ACK' })[name] ?? name; }
+function queueIncrease(all) { for (const name of ['b_batch_0','b_batch_20','b_events']) for (const value of all[name]??[]) { const summary=optionalJson(join(value.evidence.stageDir,'collector-telemetry-summary.json')); if (summary?.tenSecondBlocks?.some((block)=>block.maxQueueDepth>0||block.maxSenderQueueDepth>0||block.maxOutstanding>100)) return { stage:name,artifact:value.evidence.stageDir }; } return null; }
+function connectionChurn(all) { const values=Object.values(all).flat().toSorted((a,b)=>a.startEpoch-b.startEpoch); const found=values.find((value)=>value.aggregate.maxSynSent>100||value.aggregate.transportErrorRate>.01); return found?{stage:found.stageLabel,maxSynSent:found.aggregate.maxSynSent,artifact:found.evidence.stageDir}:null; }
+function comparison(left,right){return stage(left)&&stage(right)?{left:stage(left).aggregate,right:stage(right).aggregate}:null;}
+function kinesisSdkComparison(value){if(!value)return null;const metrics=optionalJson(join(value.evidence.stageDir,'metrics','cloudwatch-summary.json'));return{servicePutRecordsP95Milliseconds:metrics?.metrics?.kinesis_put_records_latency_p95?.max??null,sdkFullApi:sdkDelta(value,'full_api'),sdkConnectionAcquire:sdkDelta(value,'connection_acquire')};}
+function nextExperiment(h, divergence){if(h.H2.verdict==='inconclusive'&&firstDelayFailure)return'Run pinned reference Go HTTP/1.1 driver at the first failing synthetic delay.';if(divergence==='b_events'&&h.H9.verdict==='inconclusive')return'Run ALB bypass /events crossover before any SDK parameter sweep.';if(h.H4.verdict==='inconclusive')return'Run ALB bypass crossover.';return'Run the smallest unresolved causal crossover only.';}
+function safeDirectories(path){try{return readdirSync(path,{withFileTypes:true}).filter((entry)=>entry.isDirectory()).map((entry)=>entry.name).sort();}catch(error){if(error.code==='ENOENT')return[];throw error;}}
+function safeEntries(path){try{return readdirSync(path,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return[];throw error;}}
+function optionalJson(path){if(!existsSync(path))return null;return JSON.parse(readFileSync(path,'utf8'));}
+function writeJson(path,value){writeFileSync(path,`${JSON.stringify(value,null,2)}\n`,'utf8');}
+function requiredOption(name){const index=process.argv.indexOf(name);const value=index<0?undefined:process.argv[index+1];if(!value)throw new Error(`${name} is required`);return value;}

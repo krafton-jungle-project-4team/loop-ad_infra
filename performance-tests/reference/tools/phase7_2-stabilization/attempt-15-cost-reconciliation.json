@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 15,
+  "runId": "run_20260718_225218_phase7_integration",
+  "sessionId": "phase7-integration-20260718T225218Z",
+  "reconciledAt": "2026-07-19T00:27:54Z",
+  "paidRuntime": {
+    "deployStartedAt": "2026-07-18T23:28:28.356862Z",
+    "runtimeDeployCompletedAt": "2026-07-18T23:38:34.046620Z",
+    "verifyCompletedAt": "2026-07-18T23:39:16.797792Z",
+    "correctnessCompletedAt": "2026-07-18T23:41:35.512732Z",
+    "seedCompletedAt": "2026-07-18T23:42:04.694879Z",
+    "warmupCompletedAt": "2026-07-18T23:51:01.347551Z",
+    "scoreArchiveFailedAt": "2026-07-19T00:04:53.813056Z",
+    "cleanupFinishedAt": "2026-07-19T00:18:54.939923Z",
+    "authoritativeCleanupZeroAt": "2026-07-19T00:19:11.632615Z",
+    "paidStartToAuthoritativeZeroSeconds": "3043.275753"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-15-cost-explorer-20260719.json",
+    "evidenceSha256": "cb5682f9536b2be9506ffabcf49ecd1ff4e27afe36fde65c99860f7b47e0ff5b",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "The current-day result is estimated and delayed; zero is not treated as a zero-cost attempt."
+  },
+  "priceEvidence": {
+    "path": "performance-tests/run_20260718_225218_phase7_2_deployment_readiness/prices-final.json",
+    "sha256": "44dc3e06fef18a44400b0823792df7a19faa2f1cb923688012b456f5fc2d315a",
+    "asOf": "2026-07-18T23:16:31.785Z",
+    "region": "ap-northeast-2"
+  },
+  "modeledFailurePath": {
+    "billableResourceDurationCeilingSeconds": 3600,
+    "actualDurationBelowCeiling": true,
+    "components": [
+      {
+        "name": "EC2 fixed fleet",
+        "costUsd": "3.369200",
+        "formula": "(6*.192 + 2*.2562 + 8*.1281 + 2*.0816 + 1*.5168)*1"
+      },
+      {
+        "name": "Kinesis provisioned shards",
+        "costUsd": "2.220000",
+        "formula": "120*1*.0185"
+      },
+      {
+        "name": "Kinesis PUT payload units",
+        "costUsd": "0.489641",
+        "formula": "24002000*.0000000204"
+      },
+      {
+        "name": "three Network Load Balancers",
+        "costUsd": "0.067500",
+        "formula": "3*1*.0225"
+      },
+      {
+        "name": "NLB capacity allowance",
+        "costUsd": "0.600000",
+        "formula": "100*1*.006"
+      },
+      {
+        "name": "single NAT gateway",
+        "costUsd": "0.059000",
+        "formula": "1*.059"
+      },
+      {
+        "name": "NAT processed data allowance",
+        "costUsd": "0.590000",
+        "formula": "10*.059"
+      },
+      {
+        "name": "NAT gateway public IPv4 address",
+        "costUsd": "0.005000",
+        "formula": "1*.005"
+      },
+      {
+        "name": "gp3 capacity",
+        "costUsd": "0.129929",
+        "formula": "1040*(1/730)*.0912"
+      },
+      {
+        "name": "gp3 extra throughput",
+        "costUsd": "0.023425",
+        "formula": "(375/1024)*(1/730)*46.6944"
+      },
+      {
+        "name": "Secrets Manager storage",
+        "costUsd": "0.013151",
+        "formula": "(24/730)*.4"
+      },
+      {
+        "name": "Secrets Manager API",
+        "costUsd": "0.010000",
+        "formula": "2000*.000005"
+      },
+      {
+        "name": "CloudWatch custom metrics",
+        "costUsd": "0.246575",
+        "formula": "600*(1/730)*.3"
+      },
+      {
+        "name": "CloudWatch log ingestion allowance",
+        "costUsd": "3.800000",
+        "formula": "5*.76"
+      },
+      {
+        "name": "CloudWatch log storage allowance",
+        "costUsd": "0.005162",
+        "formula": "5*(24/730)*.0314"
+      },
+      {
+        "name": "CloudWatch GetMetricData allowance",
+        "costUsd": "1.000000",
+        "formula": "100000*.00001"
+      },
+      {
+        "name": "ECR image storage",
+        "costUsd": "0.009863",
+        "formula": "3*(24/730)*.1"
+      },
+      {
+        "name": "DynamoDB on-demand reads",
+        "costUsd": "0.271000",
+        "formula": "2000000*.0000001355"
+      },
+      {
+        "name": "DynamoDB on-demand writes",
+        "costUsd": "0.680000",
+        "formula": "1000000*.00000068"
+      },
+      {
+        "name": "DynamoDB storage",
+        "costUsd": "0.002670",
+        "formula": ".3*(24/730)*.27075"
+      },
+      {
+        "name": "S3 standard storage",
+        "costUsd": "0.004932",
+        "formula": "6*(24/730)*.025"
+      },
+      {
+        "name": "S3 write/list requests",
+        "costUsd": "0.045000",
+        "formula": "10000*.0000045"
+      },
+      {
+        "name": "S3 read requests",
+        "costUsd": "0.010500",
+        "formula": "30000*.00000035"
+      },
+      {
+        "name": "Cost Explorer query",
+        "costUsd": "0.010000",
+        "formula": "1*.01"
+      },
+      {
+        "name": "evidence and transfer reserve",
+        "costUsd": "1.500000",
+        "formula": "1.5"
+      },
+      {
+        "name": "failure-path and delayed metering reserve",
+        "costUsd": "0.500000",
+        "formula": ".5"
+      }
+    ],
+    "rawTotalUsd": "15.662547027397",
+    "upperBoundUsd": "15.662548",
+    "roundingNote": "The paid interval is below one hour. Per-second resources use a one-hour ceiling; hourly/minimum resources use one full hour; storage retains a full-day allowance. Full planned request and 5 GiB log-ingestion allowances are retained because warmup, score, KCL and one archive task all ran and delayed billing is not yet itemized. The total is rounded upward once to six decimals."
+  },
+  "roundingPolicy": "Charge 16.000000 USD to the active prospective epoch, rounding the 15.662548 USD failure-path upper bound upward while retaining delayed-billing margin.",
+  "chargedUpperBoundUsd": "16.000000",
+  "budgetBeforeAttempt": {
+    "epochId": "phase7-2-reset-20260718-after-attempt-12",
+    "activeEpochAccruedUpperBoundUsd": "12.000000",
+    "lifetimeChargedUpperBoundUsd": "83.000000"
+  },
+  "budgetAfterAttempt": {
+    "epochId": "phase7-2-reset-20260718-after-attempt-12",
+    "activeEpochAccruedUpperBoundUsd": "28.000000",
+    "lifetimeChargedUpperBoundUsd": "99.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000",
+    "lifetimeValueInformationalOnly": true
+  },
+  "nextFullAttemptGate": {
+    "priorActiveEpochAccruedUpperBoundUsd": "28.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "activeEpochOperationalMaximumUsd": "61.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "66.870718",
+    "newWorkStopUsd": "55.000000",
+    "hardCapUsd": "60.000000",
+    "remainingMarginUsd": "-6.870718",
+    "remainingHardCapUsd": "32.000000",
+    "remainingOperationalBeforeReserveUsd": "27.000000",
+    "passed": false,
+    "authorization": "No new image build, deployment, seed, warmup, score or archive work is authorized under the active 60 USD budget. Local diagnosis, source correction and verification remain authorized."
+  },
+  "sourceEvidence": {
+    "cleanupInventory": {
+      "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/cleanup-inventory.json",
+      "sha256": "d16a8a3d5a22d17bff107a197893c9f1d0b22eb156d35bcd6f9f770f34e35cb7"
+    },
+    "postFinalReadonlyInventory": {
+      "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/post-final-readonly-inventory.json",
+      "sha256": "cb6725d2384d96b04cae9babac43a0a9d186bea3bb19e02244da8c8346523ee6"
+    },
+    "warmupSummary": {
+      "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+      "sha256": "fca064407365a1ecd3ecec8f659c7a2e7ff9a4fa9da8d5eeefe65b2b77829d60"
+    },
+    "scorePostmortemAggregate": {
+      "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/score/postmortem-aggregate.json",
+      "sha256": "6cd58128ec2a8f76f7a889ff3f36d381e2e291f98bdd40b684dcc117b235fd01"
+    },
+    "archiveFailureDiagnosis": {
+      "path": "performance-tests/run_20260718_225218_phase7_2_aws_integration/evidence/archive-failure-diagnosis.json",
+      "sha256": "d8ccb9eadea185ca7d87f3ba84bf8e1d858b652615151b2125cc53d33dd8bd70"
+    }
+  }
+}

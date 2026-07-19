@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 5,
+  "runId": "run_20260718_061644_phase7_integration",
+  "verifiedAt": "2026-07-18T07:51:40Z",
+  "fixCommits": {
+    "haproxyNofile": "8d902e01a7d266794d1686eada6368dc7578dde2",
+    "cleanupSubnetTombstones": "bcfa2d2743ea1a3dfda0a33c52e818e78d55ba12"
+  },
+  "status": "passed",
+  "change": {
+    "summary": "Set the Phase 7 HAProxy ECS container NOFILE soft and hard limits to 200000, assert the synthesized task definition, and safely clean only deleted run-owned subnet Tagging API tombstones.",
+    "files": [
+      "src/perf-phase7-integration-stack.ts",
+      "test/perf-phase7-integration.test.ts",
+      "performance-tests/phase7-integration/aws/cleanup.py",
+      "performance-tests/phase7-integration/tests/test_phase7_cleanup_contract.py"
+    ]
+  },
+  "rootCauseReproduction": {
+    "path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/evidence/diagnosis/haproxy-nofile-reproduction.json",
+    "sha256": "c67a0e94bcf10bec8024b70413f05c61651f85a33912d1a3ff801fbf470abbf4",
+    "exactImageAndConfigAt65535ExitCode": 1,
+    "requiredFileDescriptors": 131132,
+    "exactImageAndConfigAt200000ExitCode": 0
+  },
+  "verification": {
+    "phase7Tests": {
+      "command": "npm run test:phase7",
+      "jestPassed": 13,
+      "nodePassed": 27,
+      "pythonPassed": 125,
+      "failed": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "passed": true
+    },
+    "exactContextSynth": {
+      "passed": true,
+      "runtimeTemplatePath": "performance-tests/phase7_2-stabilization/attempt-5-fix-validation/runtime-template.json",
+      "runtimeTemplateSha256": "d68db885ae41bc22a84a4fa0e6778397cb2ffd934c29bdf26bba7b97b6566500",
+      "haproxyTaskNofileSoft": 200000,
+      "haproxyTaskNofileHard": 200000
+    },
+    "userData": {
+      "passed": true,
+      "launchTemplatesChecked": 5,
+      "ec2LimitBytes": 16384,
+      "loadGeneratorBytes": 15216,
+      "loadGeneratorMarginLimitBytes": 15360,
+      "loadGeneratorMarginRemainingBytes": 144
+    },
+    "repositoryTemplateValidator": {
+      "passed": true,
+      "taskDefinitionsChecked": 5,
+      "schemaGuardRetries": 10,
+      "sha256": "0e38045a0255d02d26f22bf968ed743699591f525be5fdd20c6f146ed3a59e4d"
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "exitCode": 6,
+      "expectedAssemblyOnlyE1022": 8,
+      "expectedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "passedUnderRepositoryPolicy": true
+    },
+    "freshLocalHandoff": {
+      "path": "performance-tests/run_20260718_074351_phase7_1_local_integration/local-handoff.json",
+      "sha256": "4c02b1def007af0429a8314624f4709d393302337dad2ef27abdc83b1a9d2e3f",
+      "gitHeadAtFinalization": "bcfa2d2743ea1a3dfda0a33c52e818e78d55ba12",
+      "implementationTreeSha256": "81d1edcae1666b1baaa7869fa99ac94b8388accc527bfced88b87968ba95a0ef",
+      "finalVerdict": "passed",
+      "awsReady": true,
+      "realAwsRequests": 0,
+      "cleanupInventoryZero": true
+    }
+  },
+  "assessment": "The exact AWS failure is reproduced at nofile 65535 and eliminated at 200000. The synthesized AWS task now carries that exact limit, all source and template gates pass, and a fresh whole local handoff is AWS-ready. A fresh immutable AWS attempt is still required to prove live deployment and the remaining acceptance path."
+}

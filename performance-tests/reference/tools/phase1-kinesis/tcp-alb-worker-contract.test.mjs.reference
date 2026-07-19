@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
+
+const directory = dirname(fileURLToPath(import.meta.url));
+const worker = readFileSync(join(directory, 'run-ec2-oha-worker.sh'), 'utf8');
+const invoke = readFileSync(join(directory, 'invoke-oha.mjs'), 'utf8');
+const imagePreparation = readFileSync(join(directory, 'prepare-collector-image.sh'), 'utf8');
+const hostVerification = readFileSync(join(directory, 'verify-al2023-hosts.mjs'), 'utf8');
+const correctness = readFileSync(join(directory, 'verify-actual-kinesis-correctness.mjs'), 'utf8');
+
+test('captures only TCP handshake/control packets at snaplen 96 and never archives raw pcap', () => {
+    assert.match(worker, /target_port='80'/);
+    assert.match(worker, /target_port='8080'/);
+    assert.match(worker, /tcp port \$target_port and \(tcp\[tcpflags\] & \(tcp-syn\|tcp-rst\|tcp-fin\) != 0\)/);
+    assert.match(worker, /tcpdump -i "\$primary_interface" -nn -s 96/);
+    assert.match(worker, /sha256sum "\$raw_pcap"/);
+    assert.match(worker, /invalid_count=.*tcpdump/);
+    assert.match(worker, /rm -f "\$raw_pcap"/);
+    assert.doesNotMatch(worker, /artifact_files=\([\s\S]*syn-handshake\.pcap/);
+});
+
+test('pins a destination IP only with the original ALB Host header', () => {
+    assert.match(invoke, /targetHostHeader = targetIp \|\| directTargetIp \? targetBaseUrl\.slice\('http:\/\/'\.length\) : ''/);
+    assert.match(invoke, /ALB frontend and direct target pinning are mutually exclusive/);
+    assert.match(invoke, /`http:\/\/\$\{directTargetIp\}:8080`/);
+    assert.match(worker, /destination pinning must preserve the original Host header/);
+    assert.match(worker, /oha_header_args\+=\(-H "Host: \$TARGET_HOST_HEADER"\)/);
+});
+
+test('diagnostic evidence uses run-scoped S3 delivery and includes required telemetry', () => {
+    assert.match(worker, /ARTIFACT_S3_URI=/);
+    assert.match(worker, /destination-sockets\.tsv/);
+    assert.match(worker, /TcpExtTCPSynRetrans/);
+    assert.match(worker, /TcpExtTCPTimeouts/);
+    assert.match(worker, /softnet-stat\.tsv/);
+    assert.match(worker, /ena-diagnostics-telemetry\.tsv/);
+    assert.match(worker, /dns-before\.json/);
+    assert.match(worker, /instance-network-identity\.json/);
+});
+
+test('collector image preparation accepts only the run-scoped diagnosis session format', () => {
+    assert.match(imagePreparation, /EXPERIMENT_MODE" == "tcp-alb-path-diagnosis"/);
+    assert.match(imagePreparation, /\^phase1-kinesis-tcp-alb-path-diagnosis-\[0-9\]\{8\}T\[0-9\]\{6\}Z\$/);
+});
+
+test('host verification covers both diagnosis ASGs and packet tooling packages', () => {
+    assert.match(hostVerification, /TCP_ALB_LOAD_GENERATOR_NAMES/);
+    assert.match(hostVerification, /\$\{LOAD_GENERATOR_NAME\}-2a/);
+    assert.match(hostVerification, /\$\{LOAD_GENERATOR_NAME\}-2c/);
+    assert.match(hostVerification, /tcpdump_package/);
+    assert.match(hostVerification, /bind_utils_package/);
+});
+
+test('actual Kinesis correctness accepts the immutable diagnosis session artifact path', () => {
+    assert.match(correctness, /--tcp-alb-diagnosis-artifact/);
+    assert.match(correctness, /phase1_kinesis_tcp_alb_path_diagnosis_session/);
+});

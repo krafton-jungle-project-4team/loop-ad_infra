@@ -1,0 +1,574 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: '.env', quiet: true });
+
+const REGION = 'ap-northeast-2';
+const COLLECTOR_ASG = 'perf-phase1-loop-ad-collector';
+const LOAD_GENERATOR_ASG = 'perf-phase1-loop-ad-load-generator';
+const TCP_ALB_LOAD_GENERATOR_ASGS = ['perf-phase1-loop-ad-load-generator-2a', 'perf-phase1-loop-ad-load-generator-2c'];
+const STREAM_NAME = 'perf-phase1-loop-ad-events';
+const ALB_NAME = 'perf-phase1-loop-ad-alb';
+const NLB_NAMES = ['perf-p1-protocol-n2', 'perf-p1-protocol-n3'];
+const PROTOCOL_TARGET_GROUP_NAMES = ['perf-p1-protocol-http1', 'perf-p1-protocol-http2', 'perf-p1-protocol-tcp', 'perf-p1-protocol-quic'];
+const CONNECTION_PATH_LOAD_BALANCER_NAMES = ['perf-p1-conn-alb', 'perf-p1-conn-direct', 'perf-p1-conn-proxy'];
+const CONNECTION_PATH_TARGET_GROUP_NAMES = ['perf-p1-conn-alb-h2', 'perf-p1-conn-direct', 'perf-p1-conn-proxy'];
+const CONNECTION_PATH_PROXY_ASGS = ['perf-p1-conn-proxy-2a', 'perf-p1-conn-proxy-2c'];
+const VPC_NAME = 'perf-phase1-loop-ad-vpc';
+const CLUSTER_NAME = 'perf-phase1-loop-ad-collector-cluster';
+const CONNECTION_PATH_PROXY_CLUSTER_NAME = 'perf-p1-conn-proxy';
+const LOG_GROUP_NAME = '/loop-ad/perf-phase1/event-collector';
+const CONNECTION_PATH_PROXY_LOG_GROUP_NAME = '/loop-ad/perf-phase1/connection-path/haproxy';
+const REQUIRED_ROLE_NAMES = [
+    'loop-ad-perf-phase1-collector-instance',
+    'loop-ad-perf-phase1-collector-task',
+    'loop-ad-perf-phase1-collector-execution',
+    'loop-ad-perf-phase1-load-generator-instance',
+    'loop-ad-perf-phase1-connection-path-proxy',
+];
+const UPDATE_SAFE_STACK_STATUSES = ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE'];
+
+const experimentMode = optionValue('--experiment-mode') ?? 'comparison';
+if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode)) {
+    throw new Error('unsupported --experiment-mode.');
+}
+const fixedFourMode = experimentMode !== 'comparison';
+const pathEvidenceMode = ['tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode);
+const capacityProfile = optionValue('--capacity-profile');
+const loadGeneratorAsgNames = pathEvidenceMode ? TCP_ALB_LOAD_GENERATOR_ASGS : [LOAD_GENERATOR_ASG];
+const proxyAsgNames = experimentMode === 'connection-path-crossover' ? CONNECTION_PATH_PROXY_ASGS : [];
+const STACK_NAME = experimentMode === 'capacity-oha12k' ? 'LoopAdPerfPhase1KinesisCapacityOha12kStack'
+    : experimentMode === 'protocol-crossover' ? 'LoopAdPerfPhase1KinesisProtocolCrossoverStack'
+    : experimentMode === 'connection-path-crossover' ? 'LoopAdPerfPhase1KinesisConnectionPathStack'
+    : experimentMode === 'admission-scaleout-capacity' ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack'
+    : experimentMode === 'tcp-alb-path-diagnosis' ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack'
+    : experimentMode === 'generator-diagnosis' ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStack'
+    : experimentMode === 'scout' ? 'LoopAdPerfPhase1KinesisCapacityScoutStack'
+        : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStack' : 'LoopAdPerfPhase1KinesisStack';
+const STREAM_STACK_NAME = experimentMode === 'capacity-oha12k' ? 'LoopAdPerfPhase1KinesisCapacityOha12kStreamStack'
+    : experimentMode === 'protocol-crossover' ? 'LoopAdPerfPhase1KinesisProtocolCrossoverStreamStack'
+    : experimentMode === 'connection-path-crossover' ? 'LoopAdPerfPhase1KinesisConnectionPathStreamStack'
+    : experimentMode === 'admission-scaleout-capacity' ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStreamStack'
+    : experimentMode === 'tcp-alb-path-diagnosis' ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStreamStack'
+    : experimentMode === 'generator-diagnosis' ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStreamStack'
+    : experimentMode === 'scout' ? 'LoopAdPerfPhase1KinesisCapacityScoutStreamStack'
+        : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStreamStack' : 'LoopAdPerfPhase1KinesisStreamStack';
+const phase = requiredOption('--phase');
+const retainSharedStream = process.argv.includes('--retain-shared-stream');
+const collectorCount = requiredInteger('--collector-count');
+const loadGeneratorCount = integerOption('--load-generator-count', 1);
+const expectedKinesisShardCount = integerOption('--expected-kinesis-shard-count', 80);
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const collectorSha = requiredOption('--collector-sha');
+const imageDigest = requiredOption('--image-digest');
+const outputPath = optionValue('--output');
+if (!['before-image-push', 'before-stream-deploy', 'before-deploy', 'before-update', 'before-destroy', 'before-stream-destroy'].includes(phase)) {
+    throw new Error('--phase must be before-image-push, before-stream-deploy, before-deploy, before-destroy, or before-stream-destroy.');
+}
+if (collectorCount < 1 || collectorCount > 17) {
+    throw new Error('--collector-count must be from 1 through 17.');
+}
+if (experimentMode === 'admission-scaleout-capacity' && !['A', 'B'].includes(capacityProfile)) {
+    throw new Error('admission-scaleout-capacity requires --capacity-profile A or B.');
+}
+if (experimentMode === 'admission-scaleout-capacity' && collectorCount !== (capacityProfile === 'A' ? 4 : 8)) {
+    throw new Error('collector count does not match admission scale-out profile.');
+}
+if (experimentMode === 'connection-path-crossover' && ![4, 6].includes(collectorCount)) {
+    throw new Error('connection-path-crossover requires four or six collectors.');
+}
+if (fixedFourMode && !['admission-scaleout-capacity', 'connection-path-crossover'].includes(experimentMode) && collectorCount !== 4) {
+    throw new Error('capacity and scout modes require --collector-count 4.');
+}
+if (pathEvidenceMode && (experimentMode === 'connection-path-crossover' ? ![4, 8].includes(loadGeneratorCount) : loadGeneratorCount !== 4)) {
+    throw new Error('path-evidence mode requires four generators, or four/eight for connection-path-crossover.');
+}
+if (['capacity-oha12k', 'generator-diagnosis'].includes(experimentMode) && ![1, 2, 4].includes(loadGeneratorCount)) {
+    throw new Error('explicit topology mode requires --load-generator-count 1, 2, or 4.');
+}
+if (!['capacity-oha12k', 'generator-diagnosis', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && loadGeneratorCount !== 1) {
+    throw new Error('legacy modes require exactly one load generator.');
+}
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) {
+    throw new Error('invalid --run-id');
+}
+const sessionPattern = experimentMode === 'admission-scaleout-capacity'
+    ? /^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'connection-path-crossover'
+    ? /^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'protocol-crossover'
+    ? /^phase1-kinesis-protocol-crossover-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'tcp-alb-path-diagnosis'
+    ? /^phase1-kinesis-tcp-alb-path-diagnosis-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'generator-diagnosis'
+    ? /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'capacity-oha12k'
+    ? /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'scout'
+    ? /^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/
+    : experimentMode === 'capacity' ? /^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/ : /^phase1-compare-[0-9]{8}-[0-9]{6}z$/;
+if (!sessionPattern.test(sessionId)) throw new Error('invalid --session-id');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid --candidate');
+if (!/^[0-9a-f]{40}$/.test(collectorSha)) throw new Error('invalid --collector-sha');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid --image-digest');
+
+const expectedAccount = process.env.CDK_DEFAULT_ACCOUNT;
+const configuredRegion = process.env.LOOP_AD_REGION;
+if (!expectedAccount || configuredRegion !== REGION) {
+    throw new Error('repo .env must define the expected account and LOOP_AD_REGION=ap-northeast-2');
+}
+
+const identity = awsJson(['sts', 'get-caller-identity']);
+const profileRegion = configuredAwsRegion();
+const quota = awsJson([
+    'service-quotas', 'get-service-quota', '--region', REGION,
+    '--service-code', 'ec2', '--quota-code', 'L-1216C47A',
+]).Quota;
+const instances = awsJson([
+    'ec2', 'describe-instances', '--region', REGION,
+    '--filters', 'Name=instance-state-name,Values=running,pending',
+    '--query', 'Reservations[].Instances[].{instanceId:InstanceId,instanceType:InstanceType,state:State.Name,tags:Tags}',
+]);
+const standardInstances = instances.filter((instance) => isStandardInstanceType(instance.instanceType));
+const expectedRunTags = {
+    Project: 'loop-ad', Environment: 'perf-phase1-kinesis', RunId: runId,
+    ComparisonSessionId: sessionId, Candidate: candidate,
+    ...capacityOwnershipTags(runId),
+};
+const ownedStandardInstances = standardInstances.filter((instance) => tagsMatch(instance.tags, expectedRunTags));
+const externalStandardInstances = standardInstances.filter((instance) => !tagsMatch(instance.tags, expectedRunTags));
+const standardTypes = [...new Set(standardInstances.map((instance) => instance.instanceType))];
+const typeDetails = standardTypes.length === 0 ? [] : awsJson([
+    'ec2', 'describe-instance-types', '--region', REGION,
+    '--instance-types', ...standardTypes,
+    '--query', 'InstanceTypes[].{instanceType:InstanceType,vcpus:VCpuInfo.DefaultVCpus}',
+]);
+const vcpusByType = new Map(typeDetails.map((detail) => [detail.instanceType, detail.vcpus]));
+const standardUsageByType = usageByType(externalStandardInstances, vcpusByType);
+const ownedStandardUsageByType = usageByType(ownedStandardInstances, vcpusByType);
+const observedStandardUsageByType = usageByType(standardInstances, vcpusByType);
+const existingStandardVcpus = standardUsageByType.reduce((sum, type) => sum + type.totalVcpus, 0);
+const ownedStandardVcpus = ownedStandardUsageByType.reduce((sum, type) => sum + type.totalVcpus, 0);
+const observedStandardVcpus = observedStandardUsageByType.reduce((sum, type) => sum + type.totalVcpus, 0);
+const appliedStandardVcpuQuota = Number(quota.Value);
+const loadGeneratorVcpus = loadGeneratorCount * 2;
+const proxyVcpus = experimentMode === 'connection-path-crossover' ? 8 : 0;
+const collectorVcpusPerHost = experimentMode === 'admission-scaleout-capacity' && capacityProfile === 'B' ? 2 : 4;
+const availableCollectorVcpus = appliedStandardVcpuQuota - existingStandardVcpus - loadGeneratorVcpus - proxyVcpus - 2;
+const maxSafeCollectorCount = Math.max(0, Math.min(17, Math.floor(availableCollectorVcpus / collectorVcpusPerHost)));
+const requiredQuotaForCandidate = existingStandardVcpus + loadGeneratorVcpus + proxyVcpus + 2 + collectorCount * collectorVcpusPerHost;
+const streamMaxAgeMinutes = experimentMode === 'connection-path-crossover' ? 360 : ['admission-scaleout-capacity', 'protocol-crossover'].includes(experimentMode) ? 250 : fixedFourMode ? 100 : 160;
+
+function usageByType(selectedInstances, vcpus) {
+    return [...new Set(selectedInstances.map((instance) => instance.instanceType))].sort().map((instanceType) => {
+        const count = selectedInstances.filter((instance) => instance.instanceType === instanceType).length;
+        const vcpusPerInstance = vcpus.get(instanceType);
+        if (!Number.isInteger(vcpusPerInstance)) {
+            throw new Error(`missing vCPU metadata for ${instanceType}`);
+        }
+        return {
+            instanceType,
+            count,
+            vcpusPerInstance,
+            totalVcpus: count * vcpusPerInstance,
+        };
+    });
+}
+
+const kinesisLimits = awsJson(['kinesis', 'describe-limits', '--region', REGION]);
+const availableOpenShards = kinesisLimits.ShardLimit - kinesisLimits.OpenShardCount;
+const stack = describeStack(STACK_NAME);
+const streamStack = describeStack(STREAM_STACK_NAME);
+const sharedStream = describeSharedStream();
+const candidateImage = describeCandidateImage();
+const checks = {
+    awsCliAtLeast2320: awsCliVersionAtLeast2320(),
+    accountMatches: identity.Account === expectedAccount,
+    regionMatches: configuredRegion === REGION &&
+        (!process.env.AWS_REGION || process.env.AWS_REGION === REGION) &&
+        (!process.env.AWS_DEFAULT_REGION || process.env.AWS_DEFAULT_REGION === REGION) &&
+        (!profileRegion || profileRegion === REGION),
+    stackNameMatches: STACK_NAME === (experimentMode === 'capacity-oha12k' ? 'LoopAdPerfPhase1KinesisCapacityOha12kStack'
+        : experimentMode === 'protocol-crossover' ? 'LoopAdPerfPhase1KinesisProtocolCrossoverStack'
+        : experimentMode === 'connection-path-crossover' ? 'LoopAdPerfPhase1KinesisConnectionPathStack'
+        : experimentMode === 'admission-scaleout-capacity' ? 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack'
+        : experimentMode === 'tcp-alb-path-diagnosis' ? 'LoopAdPerfPhase1KinesisTcpAlbPathDiagnosisStack'
+        : experimentMode === 'generator-diagnosis' ? 'LoopAdPerfPhase1KinesisGeneratorDiagnosisStack'
+        : experimentMode === 'scout' ? 'LoopAdPerfPhase1KinesisCapacityScoutStack'
+        : experimentMode === 'capacity' ? 'LoopAdPerfPhase1KinesisCapacityStack' : 'LoopAdPerfPhase1KinesisStack'),
+    quotaAllowsCandidate: requiredQuotaForCandidate <= appliedStandardVcpuQuota && collectorCount <= maxSafeCollectorCount,
+    kinesisHasEightyOpenShards: availableOpenShards >= expectedKinesisShardCount,
+    ecrRepositoryExists: repositoryExists(),
+    candidateImageStateSafe: phase === 'before-image-push'
+        ? !candidateImage.exists
+        : candidateImage.exists && candidateImage.imageDigest === imageDigest,
+    stackStateSafe: false,
+    resourceOwnershipSafe: false,
+    sharedStreamStackSafe: false,
+    sharedStreamOwnershipSafe: false,
+    streamStartWindowOpen: false,
+};
+
+let collisionSummary = [];
+let ownership = {};
+if (phase === 'before-image-push' && retainSharedStream) {
+    collisionSummary = namedResourceCollisions({ includeStream: false });
+    checks.stackStateSafe = !stack.exists;
+    checks.resourceOwnershipSafe = collisionSummary.length === 0;
+    checks.sharedStreamStackSafe = streamStack.exists && UPDATE_SAFE_STACK_STATUSES.includes(streamStack.status);
+    checks.sharedStreamOwnershipSafe = sharedStream.ownedAndHealthy;
+    checks.streamStartWindowOpen = sharedStream.ageMinutes < streamMaxAgeMinutes;
+} else if (phase === 'before-image-push' || phase === 'before-stream-deploy') {
+    collisionSummary = namedResourceCollisions({ includeStream: true });
+    checks.stackStateSafe = !stack.exists;
+    checks.resourceOwnershipSafe = collisionSummary.length === 0;
+    checks.sharedStreamStackSafe = !streamStack.exists;
+    checks.sharedStreamOwnershipSafe = !sharedStream.exists;
+    checks.streamStartWindowOpen = true;
+} else if (phase === 'before-deploy') {
+    collisionSummary = namedResourceCollisions({ includeStream: false });
+    checks.stackStateSafe = !stack.exists;
+    checks.resourceOwnershipSafe = collisionSummary.length === 0;
+    checks.sharedStreamStackSafe = streamStack.exists && UPDATE_SAFE_STACK_STATUSES.includes(streamStack.status);
+    checks.sharedStreamOwnershipSafe = sharedStream.ownedAndHealthy;
+    checks.streamStartWindowOpen = sharedStream.ageMinutes < streamMaxAgeMinutes;
+} else if (phase === 'before-update') {
+    ownership = verifySessionOwnedResources(stack);
+    checks.stackStateSafe = stack.exists && UPDATE_SAFE_STACK_STATUSES.includes(stack.status);
+    checks.resourceOwnershipSafe = Object.values(ownership).every(Boolean);
+    checks.sharedStreamStackSafe = streamStack.exists && UPDATE_SAFE_STACK_STATUSES.includes(streamStack.status);
+    checks.sharedStreamOwnershipSafe = sharedStream.ownedAndHealthy;
+    checks.streamStartWindowOpen = sharedStream.ageMinutes < streamMaxAgeMinutes;
+} else if (phase === 'before-destroy') {
+    ownership = verifyOwnedResources(stack);
+    checks.stackStateSafe = stack.exists;
+    checks.resourceOwnershipSafe = Object.values(ownership).every(Boolean);
+    checks.sharedStreamStackSafe = streamStack.exists && UPDATE_SAFE_STACK_STATUSES.includes(streamStack.status);
+    checks.sharedStreamOwnershipSafe = sharedStream.ownedAndHealthy;
+    checks.streamStartWindowOpen = true;
+} else {
+    collisionSummary = namedResourceCollisions({ includeStream: false });
+    checks.stackStateSafe = !stack.exists;
+    checks.resourceOwnershipSafe = collisionSummary.length === 0;
+    checks.sharedStreamStackSafe = streamStack.exists && UPDATE_SAFE_STACK_STATUSES.includes(streamStack.status);
+    checks.sharedStreamOwnershipSafe = sharedStream.ownedAndHealthy;
+    checks.streamStartWindowOpen = true;
+}
+
+const result = {
+    checkedAt: new Date().toISOString(),
+    phase,
+    experimentMode,
+    region: REGION,
+    expectedStackName: STACK_NAME,
+    runId,
+    sessionId,
+    candidate,
+    retainSharedStream,
+    collectorSha,
+    imageDigest,
+    collectorCount,
+    capacityProfile: capacityProfile ?? null,
+    loadGeneratorCount,
+    identity: {
+        accountMatchesConfiguredAccount: checks.accountMatches,
+    },
+    cli: {
+        version: awsVersion(),
+        configuredProfileRegion: profileRegion,
+        explicitOperationRegion: REGION,
+    },
+    standardOnDemandQuota: {
+        quotaCode: quota.QuotaCode,
+        quotaName: quota.QuotaName,
+        appliedVcpus: appliedStandardVcpuQuota,
+        existingRunningOrPendingVcpus: existingStandardVcpus,
+        existingUsageByType: standardUsageByType,
+        goalOwnedRunningOrPendingVcpus: ownedStandardVcpus,
+        goalOwnedUsageByType: ownedStandardUsageByType,
+        observedRunningOrPendingVcpus: observedStandardVcpus,
+        observedUsageByType: observedStandardUsageByType,
+        ignoredNonStandardInstanceCount: instances.length - standardInstances.length,
+        loadGeneratorVcpus,
+        proxyVcpus,
+        safetyReserveVcpus: 2,
+        collectorVcpusPerHost,
+        availableCollectorVcpus,
+        maxSafeCollectorCount,
+        requiredQuotaForCandidate,
+    },
+    kinesisOpenShards: {
+        shardLimit: kinesisLimits.ShardLimit,
+        openShardCount: kinesisLimits.OpenShardCount,
+        availableOpenShards,
+        requiredOpenShards: expectedKinesisShardCount,
+    },
+    stack: {
+        exists: stack.exists,
+        status: stack.status,
+    },
+    sharedStreamStack: {
+        name: STREAM_STACK_NAME,
+        exists: streamStack.exists,
+        status: streamStack.status,
+    },
+    sharedStream,
+    candidateImage,
+    namedResourceCollisions: collisionSummary,
+    ownership,
+    checks,
+    passed: Object.values(checks).every(Boolean),
+};
+
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) {
+    writeFileSync(outputPath, serialized, 'utf8');
+}
+process.stdout.write(serialized);
+if (!result.passed) {
+    process.exitCode = 2;
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function awsJsonOrNotFound(args, notFoundPatterns) {
+    const result = spawnSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    });
+    if (result.status !== 0) {
+        const errorText = `${result.stdout}\n${result.stderr}`;
+        if (notFoundPatterns.some((pattern) => errorText.includes(pattern))) {
+            return undefined;
+        }
+        throw new Error(`AWS command failed closed: aws ${args.join(' ')}\n${result.stderr.trim()}`);
+    }
+    return JSON.parse(result.stdout);
+}
+
+function describeStack(stackName) {
+    const response = awsJsonOrNotFound(
+        ['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', stackName],
+        ['does not exist'],
+    );
+    if (!response || response.Stacks.length === 0) {
+        return { exists: false, status: undefined, tags: [] };
+    }
+    const current = response.Stacks[0];
+    return { exists: true, status: current.StackStatus, tags: current.Tags ?? [] };
+}
+
+function namedResourceCollisions({ includeStream }) {
+    const collisions = [];
+    const asgs = awsJson([
+        'autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+        '--auto-scaling-group-names', COLLECTOR_ASG, ...loadGeneratorAsgNames, ...proxyAsgNames,
+    ]).AutoScalingGroups;
+    if (asgs.length > 0) collisions.push('autoscaling-groups');
+    if (includeStream && awsJsonOrNotFound(['kinesis', 'describe-stream-summary', '--region', REGION, '--stream-name', STREAM_NAME], ['ResourceNotFoundException'])) collisions.push('kinesis-stream');
+    if (awsJsonOrNotFound(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', ALB_NAME], ['LoadBalancerNotFound'])) collisions.push('load-balancer');
+    if (NLB_NAMES.some((name) => awsJsonOrNotFound(
+        ['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name], ['LoadBalancerNotFound'],
+    ))) collisions.push('network-load-balancer');
+    if (experimentMode === 'protocol-crossover' && PROTOCOL_TARGET_GROUP_NAMES.some((name) => (
+        awsJsonOrNotFound(['elbv2', 'describe-target-groups', '--region', REGION, '--names', name], ['TargetGroupNotFound'])
+    ))) collisions.push('protocol-target-group');
+    if (experimentMode === 'connection-path-crossover' && CONNECTION_PATH_LOAD_BALANCER_NAMES.some((name) => awsJsonOrNotFound(
+        ['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name], ['LoadBalancerNotFound'],
+    ))) collisions.push('connection-path-load-balancer');
+    if (experimentMode === 'connection-path-crossover' && CONNECTION_PATH_TARGET_GROUP_NAMES.some((name) => awsJsonOrNotFound(
+        ['elbv2', 'describe-target-groups', '--region', REGION, '--names', name], ['TargetGroupNotFound'],
+    ))) collisions.push('connection-path-target-group');
+    const vpcs = awsJson(['ec2', 'describe-vpcs', '--region', REGION, '--filters', `Name=tag:Name,Values=${VPC_NAME}`]).Vpcs;
+    if (vpcs.length > 0) collisions.push('vpc');
+    const clusterNames = experimentMode === 'connection-path-crossover' ? [CLUSTER_NAME, CONNECTION_PATH_PROXY_CLUSTER_NAME] : [CLUSTER_NAME];
+    const clusters = awsJson(['ecs', 'describe-clusters', '--region', REGION, '--clusters', ...clusterNames]).clusters ?? [];
+    if (clusters.some((cluster) => cluster.status === 'ACTIVE')) collisions.push('ecs-cluster');
+    const groups = awsJson(['logs', 'describe-log-groups', '--region', REGION, '--log-group-name-prefix', LOG_GROUP_NAME]).logGroups ?? [];
+    if (groups.some((group) => group.logGroupName === LOG_GROUP_NAME)) collisions.push('log-group');
+    if (experimentMode === 'connection-path-crossover') {
+        const proxyGroups = awsJson(['logs', 'describe-log-groups', '--region', REGION, '--log-group-name-prefix', CONNECTION_PATH_PROXY_LOG_GROUP_NAME]).logGroups ?? [];
+        if (proxyGroups.some((group) => group.logGroupName === CONNECTION_PATH_PROXY_LOG_GROUP_NAME)) collisions.push('connection-path-proxy-log-group');
+    }
+    if (pathEvidenceMode) {
+        const diagnosticGroup = `/loop-ad/perf-phase1/tcp-alb-path/${runId}/vpc-flow`;
+        const diagnosticGroups = awsJson(['logs', 'describe-log-groups', '--region', REGION, '--log-group-name-prefix', diagnosticGroup]).logGroups ?? [];
+        if (diagnosticGroups.some((group) => group.logGroupName === diagnosticGroup)) collisions.push('diagnostic-flow-log-group');
+    }
+    if (REQUIRED_ROLE_NAMES.some((roleName) => awsJsonOrNotFound(['iam', 'get-role', '--role-name', roleName], ['NoSuchEntity']))) collisions.push('iam-role');
+    return collisions;
+}
+
+function verifyOwnedResources(stack) {
+    const expectedTags = {
+        Project: 'loop-ad', Environment: 'perf-phase1-kinesis', RunId: runId,
+        ComparisonSessionId: sessionId, Candidate: candidate,
+        ...capacityOwnershipTags(runId),
+    };
+    const asgs = awsJson([
+        'autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+        '--auto-scaling-group-names', COLLECTOR_ASG, ...loadGeneratorAsgNames, ...proxyAsgNames,
+    ]).AutoScalingGroups;
+    const expectedLoadBalancerNames = experimentMode === 'protocol-crossover' ? NLB_NAMES
+        : experimentMode === 'connection-path-crossover' ? CONNECTION_PATH_LOAD_BALANCER_NAMES : [ALB_NAME];
+    const loadBalancers = expectedLoadBalancerNames.flatMap((name) => awsJsonOrNotFound(
+        ['elbv2', 'describe-load-balancers', '--region', REGION, '--names', name], ['LoadBalancerNotFound'],
+    )?.LoadBalancers ?? []);
+    const loadBalancerTags = loadBalancers.length === expectedLoadBalancerNames.length
+        ? awsJson(['elbv2', 'describe-tags', '--region', REGION, '--resource-arns', ...loadBalancers.map((item) => item.LoadBalancerArn)]).TagDescriptions.map((item) => item.Tags ?? [])
+        : [];
+    const vpcs = awsJson(['ec2', 'describe-vpcs', '--region', REGION, '--filters', `Name=tag:Name,Values=${VPC_NAME}`]).Vpcs;
+    return {
+        stack: stack.exists && ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.status),
+        autoScalingGroups: asgs.length === 1 + loadGeneratorAsgNames.length + proxyAsgNames.length && asgs.every((asg) => tagsMatch(asg.Tags, expectedTags)),
+        loadBalancer: loadBalancers.length === expectedLoadBalancerNames.length && loadBalancerTags.every((tags) => tagsMatch(tags, expectedTags)),
+        vpc: vpcs.length === 1 && tagsMatch(vpcs[0].Tags, expectedTags),
+    };
+}
+
+function verifySessionOwnedResources(stack) {
+    const expectedTags = {
+        Project: 'loop-ad', Environment: 'perf-phase1-kinesis', ComparisonSessionId: sessionId,
+        SessionId: sessionId, Phase: phaseTag(), ManagedBy: 'codex', Owner: 'loop-ad',
+    };
+    const asgs = awsJson(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+        '--auto-scaling-group-names', COLLECTOR_ASG, ...loadGeneratorAsgNames, ...proxyAsgNames]).AutoScalingGroups;
+    return {
+        stack: stack.exists && UPDATE_SAFE_STACK_STATUSES.includes(stack.status),
+        autoScalingGroups: asgs.length === 1 + loadGeneratorAsgNames.length + proxyAsgNames.length && asgs.every((asg) => tagsMatch(asg.Tags, expectedTags)),
+    };
+}
+
+function describeSharedStream() {
+    const summary = awsJsonOrNotFound(
+        ['kinesis', 'describe-stream-summary', '--region', REGION, '--stream-name', STREAM_NAME],
+        ['ResourceNotFoundException'],
+    )?.StreamDescriptionSummary;
+    if (!summary) {
+        return { exists: false, ownedAndHealthy: false };
+    }
+    const tags = awsJson(['kinesis', 'list-tags-for-stream', '--region', REGION, '--stream-name', STREAM_NAME]).Tags ?? [];
+    const expectedTags = {
+        Project: 'loop-ad',
+        Environment: 'perf-phase1-kinesis',
+        ResourceScope: 'shared-test-session',
+        ComparisonSessionId: sessionId,
+        ...capacityOwnershipTags(sessionId),
+    };
+    const creationTimestamp = new Date(summary.StreamCreationTimestamp);
+    const ageMinutes = (Date.now() - creationTimestamp.getTime()) / 60_000;
+    return {
+        exists: true,
+        streamStatus: summary.StreamStatus,
+        openShardCount: summary.OpenShardCount,
+        retentionPeriodHours: summary.RetentionPeriodHours,
+        creationTimestamp: creationTimestamp.toISOString(),
+        ageMinutes,
+        tagsMatch: tagsMatch(tags, expectedTags),
+        ownedAndHealthy: summary.StreamStatus === 'ACTIVE' &&
+            summary.OpenShardCount === expectedKinesisShardCount &&
+            summary.RetentionPeriodHours === 24 &&
+            tagsMatch(tags, expectedTags),
+    };
+}
+
+function describeCandidateImage() {
+    const imageTag = fixedFourMode
+        ? `${sessionId}-${candidate}-${collectorSha}`
+        : `phase1-compare-${candidate}-${collectorSha}`;
+    const response = awsJsonOrNotFound([
+        'ecr', 'describe-images', '--region', REGION, '--repository-name', 'loop-ad/event-collector',
+        '--image-ids', `imageTag=${imageTag}`,
+    ], ['ImageNotFoundException', 'RepositoryNotFoundException']);
+    const detail = response?.imageDetails?.[0];
+    return {
+        imageTag,
+        exists: Boolean(detail),
+        imageDigest: detail?.imageDigest ?? null,
+        imageSizeInBytes: detail?.imageSizeInBytes ?? null,
+    };
+}
+
+function capacityOwnershipTags(expectedRunId) {
+    return fixedFourMode ? {
+        SessionId: sessionId,
+        RunId: expectedRunId,
+        Phase: phaseTag(),
+        ManagedBy: 'codex',
+        Owner: 'loop-ad',
+    } : {};
+}
+
+function phaseTag() { return experimentMode === 'scout' ? 'phase1-capacity-scout'
+    : experimentMode === 'capacity-oha12k' ? 'phase1-capacity-oha12k'
+    : experimentMode === 'tcp-alb-path-diagnosis' ? 'phase1-tcp-alb-path-diagnosis'
+    : experimentMode === 'admission-scaleout-capacity' ? 'phase1-admission-scaleout-capacity'
+    : experimentMode === 'protocol-crossover' ? 'phase1-protocol-crossover'
+    : experimentMode === 'connection-path-crossover' ? 'phase1-connection-path-crossover'
+    : experimentMode === 'generator-diagnosis' ? 'phase1-generator-diagnosis' : 'phase1-capacity'; }
+
+function tagsMatch(tags, expected) {
+    const tagMap = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value]));
+    return Object.entries(expected).every(([key, value]) => tagMap[key] === value);
+}
+
+function repositoryExists() {
+    return Boolean(awsJsonOrNotFound(
+        ['ecr', 'describe-repositories', '--region', REGION, '--repository-names', 'loop-ad/event-collector'],
+        ['RepositoryNotFoundException'],
+    ));
+}
+
+function isStandardInstanceType(instanceType) {
+    return /^(a|c|d|h|i|m|r|t|z)[0-9]/.test(instanceType) && !instanceType.startsWith('mac');
+}
+
+function awsVersion() {
+    const result = spawnSync('aws', ['--version'], { encoding: 'utf8' });
+    return `${result.stdout}${result.stderr}`.trim();
+}
+
+function awsCliVersionAtLeast2320() {
+    const match = awsVersion().match(/aws-cli\/(\d+)\.(\d+)\.(\d+)/);
+    return Boolean(match && (Number(match[1]) > 2 || (Number(match[1]) === 2 && Number(match[2]) >= 32)));
+}
+
+function configuredAwsRegion() {
+    const result = spawnSync('aws', ['configure', 'get', 'region'], { encoding: 'utf8' });
+    return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
+    return value;
+}
+
+function integerOption(name, fallback) {
+    const raw = optionValue(name);
+    if (raw === undefined) return fallback;
+    const value = Number(raw);
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
+    return value;
+}

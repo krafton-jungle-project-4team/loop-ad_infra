@@ -1,0 +1,242 @@
+#!/usr/bin/env node
+
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const runDir = requiredOption('--run-dir');
+const kind = requiredOption('--kind');
+const targetRps = requiredInteger('--target-rps');
+const durationSeconds = requiredInteger('--duration-seconds');
+const collectorCount = requiredInteger('--collector-count');
+if (!['smoke', 'exploration', 'final', 'overload'].includes(kind)) throw new Error('invalid run kind');
+
+const oha = readJson(join(runDir, 'load/oha-summary.json'));
+const cloudWatch = readJson(join(runDir, 'metrics/cloudwatch-summary.json'));
+const cloudWatchRaw = readJson(join(runDir, 'metrics/cloudwatch-metrics.json'));
+const before = readDebugSnapshots(join(runDir, 'debug-vars/pre-load'));
+const after = readDebugSnapshots(join(runDir, 'debug-vars/post-load'));
+const deployed = readJson(join(runDir, 'deployed-state.json'));
+const postLoad = readJson(join(runDir, 'post-load-state.json'));
+const logs = readJson(join(runDir, 'logs/collector-error-logs.json'));
+if (before.length !== collectorCount || after.length !== collectorCount) throw new Error('collector debug snapshot count mismatch');
+
+const debugDeltas = before.map((snapshot, index) => {
+    const end = after[index];
+    return {
+        hostLabel: snapshot.hostLabel,
+        admissionRejected: delta(end.data.admission.rejected_total, snapshot.data.admission.rejected_total),
+        operations: delta(end.data.kinesis.put_record_operations_total, snapshot.data.kinesis.put_record_operations_total),
+        wireAttempts: delta(end.data.kinesis.put_record_attempts_total, snapshot.data.kinesis.put_record_attempts_total),
+        successes: delta(end.data.kinesis.put_record_successes_total, snapshot.data.kinesis.put_record_successes_total),
+        throttles: delta(end.data.kinesis.put_record_throttles_total, snapshot.data.kinesis.put_record_throttles_total),
+        failures: delta(end.data.kinesis.put_record_failures_total, snapshot.data.kinesis.put_record_failures_total),
+        retries: delta(end.data.kinesis.put_record_retries_total, snapshot.data.kinesis.put_record_retries_total),
+        numGc: delta(end.data.go.num_gc, snapshot.data.go.num_gc),
+        heapAllocBeforeBytes: snapshot.data.go.heap_alloc_bytes,
+        heapAllocAfterBytes: end.data.go.heap_alloc_bytes,
+        heapAllocGrowthRatio: snapshot.data.go.heap_alloc_bytes > 0
+            ? (end.data.go.heap_alloc_bytes - snapshot.data.go.heap_alloc_bytes) / snapshot.data.go.heap_alloc_bytes
+            : null,
+        goroutinesBefore: snapshot.data.go.goroutines,
+        goroutinesAfter: end.data.go.goroutines,
+    };
+});
+const debugTotals = Object.fromEntries([
+    'admissionRejected', 'operations', 'wireAttempts', 'successes', 'throttles', 'failures', 'retries',
+].map((field) => [field, debugDeltas.reduce((sum, host) => sum + host[field], 0)]));
+
+const attempted = oha.attemptedRequests;
+const http202Rate = attempted > 0 ? oha.http202 / attempted : 0;
+const transportErrorRate = attempted > 0 ? oha.transportErrors / attempted : 1;
+const incomingRecords = metric('kinesis_incoming_records_sum', 'sum');
+const incomingDifferenceRate = incomingRecords === null || oha.http202 === 0
+    ? null
+    : Math.abs(incomingRecords - oha.http202) / oha.http202;
+const loadStartMilliseconds = Date.parse(oha.startedAt);
+const loadEndMilliseconds = Date.parse(oha.endedAt);
+const fullLoadCpuPoints = fullLoadMinuteValues('ecs_cpuutilization_average', loadStartMilliseconds, loadEndMilliseconds);
+const fullLoadMemoryPoints = fullLoadMinuteValues('ecs_memoryutilization_average', loadStartMilliseconds, loadEndMilliseconds);
+const fullLoadCpuAverage = average(fullLoadCpuPoints);
+const consecutiveHighCpu = hasConsecutive(fullLoadCpuPoints, (value) => value > 90, 2);
+const memoryGrowthRatio = fullLoadMemoryPoints.length > 1 && fullLoadMemoryPoints[0] > 0
+    ? (fullLoadMemoryPoints.at(-1) - fullLoadMemoryPoints[0]) / fullLoadMemoryPoints[0]
+    : null;
+const taskIdsStable = JSON.stringify(deployed.taskIds ?? []) === JSON.stringify(postLoad.taskIds ?? []);
+
+const evidence = {
+    cloudWatchComplete: [
+        'kinesis_incoming_records_sum', 'kinesis_write_throttle_sum', 'alb_requests_sum',
+        'alb_target_2xx_sum',
+        'alb_unhealthy_hosts_max', 'ecs_cpuutilization_average', 'ecs_memoryutilization_average',
+        'load_generator_cpu_avg',
+    ].every((id) => metric(id, 'sampleCount') > 0) &&
+        ['alb_target_5xx_sum', 'alb_elb_5xx_sum'].every((id) => metric(id, 'statusCode') === 'Complete'),
+    collectorSnapshotsComplete: before.length === collectorCount && after.length === collectorCount,
+    taskStateComplete: Array.isArray(deployed.taskIds) && Array.isArray(postLoad.taskIds),
+    logEvidenceComplete: typeof logs.matchedEventCount === 'number' && logs.delivery?.verified === true,
+};
+const commonCriteria = {
+    generatorReachedTarget: oha.actualRps >= targetRps * 0.99,
+    http202RateAtLeast999: http202Rate >= 0.999,
+    http429Zero: oha.http429 === 0,
+    transportErrorsAtMost001: transportErrorRate <= 0.001,
+    albTarget5xxAtMost001: rate(metric('alb_target_5xx_sum', 'sum'), metric('alb_requests_sum', 'sum')) <= 0.001,
+    albOwn5xxZero: metric('alb_elb_5xx_sum', 'sum') === 0,
+    p95AtMost100ms: oha.latencyMs.p95 <= 100,
+    p99AtMost500ms: oha.latencyMs.p99 <= 500,
+    incomingRecordsWithin001: incomingDifferenceRate !== null && incomingDifferenceRate <= 0.001,
+    kinesisThrottleZero: metric('kinesis_write_throttle_sum', 'sum') === 0 && debugTotals.throttles === 0,
+    eventHttpPutRecordOneToOne: debugTotals.operations === oha.http202 &&
+        debugTotals.wireAttempts === debugTotals.operations && debugTotals.successes === debugTotals.operations &&
+        debugTotals.failures === 0 && debugTotals.retries === 0,
+    tasksDidNotRestart: taskIdsStable,
+    noUnhealthyTargets: metric('alb_unhealthy_hosts_max', 'max') === 0,
+    noOomKilledPanicOrFatal: logs.categories.oomOrKilled === 0 && logs.categories.panicOrFatal === 0,
+};
+const criteria = kind === 'overload'
+    ? {
+        overloadProduced429: oha.http429 > 0 && debugTotals.admissionRejected > 0,
+        overloadNo5xx: oha.http5xx === 0 && metric('alb_target_5xx_sum', 'sum') === 0 && metric('alb_elb_5xx_sum', 'sum') === 0,
+        tasksDidNotRestart: taskIdsStable,
+        noUnhealthyTargets: metric('alb_unhealthy_hosts_max', 'max') === 0,
+        noOomKilledPanicOrFatal: logs.categories.oomOrKilled === 0 && logs.categories.panicOrFatal === 0,
+    }
+    : {
+        ...commonCriteria,
+        ...(kind === 'final' ? {
+            durationAtLeast300Seconds: durationSeconds >= 300,
+            fiveFullCollectorCpuMinutesCollected: fullLoadCpuPoints.length >= 5,
+            twoFullCollectorMemoryMinutesCollected: fullLoadMemoryPoints.length >= 2,
+            averageCollectorCpuAtMost85: fullLoadCpuAverage !== null && fullLoadCpuAverage <= 85,
+            noTwoConsecutiveCpuMinutesAbove90: !consecutiveHighCpu,
+            serviceMemoryGrowthAtMost20Percent: memoryGrowthRatio !== null && memoryGrowthRatio <= 0.20,
+            everyCollectorGcAdvancedAtLeastThree: debugDeltas.every((host) => host.numGc >= 3),
+        } : {}),
+    };
+const evidenceComplete = Object.values(evidence).every(Boolean);
+const criteriaPassed = Object.values(criteria).every(Boolean);
+const verdict = !evidenceComplete ? 'inconclusive' : criteriaPassed ? 'passed' : 'failed';
+
+const result = {
+    summarizedAt: new Date().toISOString(),
+    kind,
+    verdict,
+    targetRps,
+    durationSeconds,
+    collectorCount,
+    actualRps: oha.actualRps,
+    requests: {
+        attempted: oha.attemptedRequests,
+        completed: oha.completedRequests,
+        http202: oha.http202,
+        http202Rate,
+        http400: oha.http400,
+        http413: oha.http413,
+        http429: oha.http429,
+        http5xx: oha.http5xx,
+        transportErrors: oha.transportErrors,
+        transportErrorRate,
+    },
+    latencyMs: oha.latencyMs,
+    kinesis: {
+        incomingRecords,
+        incomingDifferenceRate,
+        incomingBytes: metric('kinesis_incoming_bytes_sum', 'sum'),
+        writeProvisionedThroughputExceeded: metric('kinesis_write_throttle_sum', 'sum'),
+    },
+    alb: {
+        requestCount: metric('alb_requests_sum', 'sum'),
+        target2xx: metric('alb_target_2xx_sum', 'sum'),
+        target4xx: metric('alb_target_4xx_sum', 'sum'),
+        target5xx: metric('alb_target_5xx_sum', 'sum'),
+        elb5xx: metric('alb_elb_5xx_sum', 'sum'),
+        unhealthyHostMaximum: metric('alb_unhealthy_hosts_max', 'max'),
+    },
+    compute: {
+        ecsCpuAverage: metric('ecs_cpuutilization_average', 'average'),
+        ecsCpuMaximum: metric('ecs_cpuutilization_maximum', 'max'),
+        ecsMemoryAverage: metric('ecs_memoryutilization_average', 'average'),
+        ecsMemoryMaximum: metric('ecs_memoryutilization_maximum', 'max'),
+        fullLoadCpuMinuteCount: fullLoadCpuPoints.length,
+        fullLoadMemoryMinuteCount: fullLoadMemoryPoints.length,
+        fullLoadEcsCpuAverage: fullLoadCpuAverage,
+        serviceMemoryGrowthRatio: memoryGrowthRatio,
+        loadGeneratorCpuAverage: metric('load_generator_cpu_avg', 'average'),
+        loadGeneratorCpuMaximum: metric('load_generator_cpu_max', 'max'),
+        taskIdsStable,
+    },
+    collectorDebug: {
+        totals: debugTotals,
+        hosts: debugDeltas,
+    },
+    logs: {
+        matchedEventCount: logs.matchedEventCount,
+        categories: logs.categories,
+    },
+    evidence,
+    criteria,
+};
+writeFileSync(join(runDir, 'metrics-summary.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+function metric(id, key) {
+    return cloudWatch.metrics[id]?.[key] ?? null;
+}
+
+function fullLoadMinuteValues(id, startMilliseconds, endMilliseconds) {
+    const metric = cloudWatchRaw.MetricDataResults.find((candidate) => candidate.Id === id);
+    return (metric?.Values ?? []).flatMap((value, index) => {
+        const timestamp = Date.parse(metric.Timestamps?.[index] ?? '');
+        return Number.isFinite(timestamp) && timestamp >= startMilliseconds && timestamp + 60_000 <= endMilliseconds
+            ? [value]
+            : [];
+    });
+}
+
+function average(values) {
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function hasConsecutive(values, predicate, required) {
+    let current = 0;
+    for (const value of values) {
+        current = predicate(value) ? current + 1 : 0;
+        if (current >= required) return true;
+    }
+    return false;
+}
+
+function rate(numerator, denominator) {
+    if (numerator === null || denominator === null || denominator <= 0) return Number.POSITIVE_INFINITY;
+    return numerator / denominator;
+}
+
+function delta(end, start) {
+    const value = end - start;
+    if (!Number.isFinite(value) || value < 0) throw new Error('counter decreased between debug snapshots');
+    return value;
+}
+
+function readDebugSnapshots(directory) {
+    return readdirSync(directory)
+        .filter((file) => /^collector-[0-9]+\.json$/.test(file))
+        .sort()
+        .map((file) => ({ hostLabel: file.replace('.json', ''), data: readJson(join(directory, file)) }));
+}
+
+function readJson(path) {
+    return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 19,
+  "runId": "run_20260719_083356_phase7_archive_diagnostic",
+  "verifiedAt": "2026-07-19T09:29:41.398Z",
+  "failure": {
+    "firstFailingGate": "runtime-deploy-readiness",
+    "rawError": "/usr/local/sbin/phase7-clickhousearchivediagnostic-ecs-readiness-signal: line 13: aws: command not found"
+  },
+  "fix": {
+    "summary": "Before creating or enabling any shared Phase 7 readiness signal script, fail closed unless aws is already available or yum install -y awscli succeeds. Validate the bootstrap precedes both CloudFormation SignalResource and ECS DescribeContainerInstances. Record KeyboardInterrupt as a failed verdict while retaining finally cleanup.",
+    "commit": "7c46d73000c86769862fb2c710f9dbde61ccd617",
+    "gitTree": "484910087293cf8d05d4ef5b7af3efe78f16b153",
+    "appliesTo": [
+      "promotion-ineligible targeted archive diagnostic host",
+      "strict Phase 7 collector, HAProxy, consumer and ClickHouse capacity hosts",
+      "targeted runtime interrupt reporting"
+    ]
+  },
+  "verification": {
+    "awsRequests": 0,
+    "targetedAndStrictCdkTests": {
+      "passed": 21,
+      "failed": 0
+    },
+    "targetedPythonToolingTests": {
+      "passed": 9,
+      "failed": 0
+    },
+    "typescriptBuild": "passed",
+    "exactTargetedSynth": {
+      "passed": true,
+      "templateSha256": "7a3d03416bc4391f0a7a3e0c6ced006edf79561abe9571e18fd1559d49acaa6e",
+      "decodedUserDataByteUpperBound": 8681,
+      "ec2DecodedLimit": 16384,
+      "campaignMarginLimit": 15360,
+      "awsCliBootstrapBeforeSignals": true,
+      "blockingEcsRestartAbsent": true,
+      "serviceWaitsForExactRegistration": true,
+      "sourceDeletePermissionAbsent": true,
+      "firstInvocationRejectedBeforeSynthesis": "LOOP_AD_REGION was omitted from the local shell; the exact-environment invocation then passed. No AWS request or mutation occurred."
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "acceptedAssemblyOnlyE1022": 6,
+      "unexpectedFindings": 0,
+      "passed": true
+    },
+    "wholePhase7LocalDeferred": true,
+    "status": "passed"
+  },
+  "realAwsVerification": {
+    "status": "fresh-attempt-required",
+    "nextProbe": "A fresh promotion-ineligible targeted archive attempt must prove yum can install awscli when absent, both readiness signals complete, 15M archive equivalence passes, source remains, and cleanup returns to authoritative zero."
+  }
+}

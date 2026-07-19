@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-10T04:30:02",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "infra.instanceCount",
+      "value": 2,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "load.durationSeconds",
+      "value": 150,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.errorCount",
+      "value": 0,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.generatorAlbCountDifferenceRatio",
+      "value": 0,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "infra.instanceCount",
+      "value": 2,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "infra.selectedVcpu",
+      "value": 4,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "infra.quotaVcpu",
+      "value": 32,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "infra.reductionFromPriorVcpu",
+      "value": 0.75,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "load.durationSeconds",
+      "value": 150,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "load.waitForOngoingRequestsAfterDeadline",
+      "value": true,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "load.latencyCorrection",
+      "value": true,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.completedRequests",
+      "value": 8999961,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.attemptedRequests",
+      "value": 8999961,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.errorCount",
+      "value": 0,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.effectiveSuccessRate",
+      "value": 1,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.sumHostRequestsPerSecond",
+      "value": 59973.681531558825,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.maxHostP50Milliseconds",
+      "value": 1.117682,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.maxHostP95Milliseconds",
+      "value": 1.590814,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.maxHostP99Milliseconds",
+      "value": 2.846055,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.albCompleteMinuteRequestsPerSecond",
+      "value": 60002.183333333334,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.generatorAlbCountDifferenceRatio",
+      "value": 0,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.weightedCpuUtilizationPercent",
+      "value": 13.568622560329239,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    },
+    {
+      "name": "result.maxCpuIntervalPercent",
+      "value": 24.452133794694348,
+      "source": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/artifacts.md",
+      "bytes": 567,
+      "sha256": "e12029c33f4f5b6d67fd0f82bef957a872a4ec6c0b2172d8c47ca080289339f6"
+    },
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/commands.md",
+      "bytes": 503,
+      "sha256": "9f68b3b91977c77d499347beba1139f7b0a7e727e72ca2d95a91092f1122f0b8"
+    },
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/cost.md",
+      "bytes": 321,
+      "sha256": "83d33c192ed2ecd63e0a3de87d019117e8fc1002a8c27e17e145ceaa3895ee81"
+    },
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/infra.md",
+      "bytes": 202,
+      "sha256": "ef4175b123879c2cc5bd1d0cffa94b52efa4afd3cf2cdce005ed40f1398afd4f"
+    },
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/report.md",
+      "bytes": 894,
+      "sha256": "2f6431e4c0e62e295e8f97450e05da645d86a301d67b9c03cacea44d60eb4a83"
+    },
+    {
+      "path": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/run.json",
+      "bytes": 1635,
+      "sha256": "9a78000bcf86476df6863a4f5f58880460233d8b0c0a29adda86fdff3d445a0f"
+    }
+  ]
+}

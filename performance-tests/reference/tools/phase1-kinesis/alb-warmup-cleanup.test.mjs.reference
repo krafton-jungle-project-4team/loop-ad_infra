@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateAlbWarmupCleanup } from './alb-warmup-cleanup.mjs';
+
+function empty() { return { runStack: null, streamStack: null, instances: [], autoScalingGroups: [], launchTemplates: [], loadBalancers: [], targetGroups: [], vpcs: [],
+    kinesisStream: null, ecsClusters: [], logGroups: [], alarms: [], iamRoles: [], ecrImages: [],
+    s3: { bucketExists: false, objects: [], multipartUploads: [], policyExists: false } }; }
+test('passes only an actually absent session inventory', () => assert.equal(evaluateAlbWarmupCleanup(empty()).passed, true));
+test('fails if objects, multipart uploads, bucket, or policy remain', () => {
+    const inventory = empty(); inventory.s3 = { bucketExists: true, objects: [{ Key: 'raw' }], multipartUploads: [{ Key: 'partial' }], policyExists: true };
+    const result = evaluateAlbWarmupCleanup(inventory); assert.equal(result.passed, false); assert.equal(result.checks.s3MultipartUploadsAbsent, false);
+});

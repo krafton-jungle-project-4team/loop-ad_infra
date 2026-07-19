@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 17,
+  "runId": "run_20260719_043415_phase7_integration",
+  "sessionId": "phase7-integration-20260719T043415Z",
+  "diagnosedAt": "2026-07-19T06:01:58Z",
+  "firstFailingGate": "score_archive",
+  "archiveTask": {
+    "count": 1,
+    "startedAt": "2026-07-19T05:33:21.104Z",
+    "stoppedAt": "2026-07-19T05:42:18.585Z",
+    "exitCode": 1,
+    "overlappedScore": true
+  },
+  "rawAwsError": "ClickHouse HTTP 500: Code: 241. DB::Exception: Query memory limit exceeded: would use 4.50 GiB (attempt to allocate chunk of 6.04 MiB), maximum: 4.50 GiB: read stage: ColumnData: column: properties_json in part-00000.parquet; MEMORY_LIMIT_EXCEEDED.",
+  "rawAwsErrorSource": {
+    "logGroup": "/loopad/perf/phase7/run_20260719_043415_phase7_integration/ArchiveLogs",
+    "eventTimestamp": "2026-07-19T05:42:03.319Z",
+    "capturedBeforeCleanup": true
+  },
+  "diagnosis": "Attempt 15 raised the Phase 7 ClickHouse container to 8 GiB and server cap to 7 GiB, but performance-tests/phase7-integration/archive/entrypoint.py retained clickhouse_memory_bytes at 9*1024^3/2 (4.5 GiB). Attempt 17 therefore moved the binding limit from the server cap to the stale per-query cap. The failing Parquet re-read exceeded that cap by only 6.04 MiB.",
+  "confidence": "high",
+  "smallestFix": "Set only the Phase 7 archive entrypoint query memory to the archive engine's already validated MAX_CLICKHOUSE_MEMORY of 5 GiB and update the focused memory invariant tests. Retain the 7 GiB server and 8 GiB container caps.",
+  "dropSafety": {
+    "committedProducedAndReread": false,
+    "sourceDropAllowed": false,
+    "sourceDropExecuted": false
+  },
+  "evidence": {
+    "scoreArchiveStderrSha256": "d2eb1488ffab143c6dc1ad58911be67c53f716ceb43b2146b5b4cbe76501c547",
+    "archiveTaskSha256": "d768644def749091676082f660cbdee306248f6837deaa0786f4d26831b1b1b0",
+    "cancellationEvidenceSha256": "f13584405cfc5a6846c749b48488f7c9fa61016dc44b2bdeb974f73e9fbab2c6",
+    "warmupStageSummarySha256": "d1bbbf2b18d1eeb60bc9a433a673fbada151ac3a57965dde4de59af9c7830d0a",
+    "scoreWorkerTreeSha256": "aeb464e2e2a78571966b46ca284fa1995c77aa50dc270eab4955abf9f8af7c94"
+  }
+}

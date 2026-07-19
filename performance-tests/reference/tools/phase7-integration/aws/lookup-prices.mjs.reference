@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const LOCATION = 'Asia Pacific (Seoul)';
+const outputPath = requiredOption('--output');
+
+const selections = {
+    collectorC6iXlargeHour: instancePrice('c6i.xlarge'),
+    haproxyC6inXlargeHour: instancePrice('c6in.xlarge'),
+    generatorC6inLargeHour: instancePrice('c6in.large'),
+    consumerC7gLargeHour: instancePrice('c7g.large'),
+    clickHouseR7g2xlargeHour: instancePrice('r7g.2xlarge'),
+    kinesisProvisionedShardHour: selectQuery('AmazonKinesis', { operation: 'shardHourStorage', group: 'Provisioned shard hour' }),
+    kinesisPutPayloadUnit: selectQuery('AmazonKinesis', { operation: 'PutRequest', group: 'Payload Units' }),
+    nlbHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Network', usagetype: 'APN2-LoadBalancerUsage' }),
+    nlbLcuHour: selectQuery('AWSELB', { operation: 'LoadBalancing:Network', usagetype: 'APN2-LCUUsage' }),
+    natGatewayHour: selectQuery('AmazonEC2', { usagetype: 'APN2-NatGateway-Hours', operation: 'NatGateway' }),
+    natGatewayDataGb: selectQuery('AmazonEC2', { usagetype: 'APN2-NatGateway-Bytes', operation: 'NatGateway' }),
+    publicIpv4Hour: selectQuery('AmazonVPC', { usagetype: 'APN2-PublicIPv4:InUseAddress' }),
+    ebsGp3GbMonth: selectQuery('AmazonEC2', { usagetype: 'APN2-EBS:VolumeUsage.gp3' }),
+    ebsGp3ThroughputGibpsMonth: selectQuery('AmazonEC2', { usagetype: 'APN2-EBS:VolumeP-Throughput.gp3' }),
+    secretsManagerSecretMonth: selectQuery('AWSSecretsManager', { usagetype: 'APN2-AWSSecretsManager-Secrets' }),
+    secretsManagerApiRequest: selectQuery('AWSSecretsManager', { usagetype: 'APN2-AWSSecretsManagerAPIRequest' }),
+    cloudWatchMetricMonth: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-CW:MetricMonitorUsage' }),
+    cloudWatchLogIngestGb: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-DataProcessing-Bytes', operation: 'PutLogEvents' }),
+    cloudWatchLogStorageGbMonth: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-TimedStorage-ByteHrs' }),
+    cloudWatchGetMetricDataMetric: selectQuery('AmazonCloudWatch', { usagetype: 'APN2-CW:GMD-Metrics', operation: 'GetMetricData' }),
+    ecrStorageGbMonth: selectQuery('AmazonECR', { usagetype: 'APN2-TimedStorage-ByteHrs' }),
+    dynamoDbReadRequestUnit: selectQuery('AmazonDynamoDB', { usagetype: 'APN2-ReadRequestUnits', operation: 'PayPerRequestThroughput' }),
+    dynamoDbWriteRequestUnit: selectQuery('AmazonDynamoDB', { usagetype: 'APN2-WriteRequestUnits', operation: 'PayPerRequestThroughput' }),
+    dynamoDbStorageGbMonth: selectQuery('AmazonDynamoDB', { usagetype: 'APN2-TimedStorage-ByteHrs' }, '25'),
+    s3StandardStorageGbMonth: selectQuery('AmazonS3', { usagetype: 'APN2-TimedStorage-ByteHrs' }),
+    s3Tier1Request: selectQuery('AmazonS3', { usagetype: 'APN2-Requests-Tier1' }),
+    s3Tier2Request: selectQuery('AmazonS3', { usagetype: 'APN2-Requests-Tier2' }),
+};
+
+const result = {
+    schemaVersion: 1,
+    workload: 'phase7-end-to-end-integration',
+    asOf: new Date().toISOString(),
+    region: REGION,
+    location: LOCATION,
+    source: 'AWS Price List GetProducts, public On-Demand USD',
+    prices: Object.fromEntries(Object.entries(selections).map(([name, selection]) => [name, selection.price])),
+    provenance: Object.fromEntries(Object.entries(selections).map(([name, selection]) => [name, {
+        serviceCode: selection.serviceCode,
+        sku: selection.sku,
+        usageType: selection.attributes.usagetype,
+        operation: selection.attributes.operation,
+        unit: selection.dimension.unit,
+        beginRange: selection.dimension.beginRange,
+        endRange: selection.dimension.endRange,
+        description: selection.dimension.description,
+        pricePerUnitUsd: selection.dimension.pricePerUnit.USD,
+    }])),
+};
+
+writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+process.stdout.write(`${JSON.stringify({ asOf: result.asOf, region: result.region, prices: result.prices }, null, 2)}\n`);
+
+function instancePrice(instanceType) {
+    const matches = products('AmazonEC2', [
+        filter('instanceType', instanceType), filter('location', LOCATION), filter('operatingSystem', 'Linux'),
+        filter('tenancy', 'Shared'), filter('preInstalledSw', 'NA'), filter('capacitystatus', 'Used'),
+    ]).filter((product) => product.product.productFamily === 'Compute Instance');
+    return uniqueSelection(matches, { instanceType });
+}
+
+function products(serviceCode, filters) {
+    const args = ['pricing', 'get-products', '--service-code', serviceCode, '--region', 'us-east-1', '--max-results', '100', '--output', 'json', '--no-cli-pager'];
+    if (filters.length > 0) args.push('--filters', ...filters);
+    const response = JSON.parse(execFileSync('aws', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+    return response.PriceList.map((item) => ({ serviceCode, ...JSON.parse(item) }));
+}
+
+function selectQuery(serviceCode, expectedAttributes, beginRange = '0') {
+    const queryFilters = [filter('location', LOCATION), ...Object.entries(expectedAttributes).map(([field, value]) => filter(field, value))];
+    const matches = products(serviceCode, queryFilters).filter((product) => Object.entries(expectedAttributes).every(([key, value]) => product.product.attributes[key] === value));
+    return uniqueSelection(matches, expectedAttributes, beginRange);
+}
+
+function uniqueSelection(matches, expectedAttributes, beginRange = '0') {
+    const dimensions = matches.flatMap((product) => Object.values(product.terms.OnDemand ?? {}).flatMap((term) => Object.values(term.priceDimensions ?? {}).map((dimension) => ({
+        serviceCode: product.serviceCode, sku: product.product.sku, attributes: product.product.attributes,
+        dimension, price: Number(dimension.pricePerUnit?.USD),
+    })))).filter((selection) => selection.dimension.beginRange === beginRange && Number.isFinite(selection.price));
+    if (dimensions.length !== 1) throw new Error(`Expected one price for ${JSON.stringify(expectedAttributes)}, found ${dimensions.length}.`);
+    return dimensions[0];
+}
+
+function filter(field, value) { return `Type=TERM_MATCH,Field=${field},Value=${value}`; }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : undefined; if (!value) throw new Error(`${name} requires a value.`); return value; }

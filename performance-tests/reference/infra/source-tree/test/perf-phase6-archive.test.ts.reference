@@ -1,0 +1,121 @@
+import * as cdk from 'aws-cdk-lib';
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+    LoopAdPerfPhase6ArchiveStack,
+    PHASE6_CLICKHOUSE_IMAGE,
+    PHASE6_CONTAINER_MEMORY_BYTES,
+    PHASE6_QUERY_MEMORY_BYTES,
+    PHASE6_REGION,
+    PHASE6_SERVER_MEMORY_BYTES,
+} from '../src/perf-phase6-archive-stack';
+
+function synth(): LoopAdPerfPhase6ArchiveStack {
+    const app = new cdk.App();
+    return new LoopAdPerfPhase6ArchiveStack(app, 'LoopAdPerfPhase6ArchiveStack', {
+        env: { account: '123456789012', region: PHASE6_REGION },
+        runId: 'run_20260717_120000_phase6_archive',
+        sessionId: 'phase6-archive-20260717T120000Z',
+        clickHouseAmiId: 'ami-0123456789abcdef0',
+    });
+}
+
+describe('Phase 6 Lite archive infrastructure', () => {
+    it('creates one private encrypted archive bucket without lifecycle transitions', () => {
+        const template = Template.fromStack(synth());
+        template.resourceCountIs('AWS::S3::Bucket', 1);
+        template.hasResourceProperties('AWS::S3::Bucket', {
+            BucketEncryption: {
+                ServerSideEncryptionConfiguration: [{
+                    ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' },
+                }],
+            },
+            PublicAccessBlockConfiguration: {
+                BlockPublicAcls: true,
+                BlockPublicPolicy: true,
+                IgnorePublicAcls: true,
+                RestrictPublicBuckets: true,
+            },
+        });
+        const text = JSON.stringify(template.toJSON());
+        expect(text).not.toContain('LifecycleConfiguration');
+        expect(text).not.toContain('STANDARD_IA');
+        expect(text).not.toContain('GLACIER');
+    });
+
+    it('gives the archive role list/get/put but never object deletion', () => {
+        const template = Template.fromStack(synth());
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain('s3:ListBucket');
+        expect(text).toContain('s3:GetObject');
+        expect(text).toContain('s3:PutObject');
+        expect(text).not.toContain('s3:DeleteObject');
+        expect(text).not.toContain('s3:DeleteObjectVersion');
+    });
+
+    it('pins ClickHouse compute, root EBS deletion, metadata v2, and no ingress', () => {
+        const template = Template.fromStack(synth());
+        template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                ImageId: 'ami-0123456789abcdef0',
+                InstanceType: 'r7g.2xlarge',
+                MetadataOptions: {
+                    HttpEndpoint: 'enabled',
+                    HttpPutResponseHopLimit: 2,
+                    HttpTokens: 'required',
+                },
+                BlockDeviceMappings: [{
+                    DeviceName: '/dev/xvda',
+                    Ebs: {
+                        DeleteOnTermination: true,
+                        Encrypted: true,
+                        Iops: 3000,
+                        Throughput: 500,
+                        VolumeSize: 500,
+                        VolumeType: 'gp3',
+                    },
+                }],
+            }),
+        });
+        template.resourceCountIs('AWS::EC2::SecurityGroupIngress', 0);
+    });
+
+    it('installs executable worker paths, exact memory tiers, pinned image, flock, and timer', () => {
+        const template = Template.fromStack(synth());
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain(PHASE6_CLICKHOUSE_IMAGE);
+        expect(text).toContain('--memory 5g');
+        expect(text).toContain(String(PHASE6_CONTAINER_MEMORY_BYTES));
+        expect(text).toContain(String(PHASE6_SERVER_MEMORY_BYTES));
+        expect(text).toContain('clickhouse_memory_bytes');
+        expect(text).toContain(String(PHASE6_QUERY_MEMORY_BYTES));
+        expect(text).toContain('install -d -o root -g root -m 0711 /opt/loopad /etc/loopad');
+        expect(text).toContain('runuser -u loopad-archive -- /opt/loopad/phase6/venv/bin/python --version');
+        expect(text).toContain('runuser -u loopad-archive -- test -r /etc/loopad/phase6/archive.json');
+        expect(text).toContain('clickhouse-config/memory.xml:/etc/clickhouse-server/config.d/phase6-memory.xml:ro');
+        expect(text).toContain('CLICKHOUSE_SKIP_USER_SETUP=1');
+        expect(text).toContain('clickhouse_ready=0');
+        expect(text).toContain('clickhouse_ready=1');
+        expect(text).toContain('$clickhouse_ready');
+        expect(text).toContain('-eq 1');
+        expect(text).toContain('loopad-phase6-archive.timer');
+        expect(text).toContain('fingerprint_interval_seconds');
+        expect(text).not.toContain('AWS_SECRET_ACCESS_KEY');
+        expect(text).not.toContain('AWS_ACCESS_KEY_ID');
+        expect(text).not.toContain('presigned');
+        const service = readFileSync(
+            join(__dirname, '../performance-tests/phase6-archive/systemd/loopad-phase6-archive.service'),
+            'utf8',
+        );
+        expect(service).toContain('/usr/bin/flock -n -E 75');
+    });
+
+    it('does not add excluded orchestration or hidden compute', () => {
+        const template = Template.fromStack(synth());
+        template.resourceCountIs('AWS::DynamoDB::Table', 0);
+        template.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
+        template.resourceCountIs('AWS::Events::Rule', 0);
+        template.resourceCountIs('AWS::Lambda::Function', 0);
+    });
+});

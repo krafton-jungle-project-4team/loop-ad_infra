@@ -1,0 +1,88 @@
+export const VPC_FLOW_LOG_FIELDS = Object.freeze([
+    'version', 'accountId', 'instanceId', 'interfaceId', 'subnetId', 'azId',
+    'srcaddr', 'dstaddr', 'srcport', 'dstport', 'protocol', 'action',
+    'flowDirection', 'tcpFlags', 'packets', 'bytes', 'start', 'end', 'logStatus',
+]);
+
+export function parseVpcFlowLogLine(line) {
+    const values = line.trim().split(/\s+/);
+    if (values.length !== VPC_FLOW_LOG_FIELDS.length) {
+        throw new Error(`expected ${VPC_FLOW_LOG_FIELDS.length} VPC Flow Log fields, found ${values.length}`);
+    }
+    const record = Object.fromEntries(VPC_FLOW_LOG_FIELDS.map((field, index) => [field, nullable(values[index])]));
+    for (const field of ['version', 'srcport', 'dstport', 'protocol', 'tcpFlags', 'packets', 'bytes', 'start', 'end']) {
+        record[field] = integerOrNull(record[field]);
+    }
+    record.flagSet = decodeTcpFlags(record.tcpFlags);
+    return record;
+}
+
+export function parseVpcFlowLogText(text) {
+    const records = [];
+    const errors = [];
+    for (const [index, line] of text.split(/\r?\n/).entries()) {
+        if (!line.trim()) continue;
+        try {
+            records.push(parseVpcFlowLogLine(line));
+        } catch (error) {
+            errors.push({ line: index + 1, error: String(error.message ?? error), raw: line });
+        }
+    }
+    return { records, errors };
+}
+
+export function summarizeVpcFlowLogs(records) {
+    const groups = new Map();
+    for (const record of records) {
+        const key = [record.instanceId, record.interfaceId, record.srcaddr, record.dstaddr,
+            record.action, record.flowDirection].join('|');
+        const current = groups.get(key) ?? {
+            instanceId: record.instanceId, interfaceId: record.interfaceId,
+            srcaddr: record.srcaddr, dstaddr: record.dstaddr, action: record.action,
+            flowDirection: record.flowDirection, records: 0, packets: 0, bytes: 0,
+            syn: 0, synAck: 0, rst: 0, fin: 0,
+        };
+        current.records += 1;
+        current.packets += record.packets ?? 0;
+        current.bytes += record.bytes ?? 0;
+        if (record.flagSet.syn && record.flagSet.ack) current.synAck += 1;
+        else if (record.flagSet.syn) current.syn += 1;
+        if (record.flagSet.rst) current.rst += 1;
+        if (record.flagSet.fin) current.fin += 1;
+        groups.set(key, current);
+    }
+    return {
+        recordCount: records.length,
+        rejectCount: records.filter((record) => record.action === 'REJECT').length,
+        groups: [...groups.values()].toSorted((left, right) =>
+            String(left.instanceId ?? '').localeCompare(String(right.instanceId ?? '')) ||
+            String(left.dstaddr ?? '').localeCompare(String(right.dstaddr ?? ''))),
+    };
+}
+
+export function evaluatePacketFlowPath({ outboundSyn, inboundSynAck, socketSynSent, rst, flowReject }) {
+    if (flowReject > 0) return { classification: 'configuration-path', reason: 'VPC Flow Logs contain REJECT.' };
+    if (outboundSyn > 0 && inboundSynAck === 0) {
+        return { classification: 'eni-or-vpc-alb-path', reason: 'Outbound SYN is present without inbound SYN-ACK.' };
+    }
+    if (inboundSynAck > 0 && (socketSynSent > 0 || rst > 0)) {
+        return { classification: 'host-kernel-tuple-path', reason: 'Inbound SYN-ACK is visible while sockets remain SYN_SENT or reset.' };
+    }
+    return { classification: 'not-isolated', reason: 'Packet and Flow Log evidence does not isolate a path.' };
+}
+
+export function decodeTcpFlags(value) {
+    const flags = Number.isInteger(value) ? value : 0;
+    return {
+        fin: Boolean(flags & 1), syn: Boolean(flags & 2), rst: Boolean(flags & 4),
+        psh: Boolean(flags & 8), ack: Boolean(flags & 16), urg: Boolean(flags & 32),
+    };
+}
+
+function nullable(value) { return value === '-' ? null : value; }
+function integerOrNull(value) {
+    if (value === null) return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) throw new Error(`invalid integer value: ${value}`);
+    return parsed;
+}

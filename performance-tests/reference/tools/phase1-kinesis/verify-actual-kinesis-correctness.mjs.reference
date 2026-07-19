@@ -1,0 +1,648 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { gzipSync } from 'node:zlib';
+import { analyzeCapacityReplacement, analyzeCapacityTopology } from './capacity-topology.mjs';
+
+const REGION = 'ap-northeast-2';
+const DEFAULT_REGULAR_COUNT = 16;
+const DEFAULT_SHUTDOWN_COUNT = 64;
+const MAX_TOTAL_EVENTS = 128;
+const POLL_INTERVAL_MS = 1_000;
+const OBSERVATION_TIMEOUT_MS = 45_000;
+const SHUTDOWN_SIGNAL_DELAY_MS = 1_000;
+const TASK_REPLACEMENT_TIMEOUT_MS = 240_000;
+
+export function hashKey(partitionKey) {
+    const digest = createHash('md5').update(partitionKey, 'utf8').digest('hex');
+    return BigInt(`0x${digest}`);
+}
+
+export function selectEventIds(prefix, count, shard) {
+    const start = BigInt(shard.HashKeyRange.StartingHashKey);
+    const end = BigInt(shard.HashKeyRange.EndingHashKey);
+    const ids = [];
+    for (let sequence = 0; ids.length < count; sequence += 1) {
+        if (sequence > 10_000_000) throw new Error('unable to find enough partition keys for the selected shard');
+        const eventId = `${prefix}_${sequence.toString(36).padStart(5, '0')}`;
+        const value = hashKey(eventId);
+        if (value >= start && value <= end) ids.push(eventId);
+    }
+    return ids;
+}
+
+export function buildEvents({ runId, candidate, regularCount, shutdownCount, shard }) {
+    const prefix = `${runId}_${candidate}`.replaceAll('-', '_');
+    const ids = selectEventIds(prefix, regularCount + shutdownCount, shard);
+    return ids.map((eventId, index) => {
+        const group = index < regularCount ? 'regular' : 'shutdown';
+        const body = JSON.stringify({
+            project_id: 'phase1-kinesis-actual-correctness',
+            write_key: 'write_key_phase1_correctness',
+            schema_version: 'hotel_rec_promo.v1',
+            event_id: eventId,
+            event_name: 'producer_correctness',
+            event_time: new Date(Date.UTC(2026, 6, 12, 4, 0, index)).toISOString(),
+            source: 'browser_sdk',
+            user_id: `correctness_user_${index}`,
+            session_id: runId,
+            properties_json: JSON.stringify({ candidate, group, index }),
+        });
+        return {
+            eventId,
+            group,
+            body,
+            bodyBytes: Buffer.byteLength(body),
+            bodySha256: createHash('sha256').update(body).digest('hex'),
+            partitionKey: eventId,
+        };
+    });
+}
+
+export function analyzeCorrectness({ events, requests, records, candidate }) {
+    const eventById = new Map(events.map((event) => [event.eventId, event]));
+    const requestsById = new Map(requests.map((request) => [request.eventId, request]));
+    const recordsById = new Map();
+    const unexpected = [];
+    for (const record of records) {
+        if (!eventById.has(record.eventId)) {
+            unexpected.push(record);
+            continue;
+        }
+        const values = recordsById.get(record.eventId) ?? [];
+        values.push(record);
+        recordsById.set(record.eventId, values);
+    }
+
+    const acceptedIds = requests.filter((request) => request.status === 202).map((request) => request.eventId);
+    const missing = acceptedIds.filter((eventId) => !recordsById.has(eventId));
+    const duplicateIds = [...recordsById.entries()].filter(([, values]) => values.length > 1).map(([eventId]) => eventId);
+    const bodyMismatches = [];
+    const partitionKeyMismatches = [];
+    const http202BeforeApproximateArrival = [];
+    for (const eventId of acceptedIds) {
+        const expected = eventById.get(eventId);
+        const request = requestsById.get(eventId);
+        for (const record of recordsById.get(eventId) ?? []) {
+            if (record.bodySha256 !== expected.bodySha256 || record.bodyBytes !== expected.bodyBytes) {
+                bodyMismatches.push(eventId);
+            }
+            if (record.partitionKey !== expected.partitionKey) partitionKeyMismatches.push(eventId);
+            if (record.approximateArrivalEpochMs > request.completedEpochMs) {
+                http202BeforeApproximateArrival.push(eventId);
+            }
+        }
+    }
+
+    const regularRequests = requests.filter((request) => eventById.get(request.eventId)?.group === 'regular');
+    const shutdownRequests = requests.filter((request) => eventById.get(request.eventId)?.group === 'shutdown');
+    const regularAccepted = regularRequests.filter((request) => request.status === 202);
+    const shutdownAccepted = shutdownRequests.filter((request) => request.status === 202);
+    const shutdownAcceptedMissing = shutdownAccepted
+        .map((request) => request.eventId)
+        .filter((eventId) => !recordsById.has(eventId));
+
+    const summary = {
+        candidate,
+        expectedEvents: events.length,
+        requestsCompleted: requests.length,
+        acceptedEvents: acceptedIds.length,
+        observedMatchingRecords: [...recordsById.values()].reduce((sum, values) => sum + values.length, 0),
+        unexpectedRecords: unexpected.length,
+        missingAcceptedEvents: missing,
+        duplicateEventIds: duplicateIds,
+        bodyMismatches: [...new Set(bodyMismatches)],
+        partitionKeyMismatches: [...new Set(partitionKeyMismatches)],
+        http202BeforeApproximateArrival: [...new Set(http202BeforeApproximateArrival)],
+        aggregationDisabled: acceptedIds.every((eventId) => (recordsById.get(eventId)?.length ?? 0) === 1),
+        regular: {
+            attempted: regularRequests.length,
+            accepted: regularAccepted.length,
+            non202: regularRequests.length - regularAccepted.length,
+        },
+        shutdown: {
+            attempted: shutdownRequests.length,
+            accepted: shutdownAccepted.length,
+            non202: shutdownRequests.length - shutdownAccepted.length,
+            acceptedMissing: shutdownAcceptedMissing,
+            flushObserved: shutdownAccepted.length > 0 && shutdownAcceptedMissing.length === 0,
+        },
+    };
+    summary.passed = summary.requestsCompleted === events.length &&
+        summary.regular.accepted === summary.regular.attempted &&
+        summary.missingAcceptedEvents.length === 0 &&
+        summary.duplicateEventIds.length === 0 &&
+        summary.bodyMismatches.length === 0 &&
+        summary.partitionKeyMismatches.length === 0 &&
+        summary.http202BeforeApproximateArrival.length === 0 &&
+        summary.unexpectedRecords === 0 &&
+        summary.aggregationDisabled &&
+        summary.shutdown.flushObserved;
+    return summary;
+}
+
+async function main() {
+    const runDir = requiredOption('--run-dir');
+    const runId = requiredOption('--run-id');
+    const candidate = requiredOption('--candidate');
+    const streamName = requiredOption('--stream-name');
+    const targetUrl = validatedTargetUrl(requiredOption('--target-url'));
+    const clientProtocol = validatedClientProtocol(optionValue('--client-protocol') ?? 'auto');
+    const referenceBinaryS3Uri = optionValue('--reference-binary-s3-uri');
+    const referenceBinarySha256 = optionValue('--reference-binary-sha256');
+    const caCertificatePath = optionValue('--ca-certificate');
+    const tlsServerName = optionValue('--tls-server-name');
+    if (targetUrl.startsWith('https://') && (!caCertificatePath || !/^[a-z0-9.-]+$/.test(tlsServerName ?? ''))) {
+        throw new Error('HTTPS correctness requires --ca-certificate and --tls-server-name');
+    }
+    if (clientProtocol === 'h3' && !targetUrl.startsWith('https://')) {
+        throw new Error('HTTP/3 correctness requires an HTTPS target');
+    }
+    const caCertificateBase64 = caCertificatePath ? readFileSync(caCertificatePath).toString('base64') : undefined;
+    const loadGeneratorInstanceId = requiredOption('--load-generator-instance-id');
+    const cluster = requiredOption('--cluster');
+    const service = requiredOption('--service');
+    const expectedCount = integerOption('--expected-count', 1);
+    const expectedInstanceType = optionValue('--expected-instance-type') ?? (expectedCount === 8 ? 'c6i.large' : 'c6i.xlarge');
+    const imageDigest = optionValue('--image-digest');
+    const regularCount = integerOption('--regular-count', DEFAULT_REGULAR_COUNT);
+    const shutdownCount = integerOption('--shutdown-count', DEFAULT_SHUTDOWN_COUNT);
+    if (clientProtocol === 'h3' && (!/^s3:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]+$/.test(referenceBinaryS3Uri ?? '') ||
+        !/^[0-9a-f]{64}$/.test(referenceBinarySha256 ?? '') || regularCount !== 1)) {
+        throw new Error('HTTP/3 correctness requires one regular event and an immutable reference driver');
+    }
+    const scoutArtifact = process.argv.includes('--scout-artifact');
+    const oha12kArtifact = process.argv.includes('--oha12k-artifact');
+    const generatorDiagnosisArtifact = process.argv.includes('--generator-diagnosis-artifact');
+    const albWarmupArtifact = process.argv.includes('--alb-warmup-artifact');
+    const tcpAlbDiagnosisArtifact = process.argv.includes('--tcp-alb-diagnosis-artifact');
+    const admissionScaleoutArtifact = process.argv.includes('--admission-scaleout-artifact');
+    const totalEvents = regularCount + shutdownCount;
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid --candidate');
+    if (![1, 4, 6, 8].includes(expectedCount)) throw new Error('--expected-count must be 1, 4, 6, or 8');
+    if (expectedCount > 1 && !/^sha256:[0-9a-f]{64}$/.test(imageDigest ?? '')) {
+        throw new Error('--image-digest is required for multi-task correctness');
+    }
+    if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid --run-id');
+    if (regularCount < 1 || shutdownCount < 1 || totalEvents > MAX_TOTAL_EVENTS) {
+        throw new Error(`event counts must be positive and total at most ${MAX_TOTAL_EVENTS}`);
+    }
+    if (!scoutArtifact && !oha12kArtifact && !generatorDiagnosisArtifact && !albWarmupArtifact && !tcpAlbDiagnosisArtifact && !admissionScaleoutArtifact && basename(runDir) !== runId) throw new Error('--run-dir basename must equal --run-id');
+    if (scoutArtifact && !basename(runDir).includes(`phase1_kinesis_capacity_scout_${candidate.replace('-', '_')}`)) {
+        throw new Error('scout correctness artifact path must identify candidate');
+    }
+    if (oha12kArtifact && !basename(runDir).includes(`phase1_kinesis_capacity_oha12k_${candidate.replace('-', '_')}`)) {
+        throw new Error('oha12k correctness artifact path must identify candidate');
+    }
+    if (generatorDiagnosisArtifact && !basename(runDir).includes(`phase1_kinesis_generator_diagnosis_${candidate.replace('-', '_')}`)) {
+        throw new Error('generator-diagnosis correctness artifact path must identify candidate');
+    }
+    if (albWarmupArtifact && !basename(runDir).includes(`phase1_kinesis_alb_warmup_${candidate.replace('-', '_')}`)) {
+        throw new Error('alb-warmup correctness artifact path must identify candidate');
+    }
+    if (tcpAlbDiagnosisArtifact && !basename(runDir).includes('phase1_kinesis_tcp_alb_path_diagnosis_session')) {
+        throw new Error('TCP/ALB diagnosis correctness artifact path must identify the session');
+    }
+    if (admissionScaleoutArtifact && !basename(runDir).includes('phase1_kinesis_admission_scaleout_session')) {
+        throw new Error('admission scale-out correctness artifact path must identify the session');
+    }
+    mkdirSync(runDir, { recursive: true });
+
+    const startedAt = new Date();
+    const shards = awsJson(['kinesis', 'list-shards', '--region', REGION, '--stream-name', streamName]).Shards;
+    const shard = shards.find((value) => !value.SequenceNumberRange.EndingSequenceNumber);
+    if (!shard) throw new Error('no open Kinesis shard found');
+    const events = buildEvents({ runId, candidate, regularCount, shutdownCount, shard });
+    writeJson(join(runDir, 'correctness-events.json'), events.map(({ body: _body, ...event }) => event));
+
+    let shardIterator = awsJson([
+        'kinesis', 'get-shard-iterator', '--region', REGION,
+        '--stream-name', streamName,
+        '--shard-id', shard.ShardId,
+        '--shard-iterator-type', 'AT_TIMESTAMP',
+        '--timestamp', new Date(startedAt.getTime() - 30_000).toISOString(),
+    ]).ShardIterator;
+
+    const regularEvents = events.filter((event) => event.group === 'regular');
+    const regularInvocation = sendSubmissionCommand({
+        instanceId: loadGeneratorInstanceId,
+        targetUrl,
+        events: regularEvents,
+        runId,
+        label: 'regular',
+        caCertificateBase64,
+        tlsServerName,
+        clientProtocol,
+        referenceBinaryS3Uri,
+        referenceBinarySha256,
+    });
+    const regularResult = await waitForSsmInvocation(regularInvocation, loadGeneratorInstanceId);
+
+    const beforeTopology = expectedCount > 1 ? readCapacityTopology(cluster, service, imageDigest, expectedCount, expectedInstanceType) : null;
+    if (beforeTopology && !beforeTopology.passed) throw new Error('four-task topology failed before correctness SIGTERM');
+    const originalTask = selectRunningTask(cluster, service, expectedCount);
+    const collectorInstanceId = collectorEc2InstanceId(cluster, originalTask);
+    const triggerEpochNs = (BigInt(Date.now() + 30_000) * 1_000_000n).toString();
+    const shutdownInvocation = sendSubmissionCommand({
+        instanceId: expectedCount > 1 ? collectorInstanceId : loadGeneratorInstanceId,
+        targetUrl: expectedCount > 1 ? 'http://127.0.0.1:8080' : targetUrl,
+        events: events.filter((event) => event.group === 'shutdown'),
+        runId,
+        label: 'shutdown',
+        triggerEpochNs,
+        parallel: true,
+        caCertificateBase64,
+        tlsServerName,
+    });
+    const signalInvocation = sendShutdownSignalCommand({
+        instanceId: collectorInstanceId,
+        triggerEpochNs: (BigInt(triggerEpochNs) + BigInt(SHUTDOWN_SIGNAL_DELAY_MS) * 1_000_000n).toString(),
+        runId,
+    });
+    const [shutdownResult, signalResult] = await Promise.all([
+        waitForSsmInvocation(shutdownInvocation, expectedCount > 1 ? collectorInstanceId : loadGeneratorInstanceId, 90_000),
+        waitForSsmInvocation(signalInvocation, collectorInstanceId, 90_000),
+    ]);
+    const beforeTaskArns = beforeTopology?.placements.map((placement) => placement.taskArn) ?? [originalTask];
+    const replacementObservation = await waitForTaskReplacement(cluster, service, originalTask, expectedCount, beforeTaskArns);
+    await waitForServiceStable(cluster, service, expectedCount);
+    const replacementTask = replacementObservation.replacementTaskArn;
+    const afterTopology = expectedCount > 1
+        ? await waitForHealthyCapacityTopology(cluster, service, imageDigest, expectedCount, expectedInstanceType)
+        : null;
+    const stoppedTask = expectedCount > 1 ? await describeStoppedTask(cluster, originalTask) : null;
+    const replacement = expectedCount > 1
+        ? analyzeCapacityReplacement({ before: beforeTopology, after: afterTopology, originalTaskArn: originalTask, replacementObservation, stoppedTask })
+        : null;
+
+    const requests = [
+        ...parseRequestLines(regularResult.stdout),
+        ...parseRequestLines(shutdownResult.stdout),
+    ];
+    writeJson(join(runDir, 'correctness-requests.json'), requests);
+    writeJson(join(runDir, 'correctness-ssm.json'), {
+        regular: regularResult,
+        shutdown: shutdownResult,
+        signal: signalResult,
+        originalTask,
+        replacementTask,
+        collectorInstanceId,
+        triggerEpochNs,
+        shutdownSignalDelayMs: SHUTDOWN_SIGNAL_DELAY_MS,
+        expectedCount,
+        beforeTopology,
+        afterTopology,
+        replacementObservation,
+        replacement,
+        stoppedTask,
+    });
+
+    const expectedIds = new Set(events.map((event) => event.eventId));
+    const eventPrefix = events[0].eventId.slice(0, events[0].eventId.lastIndexOf('_') + 1);
+    const records = [];
+    const deadline = Date.now() + OBSERVATION_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const response = awsJson(['kinesis', 'get-records', '--region', REGION, '--shard-iterator', shardIterator, '--limit', '1000']);
+        shardIterator = response.NextShardIterator;
+        for (const record of response.Records ?? []) {
+            const body = Buffer.from(record.Data, 'base64');
+            let eventId;
+            try {
+                eventId = JSON.parse(body.toString('utf8')).event_id;
+            } catch {
+                continue;
+            }
+            if (typeof eventId !== 'string' || !eventId.startsWith(eventPrefix)) continue;
+            records.push({
+                eventId,
+                partitionKey: record.PartitionKey,
+                sequenceNumber: record.SequenceNumber,
+                approximateArrivalTimestamp: record.ApproximateArrivalTimestamp,
+                approximateArrivalEpochMs: new Date(record.ApproximateArrivalTimestamp).getTime(),
+                bodyBytes: body.length,
+                bodySha256: createHash('sha256').update(body).digest('hex'),
+            });
+        }
+        const acceptedIds = requests.filter((request) => request.status === 202).map((request) => request.eventId);
+        if (acceptedIds.length > 0 && acceptedIds.every((eventId) => records.some((record) => record.eventId === eventId))) break;
+        await delay(POLL_INTERVAL_MS);
+    }
+    writeJson(join(runDir, 'correctness-records.json'), records);
+    const summary = analyzeCorrectness({ events, requests, records, candidate });
+    summary.commandsPassed = regularResult.status === 'Success' &&
+        shutdownResult.status === 'Success' && signalResult.status === 'Success';
+    summary.taskReplacedAfterSigterm = replacementTask !== originalTask;
+    summary.fourTaskReplacementPassed = replacement?.passed ?? null;
+    summary.passed = summary.passed && summary.commandsPassed && summary.taskReplacedAfterSigterm &&
+        (replacement === null || replacement.passed);
+    summary.streamName = streamName;
+    summary.clientProtocol = clientProtocol;
+    summary.shardId = shard.ShardId;
+    summary.startedAt = startedAt.toISOString();
+    summary.finishedAt = new Date().toISOString();
+    summary.rawEvidence = {
+        events: 'correctness-events.json',
+        requests: 'correctness-requests.json',
+        records: 'correctness-records.json',
+        ssm: 'correctness-ssm.json',
+    };
+    writeJson(join(runDir, 'correctness-summary.json'), summary);
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    if (!summary.passed) process.exitCode = 2;
+}
+
+function sendSubmissionCommand({ instanceId, targetUrl, events, runId, label, triggerEpochNs, parallel = false, caCertificateBase64, tlsServerName, clientProtocol = 'auto', referenceBinaryS3Uri, referenceBinarySha256 }) {
+    const payload = events.map((event) => event.body).join('\n') + '\n';
+    const encoded = gzipSync(Buffer.from(payload)).toString('base64');
+    const directory = `/tmp/${runId}-${label}`;
+    const waitBlock = triggerEpochNs ? `
+target_epoch_ns='${triggerEpochNs}'
+while [ "$(date +%s%N)" -lt "$target_epoch_ns" ]; do sleep 0.001; done` : '';
+    const usesTls = targetUrl.startsWith('https://');
+    if (usesTls && (!caCertificateBase64 || !tlsServerName)) throw new Error('verified TLS material is missing');
+    const targetHost = new URL(targetUrl).hostname;
+    const logicalTargetUrl = usesTls ? `https://${tlsServerName}` : targetUrl;
+    const caSetup = usesTls ? `printf '%s' '${caCertificateBase64}' | base64 -d > '${directory}/ca.pem'\n` : '';
+    const curlTlsOption = usesTls
+        ? `--cacert '${directory}/ca.pem' --connect-to '${tlsServerName}:443:${targetHost}:443' `
+        : '';
+    const curlProtocolOption = curlClientProtocolOption(clientProtocol);
+    if (clientProtocol === 'h3') {
+        const script = `set -euo pipefail
+umask 077
+rm -rf '${directory}'
+mkdir -p '${directory}/results' '${directory}/reference'
+${caSetup}test -s '${directory}/ca.pem'
+printf '%s' '${encoded}' | base64 -d | gzip -d > '${directory}/events.ndjson'
+test "$(wc -l < '${directory}/events.ndjson')" -eq 1
+aws s3 cp '${referenceBinaryS3Uri}' '${directory}/reference-driver' --region ${REGION} --only-show-errors
+test "$(sha256sum '${directory}/reference-driver' | awk '{print $1}')" = '${referenceBinarySha256}'
+chmod 0755 '${directory}/reference-driver'
+start_unix="$(( $(date +%s) + 3 ))"
+'${directory}/reference-driver' --connect-url '${targetUrl}' --host-header '${tlsServerName}' --path /events --payload-pool '${directory}/events.ndjson' --output-dir '${directory}/reference' --stage correctness --repetition 1 --node node-01 --process process-01 --protocol h3 --trace-all --ca-cert '${directory}/ca.pem' --tls-server-name '${tlsServerName}' --rps 1 --connections 1 --duration-seconds 1 --timeout-seconds 10 --streams-per-connection 1 --start-unix "$start_unix" --seed 1
+jq -e '.valid == true and .protocol == "h3" and .statuses["202"] == 1 and .protocol_errors == 0 and .hidden_retries == 0' '${directory}/reference/reference-summary.json' >/dev/null
+trace="$(jq -c 'select(.protocol == "HTTP/3.0" and .negotiated_protocol == "h3" and .status == 202 and ((.error // "") == ""))' '${directory}/reference/traces.ndjson')"
+test -n "$trace"
+line="$(head -n 1 '${directory}/events.ndjson')"
+event_id="$(printf '%s' "$line" | jq -r '.event_id')"
+body_sha256="$(printf '%s' "$line" | sha256sum | awk '{print $1}')"
+jq -cn --arg eventId "$event_id" --arg bodySha256 "$body_sha256" --argjson status "$(printf '%s' "$trace" | jq '.status')" --arg startedNs "$(printf '%s' "$trace" | jq -r '.dispatch_unix_nanoseconds')" --arg completedNs "$(printf '%s' "$trace" | jq -r '.response_complete_unix_nanoseconds')" --arg protocol "$(printf '%s' "$trace" | jq -r '.protocol')" --arg negotiatedProtocol "$(printf '%s' "$trace" | jq -r '.negotiated_protocol')" --arg referenceBinarySha256 '${referenceBinarySha256}' '{eventId:$eventId,bodySha256:$bodySha256,status:$status,startedEpochNs:$startedNs,completedEpochNs:$completedNs,startedEpochMs:(($startedNs|tonumber)/1000000|floor),completedEpochMs:(($completedNs|tonumber)/1000000|floor),protocol:$protocol,negotiatedProtocol:$negotiatedProtocol,referenceBinarySha256:$referenceBinarySha256}'`;
+        return sendSsmCommand(instanceId, script, `${runId}-${label}`);
+    }
+    const script = `set -euo pipefail
+umask 077
+rm -rf '${directory}'
+mkdir -p '${directory}/results'
+${caSetup}test ${usesTls ? "-s '" + directory + "/ca.pem'" : "! -e '" + directory + "/ca.pem'"}
+printf '%s' '${encoded}' | base64 -d | gzip -d > '${directory}/events.ndjson'
+target_url='${logicalTargetUrl}/events'
+submit() {
+  line="$1"
+  event_id="$(printf '%s' "$line" | jq -r '.event_id')"
+  body_sha256="$(printf '%s' "$line" | sha256sum | awk '{print $1}')"
+  started_ns="$(date +%s%N)"
+  response_file="${directory}/results/$event_id.body"
+  status="$(curl ${curlTlsOption}${curlProtocolOption}--silent --show-error --max-time 10 --output "$response_file" --write-out '%{http_code}' -H 'Content-Type: application/json' --data-binary "$line" "$target_url" || true)"
+  status="$(printf '%s' "$status" | sed 's/^0*//')"
+  if [ -z "$status" ]; then status=0; fi
+  completed_ns="$(date +%s%N)"
+  jq -cn --arg eventId "$event_id" --arg bodySha256 "$body_sha256" --argjson status "$status" --arg startedNs "$started_ns" --arg completedNs "$completed_ns" '{eventId:$eventId,bodySha256:$bodySha256,status:$status,startedEpochNs:$startedNs,completedEpochNs:$completedNs,startedEpochMs:(($startedNs|tonumber)/1000000|floor),completedEpochMs:(($completedNs|tonumber)/1000000|floor)}' > '${directory}/results/'"$event_id"'.json'
+}
+${waitBlock}
+${parallel ? `while IFS= read -r line; do submit "$line" & done < '${directory}/events.ndjson'
+wait` : `while IFS= read -r line; do submit "$line"; done < '${directory}/events.ndjson'`}
+find '${directory}/results' -name '*.json' -type f -print0 | sort -z | xargs -0 cat`;
+    return sendSsmCommand(instanceId, script, `${runId}-${label}`);
+}
+
+function sendShutdownSignalCommand({ instanceId, triggerEpochNs, runId }) {
+    const script = `set -euo pipefail
+target_epoch_ns='${triggerEpochNs}'
+while [ "$(date +%s%N)" -lt "$target_epoch_ns" ]; do sleep 0.001; done
+container_id="$(docker ps --filter 'name=ecs-perf-phase1-loop-ad-collector' --format '{{.ID}}' | head -n 1)"
+test -n "$container_id"
+docker kill --signal=TERM "$container_id"
+jq -cn --arg containerId "$container_id" --arg signaledEpochNs "$(date +%s%N)" '{containerId:$containerId,signal:"TERM",signaledEpochNs:$signaledEpochNs}'`;
+    return sendSsmCommand(instanceId, script, `${runId}-shutdown-signal`);
+}
+
+function sendSsmCommand(instanceId, script, comment) {
+    return awsJson([
+        'ssm', 'send-command', '--region', REGION,
+        '--document-name', 'AWS-RunShellScript',
+        '--instance-ids', instanceId,
+        '--comment', comment,
+        '--parameters', JSON.stringify({ commands: [script] }),
+        '--timeout-seconds', '120',
+        '--query', '{CommandId:Command.CommandId}',
+    ]).CommandId;
+}
+
+async function waitForSsmInvocation(commandId, instanceId, timeoutMs = 60_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const result = awsJson([
+            'ssm', 'get-command-invocation', '--region', REGION,
+            '--command-id', commandId,
+            '--instance-id', instanceId,
+        ]);
+        if (['Success', 'Failed', 'Cancelled', 'TimedOut'].includes(result.Status)) {
+            return {
+                commandId,
+                instanceId,
+                status: result.Status,
+                responseCode: result.ResponseCode,
+                stdout: result.StandardOutputContent ?? '',
+                stderr: result.StandardErrorContent ?? '',
+            };
+        }
+        await delay(500);
+    }
+    throw new Error(`SSM command ${commandId} did not complete within ${timeoutMs} ms`);
+}
+
+function selectRunningTask(cluster, service, expectedCount) {
+    const taskArns = runningTasks(cluster, service);
+    if (taskArns.length !== expectedCount) throw new Error(`expected exactly ${expectedCount} running collector tasks, found ${taskArns.length}`);
+    return [...taskArns].sort()[0];
+}
+
+async function waitForServiceStable(cluster, service, expectedCount) {
+    const deadline = Date.now() + 180_000;
+    let consecutive = 0;
+    while (Date.now() < deadline) {
+        const state = awsJson([
+            'ecs', 'describe-services', '--region', REGION, '--cluster', cluster, '--services', service,
+        ]).services?.[0];
+        const stable = state?.desiredCount === expectedCount && state?.runningCount === expectedCount && state?.pendingCount === 0 &&
+            state.deployments?.length === 1 && state.deployments[0].rolloutState === 'COMPLETED';
+        consecutive = stable ? consecutive + 1 : 0;
+        if (consecutive >= 3) return;
+        await delay(3_000);
+    }
+    throw new Error('replacement ECS service did not stabilize within 180 seconds');
+}
+
+async function waitForHealthyCapacityTopology(cluster, service, expectedDigest, expectedCount, expectedInstanceType) {
+    const deadline = Date.now() + 180_000;
+    let topology;
+    while (Date.now() < deadline) {
+        topology = readCapacityTopology(cluster, service, expectedDigest, expectedCount, expectedInstanceType);
+        if (topology.passed) return topology;
+        await delay(3_000);
+    }
+    throw new Error(`replacement topology did not become healthy: ${JSON.stringify(topology?.checks ?? {})}`);
+}
+
+function runningTasks(cluster, service) {
+    return awsJson([
+        'ecs', 'list-tasks', '--region', REGION,
+        '--cluster', cluster,
+        '--service-name', service,
+        '--desired-status', 'RUNNING',
+    ]).taskArns;
+}
+
+async function waitForTaskReplacement(cluster, service, originalTask, expectedCount, beforeTaskArns) {
+    const deadline = Date.now() + TASK_REPLACEMENT_TIMEOUT_MS;
+    let minimumRunningCount = expectedCount;
+    const beforeTasks = new Set(beforeTaskArns);
+    while (Date.now() < deadline) {
+        const taskArns = [...runningTasks(cluster, service)].sort();
+        minimumRunningCount = Math.min(minimumRunningCount, taskArns.length);
+        const replacements = taskArns.filter((taskArn) => !beforeTasks.has(taskArn));
+        if (!taskArns.includes(originalTask) && taskArns.length === expectedCount && replacements.length === 1) {
+            return {
+                replacementTaskArn: replacements[0],
+                finalTaskArns: taskArns,
+                minimumRunningCount,
+            };
+        }
+        await delay(1_000);
+    }
+    throw new Error(`collector task was not replaced within ${TASK_REPLACEMENT_TIMEOUT_MS / 1_000} seconds after SIGTERM`);
+}
+
+function readCapacityTopology(cluster, service, expectedDigest, expectedCollectorCount = 4, expectedInstanceType = 'c6i.xlarge') {
+    const taskArns = [...runningTasks(cluster, service)].sort();
+    const tasks = taskArns.length === 0 ? [] : awsJson([
+        'ecs', 'describe-tasks', '--region', REGION, '--cluster', cluster, '--tasks', ...taskArns,
+    ]).tasks ?? [];
+    const containerInstanceArns = [...new Set(tasks.map((task) => task.containerInstanceArn).filter(Boolean))];
+    const containerInstances = containerInstanceArns.length === 0 ? [] : awsJson([
+        'ecs', 'describe-container-instances', '--region', REGION, '--cluster', cluster,
+        '--container-instances', ...containerInstanceArns,
+    ]).containerInstances ?? [];
+    const instanceIds = containerInstances.map((instance) => instance.ec2InstanceId).filter(Boolean);
+    const ec2Instances = instanceIds.length === 0 ? [] : awsJson([
+        'ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...instanceIds,
+        '--query', 'Reservations[].Instances[]',
+    ]);
+    return analyzeCapacityTopology({ tasks, containerInstances, ec2Instances, expectedDigest, expectedCollectorCount, expectedInstanceType });
+}
+
+async function describeStoppedTask(cluster, taskArn) {
+    const deadline = Date.now() + 30_000;
+    let task;
+    while (Date.now() < deadline) {
+        task = awsJson(['ecs', 'describe-tasks', '--region', REGION, '--cluster', cluster, '--tasks', taskArn]).tasks?.[0];
+        if (task?.lastStatus === 'STOPPED') return task;
+        await delay(500);
+    }
+    return task ?? null;
+}
+
+function collectorEc2InstanceId(cluster, taskArn) {
+    const task = awsJson([
+        'ecs', 'describe-tasks', '--region', REGION,
+        '--cluster', cluster,
+        '--tasks', taskArn,
+        '--query', 'tasks[0].{containerInstanceArn:containerInstanceArn}',
+    ]);
+    if (!task.containerInstanceArn) throw new Error('collector task has no container instance ARN');
+    const instance = awsJson([
+        'ecs', 'describe-container-instances', '--region', REGION,
+        '--cluster', cluster,
+        '--container-instances', task.containerInstanceArn,
+        '--query', 'containerInstances[0].{ec2InstanceId:ec2InstanceId}',
+    ]);
+    if (!instance.ec2InstanceId) throw new Error('collector container instance has no EC2 instance ID');
+    return instance.ec2InstanceId;
+}
+
+function parseRequestLines(stdout) {
+    return stdout.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+}
+
+function awsJson(args) {
+    return JSON.parse(aws(args));
+}
+
+function aws(args) {
+    return execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+    });
+}
+
+function writeJson(path, value) {
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
+export function validatedTargetUrl(raw) {
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port ||
+        (url.pathname !== '' && url.pathname !== '/') || url.search || url.hash ||
+        !/^[a-z0-9.-]+(?:\.[a-z0-9-]+\.elb\.amazonaws\.com|\.elb\.[a-z0-9-]+\.amazonaws\.com)$/i.test(url.hostname)) {
+        throw new Error('--target-url must be an internal HTTP(S) ELB root URL');
+    }
+    return url.toString().replace(/\/$/, '');
+}
+
+export function validatedClientProtocol(raw) {
+    if (!['auto', 'h1', 'h2', 'h3'].includes(raw)) throw new Error('--client-protocol must be auto, h1, h2, or h3');
+    return raw;
+}
+
+export function curlClientProtocolOption(protocol) {
+    return {
+        auto: '',
+        h1: '--http1.1 ',
+        h2: '--http2 ',
+        h3: '--http3-only ',
+    }[validatedClientProtocol(protocol)];
+}
+
+function integerOption(name, fallback) {
+    const value = optionValue(name);
+    if (value === undefined) return fallback;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) throw new Error(`${name} must be an integer`);
+    return parsed;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function delay(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    main().catch((error) => {
+        process.stderr.write(`${error.stack ?? error}\n`);
+        process.exitCode = 1;
+    });
+}

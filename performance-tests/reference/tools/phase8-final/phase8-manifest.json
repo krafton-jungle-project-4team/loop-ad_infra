@@ -1,0 +1,383 @@
+{
+  "acceptance": {
+    "cleanupRecoveredToZero": true,
+    "correctness1002Inherited": true,
+    "freshArchive15M": true,
+    "freshArchiveEquivalence": true,
+    "freshCode241Zero": true,
+    "freshSourceRetentionAndNoDrop": true,
+    "globalRunOwnedInventoryZero": true,
+    "minimalSmoke": true,
+    "phase5Skipped": true,
+    "replacement900Inherited": true,
+    "score50kInheritedWithoutRerun": true,
+    "withinActiveEpoch60UsdCap": true
+  },
+  "campaignCost": {
+    "activeAttempt": null,
+    "activeEpochAccruedUpperBoundUsd": "11.227766",
+    "activeEpochId": "phase7-2-reset-20260719-after-attempt-22",
+    "hardCapUsd": "60.000000",
+    "ledgerFileSha256AtHandoff": "60f67ef617f0067cdf88b934bacd813fe999ae71533f0a89f4467d91a06bf8e1",
+    "ledgerHeadSha256": "cd5217ea95bd66d1c48540ec55cc88bf409c48a1b2fadee87e5e40a73b17aebc",
+    "ledgerPath": "performance-tests/phase7_2-stabilization/attempt-ledger.json",
+    "phase8PaidAwsExperimentOperationalUpperBoundUsd": "0.000000",
+    "statusAtHandoff": "stabilizing"
+  },
+  "cleanup": {
+    "evidence": {
+      "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/cleanup-recovery-attempt-2-verification.json",
+      "sha256": "0111db195be79d3a70ee25a8d37dcd1e07faf62ef5a9187bfa56321d3ff9599b"
+    },
+    "globalEvidence": {
+      "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/post-cleanup-global-inventory.json",
+      "sha256": "640ba26c3cb5aebe85bd4f7fb7bdaa7c9383dfe56e3aca011406de438c6ccf13"
+    },
+    "globalRunOwnedInventoryZero": true,
+    "serviceInventoryZero": true,
+    "taggingApiResidualsZero": true
+  },
+  "configuration": {
+    "account": "742711170910",
+    "amis": {
+      "arm": {
+        "architecture": "arm64",
+        "imageId": "ami-000b332282fe987aa",
+        "rootDeviceType": "ebs",
+        "state": "available"
+      },
+      "x86": {
+        "architecture": "x86_64",
+        "imageId": "ami-034e9ae07d918d27e",
+        "rootDeviceType": "ebs",
+        "state": "available"
+      }
+    },
+    "clickHouseVolume": {
+      "encrypted": true,
+      "iops": 3000,
+      "sizeGiB": 500,
+      "throughput": 500,
+      "type": "gp3",
+      "volumeId": "vol-0710194a58326569b"
+    },
+    "kinesisShards": 120,
+    "region": "ap-northeast-2",
+    "stacks": [
+      "LoopAdPerfPhase7IntegrationImageStack",
+      "LoopAdPerfPhase7IntegrationStack"
+    ],
+    "topology": {
+      "clickHouse": {
+        "hostCount": 1,
+        "imageIds": [
+          "ami-000b332282fe987aa"
+        ],
+        "instanceTypes": [
+          "r7g.2xlarge"
+        ]
+      },
+      "collector": {
+        "hostCount": 6,
+        "imageIds": [
+          "ami-034e9ae07d918d27e"
+        ],
+        "instanceTypes": [
+          "c6i.xlarge"
+        ]
+      },
+      "consumer": {
+        "hostCount": 2,
+        "imageIds": [
+          "ami-000b332282fe987aa"
+        ],
+        "instanceTypes": [
+          "c7g.large"
+        ]
+      },
+      "haproxy": {
+        "hostCount": 2,
+        "imageIds": [
+          "ami-034e9ae07d918d27e"
+        ],
+        "instanceTypes": [
+          "c6in.xlarge"
+        ]
+      },
+      "loadGenerator": {
+        "hostCount": 8,
+        "imageIds": [
+          "ami-034e9ae07d918d27e"
+        ],
+        "instanceTypes": [
+          "c6in.large"
+        ]
+      }
+    }
+  },
+  "containerImages": [
+    {
+      "architecture": "linux/amd64",
+      "digest": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+      "exactImage": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/collector@sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+      "repository": "loop-ad/perf-phase7/run_20260719_164311_phase7_integration/collector",
+      "repositoryUri": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/collector",
+      "role": "collector",
+      "sourceClosureSha256": "1ff31222118492f14166e990294f532c0517a40bd50fb77e73e9235cf73b76b6",
+      "tag": "tree-bf74f842b624f23a0315c65c"
+    },
+    {
+      "architecture": "linux/arm64",
+      "digest": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5",
+      "exactImage": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/consumer@sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5",
+      "repository": "loop-ad/perf-phase7/run_20260719_164311_phase7_integration/consumer",
+      "repositoryUri": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/consumer",
+      "role": "consumer",
+      "sourceClosureSha256": "4c67bfe20fc097f2215d88b4c0f441b0b41e1468360f78519ed2b4ca897952b3",
+      "tag": "tree-bf74f842b624f23a0315c65c"
+    },
+    {
+      "architecture": "linux/arm64",
+      "digest": "sha256:6c3f158f7e97f41bfea03254d83107d1d6afb3e5b4228f95766d95ecfd8ef122",
+      "exactImage": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/archive@sha256:6c3f158f7e97f41bfea03254d83107d1d6afb3e5b4228f95766d95ecfd8ef122",
+      "repository": "loop-ad/perf-phase7/run_20260719_164311_phase7_integration/archive",
+      "repositoryUri": "742711170910.dkr.ecr.ap-northeast-2.amazonaws.com/loop-ad/perf-phase7/run_20260719_164311_phase7_integration/archive",
+      "role": "archive",
+      "sourceClosureSha256": "502c4d93c15f2fc6659211ffb2321cd1a5de7af0888236f93fe9a95ca42e4c39",
+      "tag": "tree-bf74f842b624f23a0315c65c"
+    }
+  ],
+  "documents": {
+    "acceptance_summary": {
+      "path": "performance-tests/phase8-final/acceptance-summary.md",
+      "sha256": "f3f081715cd4371adee2e4852a5965a2bfe8979adeb9d76c17d388ec10d1fc65"
+    },
+    "failure_history": {
+      "path": "performance-tests/phase8-final/failure-history.md",
+      "sha256": "9a2ca87f1e06802485134b6b420a4de4f094510713bca80aaee46f1d7510b327"
+    },
+    "operations_handoff": {
+      "path": "performance-tests/phase8-final/operations-handoff.md",
+      "sha256": "288331a4fddcbfd00928af4dae89810af4c2075f171c2739e741c6031918aef7"
+    }
+  },
+  "evidenceBasis": {
+    "freshMinimalSmokeAndArchive": {
+      "archive": {
+        "checks": {
+          "archiveTaskExitZero": true,
+          "clickHouseNoNewStoppedServiceTask": true,
+          "clickHouseTaskUnchanged": true,
+          "code241Zero": true,
+          "commitRereadImmutable": true,
+          "committedEquivalent": true,
+          "preDropEquivalent": true,
+          "retainSourceMode": true,
+          "rowsExact": true,
+          "sourceDropQueryZero": true,
+          "sourceFingerprintRetained": true,
+          "threePartsExact": true
+        },
+        "code241Exceptions": 0,
+        "dropExecuted": false,
+        "evidence": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/archive-validation.json",
+          "sha256": "b4e55373a0b95eb44c64eb4e8f735fa065514cc5ceccd19f91cbaec0333fd60e"
+        },
+        "logicalChecksum": "3643241378650291130",
+        "objects": [
+          {
+            "bytes": 90445374,
+            "index": 0,
+            "rows": 5000000,
+            "sha256": "b422bff161cc37d796f2f6a5249ed37bcc160d9c92f724352f650ac46f398fac"
+          },
+          {
+            "bytes": 90416120,
+            "index": 1,
+            "rows": 5000000,
+            "sha256": "097a486c7dce540f4d9943f60e7b280755e60de5b1c1e35d6a67770a9c733c08"
+          },
+          {
+            "bytes": 90592932,
+            "index": 2,
+            "rows": 5000000,
+            "sha256": "82fe1d51e56be415d51d96128a87b420ab84f37a98d1ab18db1c9dda19582fa2"
+          }
+        ],
+        "passed": true,
+        "peakQueryMemoryBytes": 5719433879,
+        "rows": 15000000,
+        "sourceDropQueries": 0,
+        "sourceRowsAfter": 15000000,
+        "uniqueEvents": 15000000
+      },
+      "attemptOrdinal": 23,
+      "attemptType": "aws-full-stack-scoped-diagnostic",
+      "cleanup": {
+        "allZero": true,
+        "evidence": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/cleanup-recovery-attempt-2-verification.json",
+          "sha256": "0111db195be79d3a70ee25a8d37dcd1e07faf62ef5a9187bfa56321d3ff9599b"
+        },
+        "globalInventory": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/post-cleanup-global-inventory.json",
+          "sha256": "640ba26c3cb5aebe85bd4f7fb7bdaa7c9383dfe56e3aca011406de438c6ccf13"
+        },
+        "serviceClassCount": 35
+      },
+      "cleanupRecoveryAcceptance": "passed",
+      "functionalAcceptance": "passed",
+      "gitCommit": "241a21b337c41cee7a9057fd72cf512a1a49e405",
+      "gitTree": "ddddc091c8e5739af68ac9cf0230e7a2f9b37c11",
+      "imageDigests": {
+        "archive": "sha256:6c3f158f7e97f41bfea03254d83107d1d6afb3e5b4228f95766d95ecfd8ef122",
+        "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+        "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+      },
+      "imageSourceHashes": {
+        "archive": "502c4d93c15f2fc6659211ffb2321cd1a5de7af0888236f93fe9a95ca42e4c39",
+        "collector": "1ff31222118492f14166e990294f532c0517a40bd50fb77e73e9235cf73b76b6",
+        "consumer": "4c67bfe20fc097f2215d88b4c0f441b0b41e1468360f78519ed2b4ca897952b3"
+      },
+      "immutableEntryAnchor": {
+        "entrySha256": "cd5217ea95bd66d1c48540ec55cc88bf409c48a1b2fadee87e5e40a73b17aebc",
+        "fileSha256": "b7d0705a23330769c584db8802429e96b4686419713cb08f4dc49f6f4a2ea4c1",
+        "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/campaign-ledger-entry.json"
+      },
+      "immutableSourceAnchor": {
+        "checksPassed": [
+          "scoped diagnostic pinned baseline",
+          "scoped diagnostic pinned policy",
+          "scoped diagnostic pinned composite promotion policy",
+          "scoped diagnostic execution contract",
+          "scoped diagnostic source type",
+          "scoped diagnostic authorization",
+          "scoped diagnostic unresolved failures",
+          "scoped diagnostic focused gates",
+          "implementation manifest"
+        ],
+        "fileSha256": "cf03fd80a9819fcbbaf7443b33e565ce968e0d3bf6c1554f2b5dff79a82b3936",
+        "gitCommit": "241a21b337c41cee7a9057fd72cf512a1a49e405",
+        "gitTree": "ddddc091c8e5739af68ac9cf0230e7a2f9b37c11",
+        "implementationTreeSha256": "bf74f842b624f23a0315c65c5a4276fdf0fc6fd79692e9a3b5b3ef6c3f92e21d",
+        "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-source-20260719T164247Z.json"
+      },
+      "implementationSourceClosureSha256": "bf74f842b624f23a0315c65c5a4276fdf0fc6fd79692e9a3b5b3ef6c3f92e21d",
+      "minimalSmoke": {
+        "evidence": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/deployment-verification.json",
+          "sha256": "2b39ffad9dbde4762b3e020697cb825c6ca223be0b75197f6397d7cd205155f1"
+        },
+        "passed": true
+      },
+      "promotionEligible": false,
+      "runId": "run_20260719_164311_phase7_integration",
+      "runnerEvidence": {
+        "execution": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/execution-summary.json",
+          "sha256": "7458c58f803b2de43420f1228785d51819bc1e12d0753ffcc40adfdc3434e5d5"
+        },
+        "run": {
+          "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/run.json",
+          "sha256": "8faf18d8e25de00d219370575b527350085cb1161c50da103da428bbb2478227"
+        }
+      },
+      "runnerFirstFailingGate": "cleanup",
+      "runnerVerdict": "failed",
+      "runnerVerdictRewritten": false,
+      "sessionId": "phase7-integration-20260719T164311Z"
+    },
+    "performanceCorrectnessAndRecovery": {
+      "attemptOrdinal": 17,
+      "correctnessAndReplacement": {
+        "evidence": {
+          "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/correctness-summary.json",
+          "sha256": "8c657863e3225ce9a059c36ce159ce331e8c5b0295d3f9545124f4de7fdc87f5"
+        },
+        "passed": true
+      },
+      "deployment": {
+        "evidence": {
+          "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/deployment-verification.json",
+          "sha256": "c1059b31adf67b8a9e3c32094d90099267daac1bbbfb7cb58fff5d9f44476a27"
+        },
+        "passed": true
+      },
+      "entrySha256": "fc394d015347e66f458c49244c4168b8c0ef25239cdc0994fa9adced4a1a2e0c",
+      "immutableEntryAnchor": {
+        "entrySha256": "fc394d015347e66f458c49244c4168b8c0ef25239cdc0994fa9adced4a1a2e0c",
+        "fileSha256": "c9514064a4ec43dae457c9d85f0283304b9815d266271a7df263da0e278518b2",
+        "path": "performance-tests/phase7_2-stabilization/attempt-17-ledger-entry.json"
+      },
+      "immutableVerdict": "failed",
+      "inheritedEvidenceOnly": true,
+      "knownStrictDeviation": {
+        "description": "The warmup completed 8,999,999 of 9,000,000 requests with one timeout. It remains a failed strict gate and is not rewritten as passed by this policy.",
+        "evidence": {
+          "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/evidence/warmup/stage-summary.json",
+          "sha256": "d1bbbf2b18d1eeb60bc9a433a673fbada151ac3a57965dde4de59af9c7830d0a"
+        },
+        "preserved": true
+      },
+      "runId": "run_20260719_043415_phase7_integration",
+      "score": {
+        "actualRps": 49987.713711084536,
+        "completedRequests": 15000000,
+        "correctedP95Ms": 112.5391715,
+        "evidence": {
+          "path": "performance-tests/run_20260719_043415_phase7_2_aws_integration/score-partial-summary.json",
+          "sha256": "5fee2c047f4a9cfa056626a07af41a15c95b3bd6e95f42866390a2b72c7f71e4"
+        },
+        "http429": 0,
+        "http5xx": 0,
+        "requestedRequests": 15000000,
+        "transportErrors": 0
+      },
+      "sessionId": "phase7-integration-20260719T043415Z",
+      "verdictRewritten": false
+    }
+  },
+  "generatedAt": "2026-07-19T18:25:39.453Z",
+  "handoff": {
+    "path": "performance-tests/phase7_2-stabilization/phase8-handoff.json",
+    "sha256": "e8332270d0a49611631c8f83a231cd2a05dbd607951e9547a0065493fec97760"
+  },
+  "manifestSha256": "1eb564874428d1ac347d858df6160d053ebbc93eae17ab1b596fb855cb4c2c50",
+  "phase": "8",
+  "phase5": "skipped",
+  "phase8PaidAwsExperimentOperationalUpperBoundUsd": "0.000000",
+  "promotedSource": {
+    "gitCommit": "241a21b337c41cee7a9057fd72cf512a1a49e405",
+    "gitTree": "ddddc091c8e5739af68ac9cf0230e7a2f9b37c11",
+    "implementationSourceClosureSha256": "bf74f842b624f23a0315c65c5a4276fdf0fc6fd79692e9a3b5b3ef6c3f92e21d",
+    "sourceSeal": {
+      "checksPassed": [
+        "scoped diagnostic pinned baseline",
+        "scoped diagnostic pinned policy",
+        "scoped diagnostic pinned composite promotion policy",
+        "scoped diagnostic execution contract",
+        "scoped diagnostic source type",
+        "scoped diagnostic authorization",
+        "scoped diagnostic unresolved failures",
+        "scoped diagnostic focused gates",
+        "implementation manifest"
+      ],
+      "fileSha256": "cf03fd80a9819fcbbaf7443b33e565ce968e0d3bf6c1554f2b5dff79a82b3936",
+      "gitCommit": "241a21b337c41cee7a9057fd72cf512a1a49e405",
+      "gitTree": "ddddc091c8e5739af68ac9cf0230e7a2f9b37c11",
+      "implementationTreeSha256": "bf74f842b624f23a0315c65c5a4276fdf0fc6fd79692e9a3b5b3ef6c3f92e21d",
+      "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-source-20260719T164247Z.json"
+    }
+  },
+  "promotionMode": "composite-cleanup-recovered-user-authorized",
+  "rawMetrics": {
+    "gitCommitted": false,
+    "path": "performance-tests/run_20260719_164311_phase7_2_aws_integration/metrics-summary.json",
+    "reason": "1.1 GiB immutable local raw evidence; hash is ledger-anchored",
+    "sha256": "ac1daddfd6e3b795ddfd7e05d7a971fb1934aeb2a323bb56fb5f6a2fc6ba3b57"
+  },
+  "recordType": "phase8-final-integration-baseline",
+  "schemaVersion": 1,
+  "strictSingleAttemptPassClaimed": false
+}

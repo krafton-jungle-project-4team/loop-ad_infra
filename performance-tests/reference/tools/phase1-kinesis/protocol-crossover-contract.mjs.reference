@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+
+export function buildProtocolCrossoverPlan(seed = 20_260_714) {
+    if (!Number.isInteger(seed) || seed < 1) throw new Error('seed must be a positive integer');
+    const independent = {
+        logicalDevices: 12_000,
+        physicalConnections: 12_000,
+        streamsPerConnection: 1,
+        crossDeviceMultiplexing: 0,
+    };
+    return {
+        schemaVersion: 2,
+        seed,
+        immutable: {
+            region: 'ap-northeast-2', candidate: 'go-batch', shards: 80,
+            collectors: 4, collectorInstanceType: 'c6i.xlarge', generators: 4,
+            generatorInstanceType: 'c6in.large', processesPerNode: 2,
+            applicationMaxInFlight: 2048, sdkMaxConnections: 1024,
+            offeredRps: 30_000, durationSeconds: 120, timeoutSeconds: 10,
+        },
+        paths: {
+            A0: { ...independent, clientProtocol: 'h1', loadBalancerKind: 'alb', listenerProtocol: 'HTTPS', targetProtocolVersion: 'HTTP1' },
+            A1: { ...independent, clientProtocol: 'h2', loadBalancerKind: 'alb', listenerProtocol: 'HTTPS', targetProtocolVersion: 'HTTP1', allowedAlpn: ['h2'] },
+            A2: { ...independent, clientProtocol: 'h2', loadBalancerKind: 'alb', listenerProtocol: 'HTTPS', targetProtocolVersion: 'HTTP2', allowedAlpn: ['h2'] },
+            N2: { ...independent, clientProtocol: 'h2', loadBalancerKind: 'nlb', listenerProtocol: 'TCP', targetProtocolVersion: 'TCP', collectorTermination: 'TLS_H2', allowedAlpn: ['h2'] },
+            N3: { ...independent, clientProtocol: 'h3', loadBalancerKind: 'nlb', listenerProtocol: 'QUIC', targetProtocolVersion: 'QUIC', collectorTermination: 'QUIC_H3', quicVersions: ['v1'], allowedAlpn: ['h3'] },
+        },
+        driverContract: {
+            oneDevicePerTransport: true,
+            maximumConcurrentStreamsPerConnection: 1,
+            physicalConnectionToleranceFraction: 0.01,
+            minimumOfferedLoadAccuracy: 0.99,
+            protocolFallbacksAllowed: 0,
+            crossDeviceReuseAllowed: 0,
+            tlsCertificateVerificationRequired: true,
+        },
+        connectionCardinality: [12_000, 30_000, 60_000],
+        repetitionRule: { exploratory: 1, causalBoundaryTotal: 3 },
+        fiftyKPromotion: {
+            conditional: true,
+            requiredValid30kRepetitions: 3,
+            preservePerDeviceRequestRate: true,
+            calculateDeviceCountByScript: true,
+        },
+    };
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    process.stdout.write(`${JSON.stringify(buildProtocolCrossoverPlan(Number(process.argv[2] ?? 20_260_714)), null, 2)}\n`);
+}

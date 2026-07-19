@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_193612_phase0_alb_5k",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-09T19:36:12",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "target_rps",
+      "value": 5000,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 300,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "target_rps",
+      "value": 5000,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "event_per_request",
+      "value": 1,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "duration_seconds",
+      "value": 300,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "load_generator.cpu",
+      "value": 4,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "load_generator.memory_gib",
+      "value": 8,
+      "source": "run_20260709_193612_phase0_alb_5k/run.json"
+    },
+    {
+      "name": "status",
+      "value": "aborted_after_timeout_saturation",
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "target_rps",
+      "value": 5000,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "worker_cpu",
+      "value": 4,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "worker_memory_gib",
+      "value": 8,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "requested_fargate_spot_vcpu",
+      "value": 8,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "fargate_spot_vcpu_quota",
+      "value": 30,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "observed_from_log.max_request_rate_per_sec",
+      "value": 5144,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "observed_from_log.http_requests",
+      "value": 277438,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "observed_from_log.first_timeout_period.request_rate_per_sec",
+      "value": 2590,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    },
+    {
+      "name": "observed_from_log.first_timeout_period.http_requests",
+      "value": 25896,
+      "source": "run_20260709_193612_phase0_alb_5k/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_193612_phase0_alb_5k"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/artifacts.md",
+      "bytes": 389,
+      "sha256": "1a12ecad52c42f81b5aab4ae1aaa9398081d1f53e45dfc1b7373761df5ff3e81"
+    },
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/commands.md",
+      "bytes": 1608,
+      "sha256": "50e87e152f5d5ecaa4af642410aea574fff47fa73700e2d5630eaaaf24c3ebb6"
+    },
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/infra.md",
+      "bytes": 592,
+      "sha256": "a4d7a16b0116502aa4ace142b39d4bf6f30c466d2b9bbef365996260519fe90b"
+    },
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/metrics-summary.json",
+      "bytes": 1169,
+      "sha256": "3e79223b2a16696f5b8837ccb7c42e0d9e7cd594c205da8476cda859ccbd7d77"
+    },
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/report.md",
+      "bytes": 1073,
+      "sha256": "3cbcd06267d60361331b00260321cbb304e1ff93186510ef5d4d5a29ef4edc22"
+    },
+    {
+      "path": "run_20260709_193612_phase0_alb_5k/run.json",
+      "bytes": 895,
+      "sha256": "5183992436acfec98d7de2cff07f735a2bf07108ed8fa0294e06cc7fae89810c"
+    }
+  ]
+}

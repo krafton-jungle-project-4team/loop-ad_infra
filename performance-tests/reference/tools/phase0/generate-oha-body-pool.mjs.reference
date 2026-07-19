@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const payloadDir = join(scriptDir, 'payloads');
+const inputPath = join(payloadDir, 'sdk-compatible-event-bodies.tsv');
+const outputPath = join(payloadDir, 'oha-body-pool-12.ndjson');
+const manifestPath = join(payloadDir, 'oha-body-pool-12.manifest.json');
+const profiles = ['compact', 'standard', 'expanded'];
+const rowsPerProfile = 4;
+
+const [headerLine, ...dataLines] = readFileSync(inputPath, 'utf8').trimEnd().split('\n');
+const headers = headerLine.split('\t');
+const rows = dataLines.map((line, index) => {
+    const values = line.split('\t');
+    const row = Object.fromEntries(headers.map((header, column) => [header, values[column]]));
+    return { ...row, sourceRow: index + 2 };
+});
+
+const selected = profiles.flatMap((profile) => rows
+    .filter((row) => row.payload_size_profile === profile)
+    .slice(0, rowsPerProfile));
+
+if (selected.length !== profiles.length * rowsPerProfile) {
+    throw new Error(`Expected ${profiles.length * rowsPerProfile} payload rows, found ${selected.length}.`);
+}
+
+const entries = selected.map((row, index) => {
+    JSON.parse(row.body_json);
+    const actualBytes = Buffer.byteLength(row.body_json);
+    const declaredBytes = Number(row.payload_actual_bytes);
+    if (actualBytes !== declaredBytes || actualBytes < 1024 || actualBytes > 1536) {
+        throw new Error(`Invalid body size at source row ${row.sourceRow}: declared=${declaredBytes}, actual=${actualBytes}.`);
+    }
+
+    return {
+        poolIndex: index + 1,
+        sourceRow: row.sourceRow,
+        payloadSizeProfile: row.payload_size_profile,
+        bodyBytes: actualBytes,
+        sha256: createHash('sha256').update(row.body_json).digest('hex'),
+    };
+});
+
+writeFileSync(outputPath, `${selected.map((row) => row.body_json).join('\n')}\n`);
+writeFileSync(manifestPath, `${JSON.stringify({
+    source: 'sdk-compatible-event-bodies.tsv',
+    selection: 'first four rows from each payload size profile',
+    selectionModeAtRuntime: 'oha -Z randomly chooses one line per request',
+    poolRows: entries.length,
+    minBodyBytes: Math.min(...entries.map((entry) => entry.bodyBytes)),
+    maxBodyBytes: Math.max(...entries.map((entry) => entry.bodyBytes)),
+    profileCounts: Object.fromEntries(profiles.map((profile) => [
+        profile,
+        entries.filter((entry) => entry.payloadSizeProfile === profile).length,
+    ])),
+    entries,
+}, null, 2)}\n`);

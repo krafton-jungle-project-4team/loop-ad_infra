@@ -1,0 +1,40 @@
+{
+  "DimensionValueAttributes": [],
+  "ResultsByTime": [
+    {
+      "Estimated": true,
+      "Groups": [],
+      "TimePeriod": {
+        "End": "2026-07-18",
+        "Start": "2026-07-17"
+      },
+      "Total": {
+        "UnblendedCost": {
+          "Amount": "0",
+          "Unit": "USD"
+        }
+      }
+    }
+  ],
+  "query": {
+    "filter": {
+      "Tags": {
+        "Key": "RunId",
+        "MatchOptions": [
+          "EQUALS"
+        ],
+        "Values": [
+          "run_20260717_225316_phase7_integration"
+        ]
+      }
+    },
+    "granularity": "DAILY",
+    "metric": "UnblendedCost",
+    "region": "us-east-1",
+    "timePeriod": {
+      "End": "2026-07-18",
+      "Start": "2026-07-17"
+    }
+  },
+  "recordedAt": "2026-07-18T00:12:00Z"
+}

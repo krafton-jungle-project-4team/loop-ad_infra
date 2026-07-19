@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260713_220500_alb_fanout_crossover",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-13T22:05:00",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "topology.stageDurationSeconds",
+      "value": 45,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "cost.incrementalHardCapUsd",
+      "value": 30,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "cost.cleanupReserveUsd",
+      "value": 5,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "cost.newDeployStopAccruedUsd",
+      "value": 24,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "topology.offeredRps",
+      "value": 10000,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "topology.stageDurationSeconds",
+      "value": 45,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    },
+    {
+      "name": "cleanup.passed",
+      "value": true,
+      "source": "run_20260713_220500_alb_fanout_crossover/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260713_220500_alb_fanout_crossover"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260713_220500_alb_fanout_crossover/cost-explorer-final.json",
+      "bytes": 934,
+      "sha256": "6022545d24531b5d6d0debd422f0ea1ef9b2bfc306064cdc66f09f09fd2b6068"
+    },
+    {
+      "path": "run_20260713_220500_alb_fanout_crossover/run.json",
+      "bytes": 2011,
+      "sha256": "d6def50faa5016e274457fe5a1b0722bcb05c2a5b5a5dbed1b54962d64e273e6"
+    }
+  ]
+}

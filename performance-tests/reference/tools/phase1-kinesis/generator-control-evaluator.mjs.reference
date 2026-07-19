@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+export function evaluateGeneratorControl({ aggregate, alb }) {
+    const attempted = aggregate.attemptedRequests;
+    const completed = aggregate.completedRequests;
+    const targetRps = aggregate.targetRps;
+    const transportErrorRatio = attempted === 0 ? 1 : aggregate.transportErrors / attempted;
+    const albAcceptanceDifferenceRatio = completed === 0 ? 1 : Math.abs(alb.fixedResponseCount - completed) / completed;
+    const allowanceExceeded = Object.values(aggregate.enaAllowanceDelta ?? {}).reduce((sum, value) => sum + value, 0);
+    const checks = {
+        aggregationPassed: aggregate.passed === true,
+        achievedNinetyNinePercent: aggregate.actualRps >= targetRps * 0.99,
+        transportErrorsWithinLimit: transportErrorRatio <= 0.001,
+        allResponses202: aggregate.http202 === aggregate.completedRequests,
+        noHttp5xx: aggregate.http5xx === 0,
+        albFixedResponseCountWithinLimit: albAcceptanceDifferenceRatio <= 0.001,
+        albFixedResponsesCoverRequests: alb.fixedResponseCount >= aggregate.completedRequests,
+        noAlbRejectedConnections: alb.rejectedConnectionCount === 0,
+        noAlb5xx: alb.elb5xx === 0,
+        noEnaAllowanceExceeded: allowanceExceeded === 0,
+        hostResourcesBounded: aggregate.nodes.every((node) =>
+            node.processObservation.maxOhaCpuPercent < 195 &&
+            node.socketTelemetry.oha_open_fds < node.limits.ulimitNofile &&
+            node.socketTelemetry.conntrack_count < node.limits.conntrack.max),
+    };
+    const capable = Object.values(checks).every(Boolean);
+    return {
+        evaluatedAt: new Date().toISOString(), targetRps,
+        topology: { nodeCount: aggregate.nodeCount, processesPerNode: aggregate.processesPerNode,
+            processCount: aggregate.processCount, totalConnections: aggregate.configuredConnections },
+        measurements: { actualRps: aggregate.actualRps, attemptedRequests: attempted,
+            completedRequests: aggregate.completedRequests, transportErrors: aggregate.transportErrors,
+            transportErrorRatio, albRequestCount: alb.requestCount, albFixedResponseCount: alb.fixedResponseCount,
+            albAcceptanceDifferenceRatio,
+            firstByteMs: aggregate.firstByteMs, latencyCorrectedMs: aggregate.latencyCorrectedMs },
+        checks,
+        result: capable ? 'capable' : 'generator-limited',
+        passed: capable,
+    };
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    const aggregate = JSON.parse(readFileSync(requiredOption('--aggregate'), 'utf8'));
+    const alb = JSON.parse(readFileSync(requiredOption('--alb'), 'utf8'));
+    const result = evaluateGeneratorControl({ aggregate, alb });
+    const output = requiredOption('--output');
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (!result.passed) process.exitCode = 2;
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index < 0 ? undefined : process.argv[index + 1];
+    if (!value) throw new Error(`${name} required`);
+    return value;
+}

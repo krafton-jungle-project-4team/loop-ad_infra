@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "incidentId": "incident-phase7-20260719-094035",
+  "symptom": "not_recorded",
+  "rootCause": "not_recorded",
+  "fix": "not_recorded",
+  "regressionResult": "run_20260719_094035_phase7_2_aws_targeted_diagnostic:aborted",
+  "affectedRunIds": [
+    "run_20260719_094035_phase7_2_aws_targeted_diagnostic"
+  ],
+  "period": {
+    "start": "2026-07-19T09:40:35",
+    "end": "2026-07-19T09:40:35",
+    "timezone": "not_recorded"
+  },
+  "invalidationScope": "unknown",
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceEvidence": [
+      {
+        "path": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/commands.md",
+        "bytes": 1764,
+        "sha256": "5144dafb33f3380cfcd5b6a129a564dc1ba481d0ff73dc18b2347b67c15e12ea"
+      },
+      {
+        "path": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json",
+        "bytes": 2215,
+        "sha256": "133606e5fd28cdea9a2f19b1982aff0395337a61c7031aa40dd880d24b7921c2"
+      }
+    ]
+  }
+}

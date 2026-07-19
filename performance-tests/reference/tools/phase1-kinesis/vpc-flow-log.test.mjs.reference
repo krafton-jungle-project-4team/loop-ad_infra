@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+    evaluatePacketFlowPath,
+    parseVpcFlowLogLine,
+    parseVpcFlowLogText,
+    summarizeVpcFlowLogs,
+} from './vpc-flow-log.mjs';
+
+const syn = '5 742711170910 i-abc eni-abc subnet-abc apne2-az1 10.0.0.10 10.0.0.20 45000 80 6 ACCEPT egress 2 1 60 100 101 OK';
+const synAck = '5 742711170910 i-abc eni-abc subnet-abc apne2-az1 10.0.0.20 10.0.0.10 80 45000 6 ACCEPT ingress 18 1 60 100 101 OK';
+
+test('parses required custom Flow Log fields and TCP flags', () => {
+    const record = parseVpcFlowLogLine(synAck);
+    assert.equal(record.instanceId, 'i-abc');
+    assert.equal(record.flagSet.syn, true);
+    assert.equal(record.flagSet.ack, true);
+    assert.throws(() => parseVpcFlowLogLine('5 too few'), /expected 19/);
+});
+
+test('parser and summarizer preserve parse failures and REJECT evidence', () => {
+    const parsed = parseVpcFlowLogText(`${syn}\ninvalid\n${synAck.replace('ACCEPT', 'REJECT')}\n`);
+    assert.equal(parsed.records.length, 2);
+    assert.equal(parsed.errors.length, 1);
+    const summary = summarizeVpcFlowLogs(parsed.records);
+    assert.equal(summary.rejectCount, 1);
+    assert.equal(summary.groups.reduce((sum, group) => sum + group.syn + group.synAck, 0), 2);
+});
+
+test('summarizer accepts AWS records whose instance ID is unavailable', () => {
+    const parsed = parseVpcFlowLogLine('5 123456789012 - eni-alb subnet-a apne2-az1 10.0.0.1 10.0.0.2 12345 80 6 ACCEPT ingress 18 1 60 100 101 OK');
+    assert.equal(summarizeVpcFlowLogs([parsed]).groups[0].instanceId, null);
+});
+
+test('packet/flow rules classify missing SYN-ACK, host tuple handling, and REJECT', () => {
+    assert.equal(evaluatePacketFlowPath({ outboundSyn: 4, inboundSynAck: 0, socketSynSent: 4, rst: 0, flowReject: 0 }).classification, 'eni-or-vpc-alb-path');
+    assert.equal(evaluatePacketFlowPath({ outboundSyn: 4, inboundSynAck: 4, socketSynSent: 2, rst: 1, flowReject: 0 }).classification, 'host-kernel-tuple-path');
+    assert.equal(evaluatePacketFlowPath({ outboundSyn: 1, inboundSynAck: 0, socketSynSent: 1, rst: 0, flowReject: 1 }).classification, 'configuration-path');
+});

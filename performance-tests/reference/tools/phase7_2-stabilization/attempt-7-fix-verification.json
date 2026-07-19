@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 7,
+  "runId": "run_20260718_105848_phase7_integration",
+  "verifiedAt": "2026-07-18T12:08:00Z",
+  "fixCommit": "b312d51da7cc198ec100d05b153dac77961f4238",
+  "status": "passed",
+  "change": {
+    "summary": "Preserve the embedded oha worker byte-for-byte by combining its LF-terminated body with the heredoc terminator without an added array separator. Reconstruct and compare the synthesized worker exactly. Add the NAT gateway public IPv4 charge to fresh public price lookup and the deterministic cost gate.",
+    "files": [
+      "src/perf-phase1-kinesis-stack.ts",
+      "test/perf-phase7-integration.test.ts",
+      "performance-tests/phase7-integration/aws/lookup-prices.mjs",
+      "performance-tests/phase7-integration/aws/cost_model.py",
+      "performance-tests/phase7-integration/tests/test_aws_tooling.py"
+    ]
+  },
+  "rootCause": {
+    "path": "performance-tests/run_20260718_105848_phase7_2_aws_integration/evidence/diagnosis/load-generator-worker-sha-mismatch.json",
+    "sha256": "0e1096669184508f153cfc8c1f39032a08a0258bc2a9b8091cbe48cb77ba0009",
+    "rawVerifyLogPath": "performance-tests/run_20260718_105848_phase7_2_aws_integration/evidence/control/verify.attempt-1.stderr.log",
+    "rawVerifyLogSha256": "13193e3cb514c8e11c9d6e70a0708bf18a11b778ae0efeacddb2ab6657faca4d"
+  },
+  "verification": {
+    "focusedJest": {
+      "tests": 13,
+      "failed": 0,
+      "passed": true
+    },
+    "phase7Tests": {
+      "command": "npm run test:phase7",
+      "jestPassed": 13,
+      "nodePassed": 27,
+      "pythonPassed": 135,
+      "failed": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "passed": true
+    },
+    "exactContextSynth": {
+      "passed": true,
+      "runtimeTemplatePath": "performance-tests/phase7_2-stabilization/attempt-7-fix-validation/runtime-template.json",
+      "runtimeTemplateSha256": "11aff59a257db0adea7d2cb5a011964ba463eac0c7a4b3598d3257667666f645",
+      "diagnosisOnlyHistoricalIdentity": true
+    },
+    "userData": {
+      "passed": true,
+      "launchTemplatesChecked": 5,
+      "ec2LimitBytes": 16384,
+      "loadGeneratorBytes": 15224,
+      "loadGeneratorMarginLimitBytes": 15360,
+      "loadGeneratorMarginRemainingBytes": 136,
+      "sourceWorkerBytes": 48339,
+      "deployedWorkerBytes": 48339,
+      "workerSha256": "916b91511f1cdb5286be3ba35e58ecf49d1782dff3c827432b15f66531b31898",
+      "exactWorkerBytes": true,
+      "sha256": "638b3bf8e9471be54435f9e2dcf31f404a176b26a413c779dfd7bf51c31359b5"
+    },
+    "repositoryTemplateValidator": {
+      "passed": true,
+      "taskDefinitionsChecked": 5,
+      "schemaGuardRetries": 10,
+      "sha256": "0e38045a0255d02d26f22bf968ed743699591f525be5fdd20c6f146ed3a59e4d"
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "rawExitCode": 6,
+      "expectedAssemblyOnlyE1022": 8,
+      "expectedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "passedUnderRepositoryPolicy": true,
+      "summarySha256": "2101cc69080b0ef2cb09d8c3e4971509397ec582d4b680966e6f1ed07a59eae4"
+    },
+    "costModel": {
+      "publicIpv4PriceSource": "AWS Price List AmazonVPC APN2-PublicIPv4:InUseAddress",
+      "publicIpv4HourUsd": "0.0050000000",
+      "activeEpochAccruedUpperBoundUsd": "20.000000",
+      "nextAttemptOperationalUpperBoundUsd": "33.870718",
+      "maximumIncludingCleanupUsd": "58.870718",
+      "hardCapUsd": "60.000000",
+      "passed": true,
+      "sha256": "91c22554c21eb3cebaf430342fb8fd3ef14660f2474abf5db14b37d6f68c2d75"
+    }
+  },
+  "assessment": "The deployed worker reconstructed from the exact synthesized LaunchTemplate is now byte-identical to the source, so the attempt 7 worker SHA failure cannot recur through this assembly path. UserData retains the required EC2 and Phase 7 margins. The corrected public IPv4-inclusive budget admits at most one fresh full attempt subject to refreshed prices and all fresh identity, ownership, image and preflight gates. A fresh Phase 7-1 handoff and fresh immutable AWS identities remain mandatory."
+}

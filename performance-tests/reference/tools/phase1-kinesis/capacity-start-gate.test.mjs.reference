@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./capacity-start-gate.mjs', import.meta.url).pathname;
+const session = 'phase1-capacity-20260712T081500Z';
+
+test('allows a stage only when the conservative estimate finishes by minute 110', () => {
+    const fixture = files(99, 4, 10);
+    const output = JSON.parse(execFileSync('node', args(fixture, 'stage', 600), { encoding: 'utf8' }));
+    assert.equal(output.passed, true);
+    assert.equal(output.stream.projectedFinishAgeMinutes, 109);
+});
+
+test('blocks work that starts before minute 100 but cannot finish before cleanup', () => {
+    const fixture = files(99, 4, 10);
+    const result = spawnSync('node', args(fixture, 'stage', 661), { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.equal(JSON.parse(result.stdout).checks.projectedFinishBeforeCleanup, false);
+});
+
+test('blocks an estimate below the action minimum and the minute-100 start boundary', () => {
+    const early = files(90, 4, 10);
+    const short = spawnSync('node', args(early, 'stage', 599), { encoding: 'utf8' });
+    assert.equal(JSON.parse(short.stdout).checks.conservativeEstimateProvided, false);
+
+    const late = files(100, 4, 10);
+    const stopped = spawnSync('node', args(late, 'repetition', 240), { encoding: 'utf8' });
+    assert.equal(JSON.parse(stopped.stdout).checks.startWindowOpen, false);
+});
+
+test('blocks accrued/projected cost stops and enforces 110/120 minute cleanup limits', () => {
+    const costly = spawnSync('node', args(files(80, 18, 20), 'stage', 600), { encoding: 'utf8' });
+    const costlyOutput = JSON.parse(costly.stdout);
+    assert.equal(costlyOutput.checks.accruedBelowNewRunStop, false);
+    assert.equal(costlyOutput.checks.projectedBelowHardLimit, false);
+
+    const cleanup = spawnSync('node', args(files(110, 4, 10), 'stage', 600), { encoding: 'utf8' });
+    assert.equal(JSON.parse(cleanup.stdout).stream.cleanupRequired, true);
+    const hard = spawnSync('node', cleanupArgs(files(120, 4, 10)), { encoding: 'utf8' });
+    assert.equal(JSON.parse(hard.stdout).stream.hardExpired, true);
+});
+
+function files(ageMinutes, accrued, projected) {
+    const dir = mkdtempSync(join(tmpdir(), 'loopad-capacity-gate-'));
+    const now = new Date('2026-07-12T09:00:00.000Z');
+    const stream = join(dir, 'stream.json');
+    const accruedPath = join(dir, 'accrued.json');
+    const projectedPath = join(dir, 'projected.json');
+    writeFileSync(stream, JSON.stringify({
+        summary: {
+            StreamCreationTimestamp: new Date(now.getTime() - ageMinutes * 60_000).toISOString(),
+            StreamStatus: 'ACTIVE', OpenShardCount: 80, RetentionPeriodHours: 24,
+        },
+        tags: Object.entries({
+            Project: 'loop-ad', Environment: 'perf-phase1-kinesis', ResourceScope: 'shared-test-session',
+            ComparisonSessionId: session, SessionId: session, RunId: session,
+            Phase: 'phase1-capacity', ManagedBy: 'codex', Owner: 'loop-ad',
+        }).map(([Key, Value]) => ({ Key, Value })),
+    }));
+    writeFileSync(accruedPath, JSON.stringify({ runUpperBoundUsd: accrued }));
+    writeFileSync(projectedPath, JSON.stringify({ projectedCumulativeUpperBoundUsd: projected }));
+    return { stream, accruedPath, projectedPath, now: now.toISOString() };
+}
+
+function args(fixture, action, estimate) {
+    return [script, '--session-id', session, '--candidate', 'go-sync', '--action', action,
+        '--estimated-work-seconds', `${estimate}`, '--stream-fixture', fixture.stream,
+        '--accrued-cost', fixture.accruedPath, '--projected-cost', fixture.projectedPath,
+        '--now', fixture.now];
+}
+
+function cleanupArgs(fixture) {
+    return [script, '--session-id', session, '--candidate', 'go-sync', '--action', 'cleanup',
+        '--stream-fixture', fixture.stream, '--now', fixture.now];
+}

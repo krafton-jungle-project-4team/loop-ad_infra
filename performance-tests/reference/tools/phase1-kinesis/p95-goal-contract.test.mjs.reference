@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { P95_GOAL, P95_OHA_AMENDMENT, p95GoalLoadArithmetic } from './p95-goal-contract.mjs';
+
+test('pins the 50k/12k load exactly across eight generators and sixteen processes', () => {
+    assert.deepEqual(p95GoalLoadArithmetic(), {
+        processCount: 16, rpsPerGenerator: 6_250, connectionsPerGenerator: 1_500,
+        rpsPerProcess: 3_125, connectionsPerProcess: 750,
+    });
+    assert.equal(P95_GOAL.loadGenerator, 'oha');
+    assert.equal(P95_GOAL.customLoadGeneratorAllowed, false);
+    assert.deepEqual(P95_GOAL.warmupSecondsByRepetition, [180]);
+    assert.equal(P95_GOAL.warmupMode, 'separate-unscored-oha-stage');
+    assert.equal(P95_GOAL.reuseWarmupConnectionsForScore, false);
+    assert.equal(P95_GOAL.measurementSeconds, 300);
+    assert.equal(P95_GOAL.repetitions, 1);
+    assert.equal(P95_GOAL.serviceP95LimitMs, 300);
+    assert.equal(P95_GOAL.maximumKinesisRetryRate, .00001);
+    assert.equal(P95_GOAL.minimumAchievedRatio, .99);
+    assert.equal(P95_GOAL.haproxyThreadMode, 'automatic');
+    assert.equal(P95_GOAL.haproxyInstanceType, 'c6in.xlarge');
+    assert.equal(P95_GOAL.automaticRetryAllowed, false);
+    assert.equal(P95_GOAL.e3Allowed, false);
+    assert.match(P95_GOAL.finalAckAccounting, /transport errors/);
+});
+
+test('explicitly records the oha substitutions instead of fabricating pooled evidence', () => {
+    assert.equal(P95_GOAL.exactFleetPooledHistogramAvailable, false);
+    assert.equal(P95_GOAL.liveP95Available, false);
+    assert.match(P95_GOAL.latencyVerdict, /maximum-of-16-oha-process/);
+    assert.ok(P95_OHA_AMENDMENT.supersedes.includes('custom reference load driver'));
+    assert.ok(P95_OHA_AMENDMENT.deferredUntilOhaExit.includes('latency-corrected p95'));
+});
+
+test('stage runner enforces separate oha warm-up and conservative score evidence', () => {
+    const stage = readFileSync(new URL('./run-latency-root-cause-stage.mjs', import.meta.url), 'utf8');
+	const invoke = readFileSync(new URL('./invoke-oha.mjs', import.meta.url), 'utf8');
+	const worker = readFileSync(new URL('./run-ec2-oha-worker.sh', import.meta.url), 'utf8');
+	const collectorTelemetry = readFileSync(new URL('./collect-latency-root-cause-telemetry.mjs', import.meta.url), 'utf8');
+	const proxyTelemetry = readFileSync(new URL('./collect-haproxy-telemetry.mjs', import.meta.url), 'utf8');
+	const proxySummary = readFileSync(new URL('./summarize-haproxy-telemetry.mjs', import.meta.url), 'utf8');
+	const safetyMonitor = readFileSync(new URL('./monitor-oha-connection-path-safety.mjs', import.meta.url), 'utf8');
+	const evaluator = readFileSync(new URL('./evaluate-latency-root-cause.mjs', import.meta.url), 'utf8');
+	assert.match(stage, /ohaP95Phase/);
+	assert.match(stage, /driver !== 'oha'/);
+	assert.match(stage, /ohaP95Phase === 'none' \? 25 : 60/);
+    assert.match(stage, /connections \/ generatorCount/);
+	assert.match(stage, /ohaProcessCount/);
+	assert.match(stage, /worst-of-16-oha-process-latency-corrected-quantiles/);
+	assert.match(stage, /collector-telemetry-scored-summary\.json/);
+	assert.match(stage, /proxy-telemetry-scored-summary\.json/);
+	assert.match(stage, /monitor-oha-connection-path-safety\.mjs/);
+	assert.match(stage, /realtimeSafetyPassed/);
+	assert.match(stage, /resumeCompletedOhaStage/);
+	assert.match(stage, /singleFinalRun/);
+	assert.match(stage, /immutable stage artifact already exists/);
+	assert.match(stage, /completed-stage resume is restricted to an oha p95 stage/);
+	assert.match(stage, /scored oha resume requires a previously safety-aborted stage/);
+	assert.match(stage, /fullDurationCompleted: !stageAborted/);
+	assert.match(stage, /collector request-trace instrumentation is intentionally disabled for the unscored oha warm-up/);
+	assert.match(stage, /clientP95WithinStageLimit: unscoredWarmup \|\|/);
+	assert.match(stage, /startEpoch \+ durationSeconds/);
+	assert.match(stage, /kinesisSuccesses >= finalAckAccounting\.lowerBound/);
+	assert.match(stage, /kinesisRetryRate <= maximumKinesisRetryRate/);
+	assert.match(stage, /finalAckMeasurementAligned/);
+	assert.match(invoke, /--process-start-spacing-seconds/);
+	assert.match(worker, /--latency-correction/);
+	assert.match(worker, /OHA_HTTP_VERSION.*2/);
+	assert.match(collectorTelemetry, /durationSeconds > 1_500/);
+	assert.match(proxyTelemetry, /durationSeconds > 1_500/);
+	assert.match(collectorTelemetry, /abort-requested/);
+	assert.match(collectorTelemetry, /measurement-boundaries\.ndjson/);
+	assert.match(proxyTelemetry, /abort-requested/);
+	assert.match(proxyTelemetry, /resumedInvocations/);
+	assert.match(proxyTelemetry, /CreateOAuth2Token\.\*Rate exceeded/);
+	assert.match(proxySummary, /nonFiniteMetricsOnlyKnownOptional/);
+	assert.match(proxySummary, /haproxy_process_current_zlib_memory/);
+	assert.match(proxySummary, /haproxy_server_queue_limit/);
+	assert.match(proxySummary, /split\(\/\\s\+\//);
+	assert.match(proxySummary, /\\u001b\\\[/);
+	assert.match(safetyMonitor, /expectedRps !== 50_000 \|\| expectedConnections !== 12_000/);
+	assert.match(safetyMonitor, /clientLatencyAvailableLive: false/);
+	assert.match(safetyMonitor, /generatorAbortCommand/);
+	assert.match(safetyMonitor, /collector telemetry abort/);
+	assert.match(safetyMonitor, /proxy telemetry abort/);
+	assert.match(safetyMonitor, /CreateOAuth2Token\.\*Rate exceeded/);
+	assert.match(evaluator, /function collectorIndexes/);
+	assert.doesNotMatch(evaluator, /\[1,\s*2,\s*3,\s*4\]/);
+});

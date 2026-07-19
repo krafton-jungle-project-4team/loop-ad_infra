@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_203904_phase0_alb_precomputed",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-09T20:39:04",
+  "purpose": "precomputed SDK-compatible payloads로 로컬 Artillery 50k rps 생성 한계를 확인하고, Phase 0 스택을 배포/정리한다.",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "localArtillery50k.configuredArrivalRatePerSecond",
+      "value": 50000,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "localArtillery50k.configuredDurationSeconds",
+      "value": 30,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "localArtillery50k.observedMaxRequestRatePerSecond",
+      "value": 11487,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "localArtillery50k.observedRequestsTotal",
+      "value": 536006,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "fargateRampAttempts[2].observedMaxRequestRatePerSecond",
+      "value": 258,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "fargateRampAttempts[2].observedRequestsTotal",
+      "value": 5588,
+      "source": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_203904_phase0_alb_precomputed"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/artifacts.md",
+      "bytes": 939,
+      "sha256": "c677ec3439796bb27218246ebf9c450702717d259122de3b22669002a4f82835"
+    },
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/commands.md",
+      "bytes": 3719,
+      "sha256": "dd788df4f114c3585156cc66c1d816b2dda991fc0569699948c48bfb90f996da"
+    },
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/infra.md",
+      "bytes": 1359,
+      "sha256": "ad9993b09b4288c25d1b291598b36d834f8e41c3faa3d773800e1076fbdbae8c"
+    },
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/metrics-summary.json",
+      "bytes": 1768,
+      "sha256": "f432ed120dfd9d61eb458c502af0334da52f19d722e1541959f5142062214b94"
+    },
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/report.md",
+      "bytes": 1778,
+      "sha256": "534f2e320ea8896bf2568e81c6ae7f0b9128a2fca6b12ab82525abbfd58a46c9"
+    },
+    {
+      "path": "run_20260709_203904_phase0_alb_precomputed/run.json",
+      "bytes": 1072,
+      "sha256": "9ef32611af79ae2359e67311d5043af090a2e2cc8f7eb374abdfec976bd2e828"
+    }
+  ]
+}

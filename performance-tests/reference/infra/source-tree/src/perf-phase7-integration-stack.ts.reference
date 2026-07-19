@@ -1,0 +1,1058 @@
+import {
+    CfnOutput,
+    CfnWaitCondition,
+    CfnWaitConditionHandle,
+    Duration,
+    RemovalPolicy,
+    Size,
+    Stack,
+    Tags,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
+import { Construct } from 'constructs';
+import { createHash } from 'node:crypto';
+import {
+    PHASE7_CLICKHOUSE_IMAGE,
+    PHASE7_COLLECTOR_COUNT,
+    PHASE7_CONSUMER_COUNT,
+    PHASE7_HAPROXY_COUNT,
+    PHASE7_HAPROXY_IMAGE,
+    PHASE7_HOST_INSTANCE_TYPES,
+    PHASE7_LOAD_GENERATOR_COUNT,
+    PHASE7_OHA_IMAGE,
+    PHASE7_REGION,
+    phase7OwnershipTags,
+    PHASE7_STREAM_SHARDS,
+    readPerfPhase7IntegrationConfig,
+    type PerfPhase7IntegrationConfig,
+} from './perf-phase7-integration-config';
+import { addPhase7LoadGeneratorUserData } from './perf-phase1-kinesis-stack';
+
+export const PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB = 8_192;
+export const PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES = 7 * 1024 ** 3;
+export const PHASE7_COLLECTOR_MAX_INFLIGHT_REQUESTS = 4_096;
+
+export class LoopAdPerfPhase7IntegrationImageStack extends Stack {
+    public readonly collectorRepository: ecr.Repository;
+    public readonly consumerRepository: ecr.Repository;
+    public readonly archiveRepository: ecr.Repository;
+
+    public constructor(scope: Construct, id: string, props: StackProps) {
+        super(scope, id, { ...props, tags: { ...props.tags, ...phase7OwnershipTags(scope) } });
+        const config = readPerfPhase7IntegrationConfig(this);
+        this.collectorRepository = repository(this, 'CollectorRepository', config.collectorRepositoryName);
+        this.consumerRepository = repository(this, 'ConsumerRepository', config.consumerRepositoryName);
+        this.archiveRepository = repository(this, 'ArchiveRepository', config.archiveRepositoryName);
+        new CfnOutput(this, 'CollectorRepositoryName', { value: this.collectorRepository.repositoryName });
+        new CfnOutput(this, 'CollectorRepositoryUri', { value: this.collectorRepository.repositoryUri });
+        new CfnOutput(this, 'ConsumerRepositoryName', { value: this.consumerRepository.repositoryName });
+        new CfnOutput(this, 'ConsumerRepositoryUri', { value: this.consumerRepository.repositoryUri });
+        new CfnOutput(this, 'ArchiveRepositoryName', { value: this.archiveRepository.repositoryName });
+        new CfnOutput(this, 'ArchiveRepositoryUri', { value: this.archiveRepository.repositoryUri });
+        addRunTags(this, config);
+    }
+}
+
+export interface LoopAdPerfPhase7IntegrationStackProps extends StackProps {
+    readonly collectorRepository: ecr.IRepository;
+    readonly consumerRepository: ecr.IRepository;
+    readonly archiveRepository: ecr.IRepository;
+}
+
+export class LoopAdPerfPhase7IntegrationStack extends Stack {
+    public constructor(
+        scope: Construct,
+        id: string,
+        props: LoopAdPerfPhase7IntegrationStackProps,
+    ) {
+        super(scope, id, { ...props, tags: { ...props.tags, ...phase7OwnershipTags(scope) } });
+        const config = readPerfPhase7IntegrationConfig(this);
+        if (this.region !== PHASE7_REGION) throw new Error(`Phase 7 region must be ${PHASE7_REGION}.`);
+        addRunTags(this, config);
+
+        const vpc = new ec2.Vpc(this, 'Vpc', {
+            ipAddresses: ec2.IpAddresses.cidr('10.47.0.0/16'),
+            maxAzs: 2,
+            natGateways: 1,
+            restrictDefaultSecurityGroup: false,
+            subnetConfiguration: [
+                { name: 'Public', cidrMask: 24, subnetType: ec2.SubnetType.PUBLIC },
+                { name: 'Runtime', cidrMask: 22, subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+            ],
+        });
+        vpc.addGatewayEndpoint('S3Endpoint', { service: ec2.GatewayVpcEndpointAwsService.S3 });
+        vpc.addGatewayEndpoint('DynamoDbEndpoint', { service: ec2.GatewayVpcEndpointAwsService.DYNAMODB });
+
+        const stream = new kinesis.Stream(this, 'EventStream', {
+            shardCount: PHASE7_STREAM_SHARDS,
+            streamMode: kinesis.StreamMode.PROVISIONED,
+            retentionPeriod: Duration.hours(24),
+            encryption: kinesis.StreamEncryption.MANAGED,
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        const archiveBucket = runBucket(this, 'ArchiveBucket');
+        const failureBucket = runBucket(this, 'FailureBucket');
+        const clickHouseSecret = new secretsmanager.Secret(this, 'ClickHouseSecret', {
+            description: `Run-scoped Phase 7 ClickHouse credential for ${config.runId}.`,
+            generateSecretString: {
+                secretStringTemplate: JSON.stringify({ username: 'loopad_ingest' }),
+                generateStringKey: 'password',
+                passwordLength: 32,
+                excludePunctuation: true,
+            },
+            removalPolicy: RemovalPolicy.DESTROY,
+        });
+        const tables = createKclTables(this, config);
+
+        const collectorSecurityGroup = securityGroup(this, 'CollectorSecurityGroup', vpc);
+        const haproxySecurityGroup = securityGroup(this, 'HaproxySecurityGroup', vpc);
+        const consumerSecurityGroup = securityGroup(this, 'ConsumerSecurityGroup', vpc);
+        const clickHouseSecurityGroup = securityGroup(this, 'ClickHouseSecurityGroup', vpc);
+        const archiveSecurityGroup = securityGroup(this, 'ArchiveSecurityGroup', vpc);
+        const loadGeneratorSecurityGroup = securityGroup(this, 'LoadGeneratorSecurityGroup', vpc);
+        const collectorLoadBalancerSecurityGroup = securityGroup(this, 'CollectorLoadBalancerSecurityGroup', vpc, false);
+        const protocolLoadBalancerSecurityGroup = securityGroup(this, 'ProtocolLoadBalancerSecurityGroup', vpc, false);
+        const clickHouseLoadBalancerSecurityGroup = securityGroup(this, 'ClickHouseLoadBalancerSecurityGroup', vpc, false);
+        collectorSecurityGroup.addIngressRule(haproxySecurityGroup, ec2.Port.tcp(8080), 'HAProxy only.');
+        collectorLoadBalancerSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(8080), 'Run-owned collector diagnostics only.');
+        collectorLoadBalancerSecurityGroup.addEgressRule(collectorSecurityGroup, ec2.Port.tcp(8080), 'Collector targets and health checks.');
+        collectorSecurityGroup.addIngressRule(collectorLoadBalancerSecurityGroup, ec2.Port.tcp(8080), 'Collector NLB only.');
+        protocolLoadBalancerSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(443), 'Run-owned TLS/H2 generators only.');
+        protocolLoadBalancerSecurityGroup.addEgressRule(haproxySecurityGroup, ec2.Port.tcp(8080), 'HAProxy targets and health checks.');
+        haproxySecurityGroup.addIngressRule(protocolLoadBalancerSecurityGroup, ec2.Port.tcp(8080), 'Protocol NLB only.');
+        haproxySecurityGroup.addIngressRule(
+            loadGeneratorSecurityGroup,
+            ec2.Port.tcp(8404),
+            'Run-owned load generators collect HAProxy Prometheus evidence.',
+        );
+        clickHouseLoadBalancerSecurityGroup.addIngressRule(consumerSecurityGroup, ec2.Port.tcp(8123), 'KCL consumers only.');
+        clickHouseLoadBalancerSecurityGroup.addIngressRule(archiveSecurityGroup, ec2.Port.tcp(8123), 'Archive task only.');
+        clickHouseLoadBalancerSecurityGroup.addEgressRule(clickHouseSecurityGroup, ec2.Port.tcp(8123), 'ClickHouse target and health checks.');
+        clickHouseSecurityGroup.addIngressRule(clickHouseLoadBalancerSecurityGroup, ec2.Port.tcp(8123), 'ClickHouse NLB only.');
+
+        const collectorCapacity = ec2Capacity(this, {
+            id: 'Collector',
+            runId: config.runId,
+            vpc,
+            securityGroup: collectorSecurityGroup,
+            amiId: config.x86EcsAmiId,
+            instanceType: PHASE7_HOST_INSTANCE_TYPES.collector,
+            count: PHASE7_COLLECTOR_COUNT,
+        });
+        const collectorDiscoveryName = '_collector._tcp.phase7.internal';
+        collectorCapacity.cluster.addDefaultCloudMapNamespace({
+            name: 'phase7.internal',
+            type: servicediscovery.NamespaceType.DNS_PRIVATE,
+            vpc,
+        });
+        const collectorTaskRole = taskRole(this, 'CollectorTaskRole');
+        stream.grantWrite(collectorTaskRole);
+        const collectorTask = taskDefinition(this, 'CollectorTask', collectorTaskRole, ecs.CpuArchitecture.X86_64);
+        const collector = collectorTask.addContainer('collector', {
+            image: ecs.ContainerImage.fromEcrRepository(
+                props.collectorRepository,
+                config.collectorImageDigest,
+            ),
+            cpu: 3_584,
+            memoryLimitMiB: 3_584,
+            logging: logDriver(this, 'CollectorLogs', config),
+            environment: {
+                LOOPAD_ENV: 'phase7-integration',
+                LOOPAD_SERVICE_ID: 'event-collector',
+                PORT: '8080',
+                AWS_REGION: PHASE7_REGION,
+                LOOPAD_KINESIS_STREAM_NAME: stream.streamName,
+                LOOPAD_KINESIS_PRODUCER: 'go-batch',
+                LOOPAD_KINESIS_REQUEST_TIMEOUT: '5s',
+                LOOPAD_KINESIS_MAX_CONNECTIONS: '1024',
+                LOOPAD_KINESIS_BATCH_WINDOW: '5ms',
+                LOOPAD_KINESIS_MAX_RECORDS: '50',
+                LOOPAD_KINESIS_INPUT_QUEUE: '2048',
+                LOOPAD_KINESIS_SENDER_QUEUE: '32',
+                LOOPAD_KINESIS_SENDER_COUNT: '16',
+                LOOPAD_KINESIS_MAX_ATTEMPTS: '4',
+                LOOPAD_KINESIS_RETRY_BACKOFF: '5ms',
+                LOOPAD_KINESIS_MAX_RETRY_BACKOFF: '25ms',
+                LOOPAD_KINESIS_SHUTDOWN_TIMEOUT: '5s',
+                LOOPAD_MAX_INFLIGHT_REQUESTS: PHASE7_COLLECTOR_MAX_INFLIGHT_REQUESTS.toString(),
+            },
+            healthCheck: {
+                command: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1'],
+                interval: Duration.seconds(10),
+                retries: 5,
+                startPeriod: Duration.seconds(20),
+                timeout: Duration.seconds(3),
+            },
+        });
+        collector.addPortMappings({ containerPort: 8080, protocol: ecs.Protocol.TCP });
+        const collectorService = ec2Service(this, {
+            id: 'Collector',
+            capacity: collectorCapacity,
+            task: collectorTask,
+            count: PHASE7_COLLECTOR_COUNT,
+            securityGroup: collectorSecurityGroup,
+            vpc,
+            cloudMapOptions: {
+                name: '_collector._tcp',
+                dnsRecordType: servicediscovery.DnsRecordType.SRV,
+                dnsTtl: Duration.seconds(1),
+                failureThreshold: 1,
+                container: collector,
+                containerPort: 8080,
+            },
+        });
+        const collectorLoadBalancer = new elbv2.NetworkLoadBalancer(this, 'CollectorLoadBalancer', {
+            vpc,
+            securityGroups: [collectorLoadBalancerSecurityGroup],
+            internetFacing: false,
+            crossZoneEnabled: true,
+            vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        });
+        collectorLoadBalancer.addListener('CollectorListener', { port: 8080 }).addTargets('CollectorTargets', {
+            port: 8080,
+            targets: [collectorService.loadBalancerTarget({ containerName: 'collector', containerPort: 8080 })],
+            healthCheck: { protocol: elbv2.Protocol.HTTP, path: '/health', healthyHttpCodes: '200' },
+        });
+
+        const haproxyConfigText = haproxyConfig(collectorDiscoveryName);
+        const haproxyConfigBytes = Buffer.from(haproxyConfigText, 'utf8');
+        const haproxyConfigBase64 = haproxyConfigBytes.toString('base64');
+        const haproxyConfigSha256 = createHash('sha256').update(haproxyConfigBytes).digest('hex');
+        const haproxyUserData = ec2.UserData.forLinux();
+        haproxyUserData.addCommands(
+            'install -d -m 0755 /opt/loopad',
+            `printf '%s' '${haproxyConfigBase64}' | base64 -d > /opt/loopad/haproxy.cfg`,
+            'chmod 0444 /opt/loopad/haproxy.cfg',
+        );
+        const haproxyCapacity = ec2Capacity(this, {
+            id: 'Haproxy',
+            runId: config.runId,
+            vpc,
+            securityGroup: haproxySecurityGroup,
+            amiId: config.x86EcsAmiId,
+            instanceType: PHASE7_HOST_INSTANCE_TYPES.haproxy,
+            count: PHASE7_HAPROXY_COUNT,
+            userData: haproxyUserData,
+        });
+        const haproxyTask = taskDefinition(
+            this,
+            'HaproxyTask',
+            taskRole(this, 'HaproxyTaskRole'),
+            ecs.CpuArchitecture.X86_64,
+        );
+        haproxyTask.addVolume({ name: 'config', host: { sourcePath: '/opt/loopad/haproxy.cfg' } });
+        const haproxy = haproxyTask.addContainer('haproxy', {
+            image: ecs.ContainerImage.fromRegistry(PHASE7_HAPROXY_IMAGE),
+            cpu: 3_584,
+            memoryLimitMiB: 3_584,
+            ulimits: [{
+                name: ecs.UlimitName.NOFILE,
+                softLimit: 200_000,
+                hardLimit: 200_000,
+            }],
+            logging: logDriver(this, 'HaproxyLogs', config),
+            healthCheck: {
+                command: ['CMD', 'haproxy', '-c', '-f', '/usr/local/etc/haproxy/haproxy.cfg'],
+                interval: Duration.seconds(10),
+                retries: 5,
+                timeout: Duration.seconds(3),
+            },
+        });
+        haproxy.addMountPoints({
+            sourceVolume: 'config',
+            containerPath: '/usr/local/etc/haproxy/haproxy.cfg',
+            readOnly: true,
+        });
+        haproxy.addPortMappings(
+            { containerPort: 8080, protocol: ecs.Protocol.TCP },
+            { containerPort: 8404, protocol: ecs.Protocol.TCP },
+        );
+        const haproxyService = ec2Service(this, {
+            id: 'Haproxy',
+            capacity: haproxyCapacity,
+            task: haproxyTask,
+            count: PHASE7_HAPROXY_COUNT,
+            securityGroup: haproxySecurityGroup,
+            vpc,
+        });
+        haproxyService.node.addDependency(collectorService);
+        const protocolLoadBalancer = new elbv2.NetworkLoadBalancer(this, 'ProtocolLoadBalancer', {
+            vpc,
+            securityGroups: [protocolLoadBalancerSecurityGroup],
+            internetFacing: false,
+            crossZoneEnabled: true,
+            vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+            loadBalancerName: `perf-p1-conn-proxy-${config.sessionId.replace(/\D/g, '').slice(-11)}`,
+        });
+        protocolLoadBalancer.addListener('TlsListener', {
+            port: 443,
+            protocol: elbv2.Protocol.TLS,
+            certificates: [elbv2.ListenerCertificate.fromArn(config.protocolCertificateArn)],
+            alpnPolicy: elbv2.AlpnPolicy.HTTP2_PREFERRED,
+        }).addTargets('HaproxyTargets', {
+            port: 8080,
+            protocol: elbv2.Protocol.TCP,
+            targets: [haproxyService.loadBalancerTarget({ containerName: 'haproxy', containerPort: 8080 })],
+            healthCheck: { protocol: elbv2.Protocol.TCP },
+        });
+
+        const loadGeneratorRole = new iam.Role(this, 'LoadGeneratorRole', {
+            assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+            managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')],
+        });
+        archiveBucket.grantPut(loadGeneratorRole, `generator-evidence/${config.runId}/*`);
+        const loadGeneratorHosts = new autoscaling.AutoScalingGroup(this, 'LoadGeneratorHosts', {
+            vpc,
+            vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+            machineImage: ec2.MachineImage.genericLinux({ [PHASE7_REGION]: config.x86EcsAmiId }),
+            instanceType: new ec2.InstanceType(PHASE7_HOST_INSTANCE_TYPES.loadGenerator),
+            minCapacity: PHASE7_LOAD_GENERATOR_COUNT,
+            maxCapacity: PHASE7_LOAD_GENERATOR_COUNT,
+            role: loadGeneratorRole,
+            securityGroup: loadGeneratorSecurityGroup,
+            requireImdsv2: true,
+            instanceMonitoring: autoscaling.Monitoring.DETAILED,
+        });
+        addPhase7LoadGeneratorUserData(loadGeneratorHosts);
+
+        const clickHouseUserData = ec2.UserData.forLinux();
+        clickHouseUserData.addCommands(
+            'install -d -m 0755 /opt/loopad/clickhouse-config',
+            "cat > /opt/loopad/clickhouse-config/phase7-memory.xml <<'PHASE7_MEMORY_EOF'",
+            clickHouseMemoryConfig(),
+            'PHASE7_MEMORY_EOF',
+            "cat > /opt/loopad/clickhouse-config/async-insert-log.xml <<'PHASE7_ASYNC_LOG_EOF'",
+            clickHouseAsyncInsertLogConfig(),
+            'PHASE7_ASYNC_LOG_EOF',
+            'chmod 0444 /opt/loopad/clickhouse-config/*.xml',
+        );
+        const clickHouseCapacity = ec2Capacity(this, {
+            id: 'ClickHouse',
+            runId: config.runId,
+            vpc,
+            securityGroup: clickHouseSecurityGroup,
+            amiId: config.armEcsAmiId,
+            instanceType: PHASE7_HOST_INSTANCE_TYPES.clickHouse,
+            count: 1,
+            volume: { size: 500, iops: 3_000, throughput: 500 },
+            userData: clickHouseUserData,
+        });
+        const clickHouseTaskRole = taskRole(this, 'ClickHouseTaskRole');
+        clickHouseTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject'],
+            resources: [archiveBucket.arnForObjects('attempts/v1/*')],
+            conditions: { StringEquals: { 's3:ResourceAccount': this.account } },
+        }));
+        const clickHouseTask = taskDefinition(
+            this,
+            'ClickHouseTask',
+            clickHouseTaskRole,
+            ecs.CpuArchitecture.ARM64,
+        );
+        clickHouseTask.addVolume({ name: 'data', host: { sourcePath: '/var/lib/clickhouse' } });
+        clickHouseTask.addVolume({ name: 'runtime', host: {} });
+        clickHouseTask.addVolume({
+            name: 'memory-config',
+            host: { sourcePath: '/opt/loopad/clickhouse-config/phase7-memory.xml' },
+        });
+        clickHouseTask.addVolume({
+            name: 'async-insert-log-config',
+            host: { sourcePath: '/opt/loopad/clickhouse-config/async-insert-log.xml' },
+        });
+        const clickHouse = clickHouseTask.addContainer('clickhouse', {
+            image: ecs.ContainerImage.fromRegistry(PHASE7_CLICKHOUSE_IMAGE),
+            cpu: 4_096,
+            memoryLimitMiB: PHASE7_CLICKHOUSE_CONTAINER_MEMORY_MIB,
+            logging: logDriver(this, 'ClickHouseLogs', config),
+            environment: {
+                CLICKHOUSE_DB: 'loopad',
+                CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1',
+            },
+            secrets: {
+                CLICKHOUSE_USER: ecs.Secret.fromSecretsManager(clickHouseSecret, 'username'),
+                CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseSecret, 'password'),
+            },
+            healthCheck: {
+                command: ['CMD-SHELL', 'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"'],
+                interval: Duration.seconds(10),
+                retries: 10,
+                startPeriod: Duration.seconds(30),
+                timeout: Duration.seconds(5),
+            },
+        });
+        clickHouse.addMountPoints({ sourceVolume: 'data', containerPath: '/var/lib/clickhouse', readOnly: false });
+        clickHouse.addMountPoints({
+            sourceVolume: 'memory-config',
+            containerPath: '/etc/clickhouse-server/config.d/phase7-memory.xml',
+            readOnly: true,
+        });
+        clickHouse.addMountPoints({
+            sourceVolume: 'async-insert-log-config',
+            containerPath: '/etc/clickhouse-server/config.d/phase7-async-insert-log.xml',
+            readOnly: true,
+        });
+        clickHouse.addPortMappings({ containerPort: 8123, protocol: ecs.Protocol.TCP });
+        const schemaGuard = clickHouseTask.addContainer('schema-guard', {
+            image: ecs.ContainerImage.fromEcrRepository(props.archiveRepository, config.archiveImageDigest),
+            cpu: 128,
+            memoryLimitMiB: 256,
+            essential: true,
+            entryPoint: ['python', '/opt/loopad/archive/schema_sidecar.py'],
+            environment: { CLICKHOUSE_HTTP_URL: 'http://127.0.0.1:8123' },
+            secrets: {
+                CLICKHOUSE_USER: ecs.Secret.fromSecretsManager(clickHouseSecret, 'username'),
+                CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseSecret, 'password'),
+            },
+            logging: logDriver(this, 'SchemaGuardLogs', config),
+            healthCheck: {
+                command: ['CMD-SHELL', 'test -f /run/loopad/schema-ready'],
+                interval: Duration.seconds(10),
+                retries: 10,
+                // ECS caps retries at 10. Preserve the prior 180-second configured
+                // startup allowance by moving the removed two intervals into the grace period.
+                startPeriod: Duration.seconds(80),
+                timeout: Duration.seconds(2),
+            },
+        });
+        schemaGuard.addMountPoints({ sourceVolume: 'runtime', containerPath: '/run/loopad', readOnly: false });
+        schemaGuard.addContainerDependencies({
+            container: clickHouse,
+            condition: ecs.ContainerDependencyCondition.HEALTHY,
+        });
+        const clickHouseService = ec2Service(this, {
+            id: 'ClickHouse',
+            capacity: clickHouseCapacity,
+            task: clickHouseTask,
+            count: 1,
+            securityGroup: clickHouseSecurityGroup,
+            vpc,
+        });
+        const clickHouseLoadBalancer = new elbv2.NetworkLoadBalancer(this, 'ClickHouseLoadBalancer', {
+            vpc,
+            securityGroups: [clickHouseLoadBalancerSecurityGroup],
+            internetFacing: false,
+            crossZoneEnabled: true,
+            vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        });
+        clickHouseLoadBalancer.addListener('ClickHouseListener', { port: 8123 }).addTargets('ClickHouseTargets', {
+            port: 8123,
+            targets: [clickHouseService.loadBalancerTarget({ containerName: 'clickhouse', containerPort: 8123 })],
+            healthCheck: { protocol: elbv2.Protocol.TCP },
+        });
+
+        const consumerCapacity = ec2Capacity(this, {
+            id: 'Consumer',
+            runId: config.runId,
+            vpc,
+            securityGroup: consumerSecurityGroup,
+            amiId: config.armEcsAmiId,
+            instanceType: PHASE7_HOST_INSTANCE_TYPES.consumer,
+            count: PHASE7_CONSUMER_COUNT,
+        });
+        const consumerTaskRole = taskRole(this, 'ConsumerTaskRole');
+        stream.grantRead(consumerTaskRole);
+        clickHouseSecret.grantRead(consumerTaskRole);
+        failureBucket.grantPut(consumerTaskRole, `failures/${config.runId}/*`);
+        for (const table of tables) table.grantReadWriteData(consumerTaskRole);
+        consumerTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['cloudwatch:PutMetricData'],
+            resources: ['*'],
+            conditions: { StringEquals: { 'cloudwatch:namespace': 'LoopAd/Phase7' } },
+        }));
+        const consumerTask = taskDefinition(this, 'ConsumerTask', consumerTaskRole, ecs.CpuArchitecture.ARM64);
+        consumerTask.addContainer('consumer', {
+            image: ecs.ContainerImage.fromEcrRepository(props.consumerRepository, config.consumerImageDigest),
+            cpu: 1_024,
+            memoryLimitMiB: 2_048,
+            stopTimeout: Duration.seconds(120),
+            logging: logDriver(this, 'ConsumerLogs', config),
+            environment: {
+                AWS_REGION: PHASE7_REGION,
+                RUN_ID: config.runId,
+                METRIC_NAMESPACE: 'LoopAd/Phase7',
+                KINESIS_STREAM_NAME: stream.streamName,
+                KINESIS_STREAM_ARN: stream.streamArn,
+                KCL_APPLICATION_NAME: `${config.runId}-consumer`,
+                KCL_LEASE_TABLE_NAME: tables[0]!.tableName,
+                KCL_WORKER_METRICS_TABLE_NAME: tables[1]!.tableName,
+                KCL_COORDINATOR_STATE_TABLE_NAME: tables[2]!.tableName,
+                CLICKHOUSE_DATABASE: 'loopad',
+                CLICKHOUSE_HTTP_URL: `http://${clickHouseLoadBalancer.loadBalancerDnsName}:8123`,
+                CLICKHOUSE_SECRET_ARN: clickHouseSecret.secretArn,
+                FAILURE_BUCKET: failureBucket.bucketName,
+                FAILURE_PREFIX: `failures/${config.runId}/`,
+                PHASE7_LOCAL_MODE: 'false',
+            },
+        });
+        const consumerService = ec2Service(this, {
+            id: 'Consumer',
+            capacity: consumerCapacity,
+            task: consumerTask,
+            count: PHASE7_CONSUMER_COUNT,
+            securityGroup: consumerSecurityGroup,
+            vpc,
+        });
+        consumerService.node.addDependency(clickHouseService);
+
+        const archiveTaskRole = taskRole(this, 'ArchiveTaskRole');
+        archiveTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject', 's3:PutObject'],
+            resources: [
+                archiveBucket.arnForObjects('attempts/v1/*'),
+                archiveBucket.arnForObjects('commits/v1/*'),
+            ],
+            conditions: { StringEquals: { 's3:ResourceAccount': this.account } },
+        }));
+        archiveTaskRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:ListBucket'],
+            resources: [archiveBucket.bucketArn],
+            conditions: { StringLike: { 's3:prefix': ['attempts/v1/*', 'commits/v1/*'] } },
+        }));
+        const archiveTask = taskDefinition(this, 'ArchiveTask', archiveTaskRole, ecs.CpuArchitecture.ARM64);
+        archiveTask.addContainer('archive', {
+            image: ecs.ContainerImage.fromEcrRepository(props.archiveRepository, config.archiveImageDigest),
+            cpu: 1_024,
+            memoryLimitMiB: 2_048,
+            logging: logDriver(this, 'ArchiveLogs', config),
+            environment: {
+                AWS_REGION: PHASE7_REGION,
+                AWS_ACCOUNT_ID: this.account,
+                RUN_ID: config.runId,
+                CLICKHOUSE_HTTP_URL: `http://${clickHouseLoadBalancer.loadBalancerDnsName}:8123`,
+                CLICKHOUSE_IMAGE: PHASE7_CLICKHOUSE_IMAGE,
+                ARCHIVE_IMAGE_DIGEST: config.archiveImageDigest,
+                ARCHIVE_BUCKET: archiveBucket.bucketName,
+                ARCHIVE_EXPECTED_ROWS: '15000000',
+                ARCHIVE_ROWS_PER_PART: '5000000',
+                ARCHIVE_PART_COUNT: '3',
+                ARCHIVE_PARTITION: 'OVERRIDE_REQUIRED',
+                ARCHIVE_TODAY: 'OVERRIDE_REQUIRED',
+            },
+            secrets: {
+                CLICKHOUSE_USER: ecs.Secret.fromSecretsManager(clickHouseSecret, 'username'),
+                CLICKHOUSE_PASSWORD: ecs.Secret.fromSecretsManager(clickHouseSecret, 'password'),
+            },
+        });
+
+        new cloudwatch.Alarm(this, 'IteratorAgeAlarm', {
+            metric: stream.metricGetRecordsIteratorAgeMilliseconds({ period: Duration.minutes(1) }),
+            threshold: 60_000,
+            evaluationPeriods: 2,
+            treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+        });
+        new cloudwatch.Alarm(this, 'ClickHouseHealthyHostAlarm', {
+            metric: new cloudwatch.Metric({
+                namespace: 'AWS/NetworkELB',
+                metricName: 'HealthyHostCount',
+                dimensionsMap: {
+                    LoadBalancer: clickHouseLoadBalancer.loadBalancerFullName,
+                },
+                period: Duration.minutes(1),
+                statistic: 'Minimum',
+            }),
+            threshold: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            evaluationPeriods: 2,
+            treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+        });
+
+        new CfnOutput(this, 'ProtocolEndpoint', { value: `https://${config.protocolDnsName}` });
+        new CfnOutput(this, 'ProtocolConnectDnsName', { value: protocolLoadBalancer.loadBalancerDnsName });
+        new CfnOutput(this, 'LoadGeneratorAutoScalingGroupName', {
+            value: loadGeneratorHosts.autoScalingGroupName,
+        });
+        new CfnOutput(this, 'LoadGeneratorRoleArn', { value: loadGeneratorRole.roleArn });
+        new CfnOutput(this, 'LoadGeneratorCount', { value: PHASE7_LOAD_GENERATOR_COUNT.toString() });
+        new CfnOutput(this, 'OhaImage', { value: PHASE7_OHA_IMAGE });
+        new CfnOutput(this, 'CollectorClusterName', { value: collectorCapacity.cluster.clusterName });
+        new CfnOutput(this, 'CollectorServiceName', { value: collectorService.serviceName });
+        new CfnOutput(this, 'CollectorEndpoint', { value: `http://${collectorLoadBalancer.loadBalancerDnsName}:8080` });
+        new CfnOutput(this, 'HaproxyClusterName', { value: haproxyCapacity.cluster.clusterName });
+        new CfnOutput(this, 'HaproxyServiceName', { value: haproxyService.serviceName });
+        new CfnOutput(this, 'HaproxyStatsPort', { value: '8404' });
+        new CfnOutput(this, 'HaproxyConfigSha256', { value: haproxyConfigSha256 });
+        new CfnOutput(this, 'CollectorCloudMapServiceName', { value: collectorDiscoveryName });
+        new CfnOutput(this, 'StreamName', { value: stream.streamName });
+        new CfnOutput(this, 'ConsumerClusterName', { value: consumerCapacity.cluster.clusterName });
+        new CfnOutput(this, 'ConsumerServiceName', { value: consumerService.serviceName });
+        new CfnOutput(this, 'ClickHouseClusterName', { value: clickHouseCapacity.cluster.clusterName });
+        new CfnOutput(this, 'ClickHouseServiceName', { value: clickHouseService.serviceName });
+        new CfnOutput(this, 'ClickHouseEndpoint', {
+            value: `http://${clickHouseLoadBalancer.loadBalancerDnsName}:8123`,
+        });
+        new CfnOutput(this, 'ArchiveBucketName', { value: archiveBucket.bucketName });
+        new CfnOutput(this, 'FailureBucketName', { value: failureBucket.bucketName });
+        new CfnOutput(this, 'LeaseTableName', { value: tables[0]!.tableName });
+        new CfnOutput(this, 'WorkerMetricsTableName', { value: tables[1]!.tableName });
+        new CfnOutput(this, 'CoordinatorStateTableName', { value: tables[2]!.tableName });
+        new CfnOutput(this, 'ArchiveTaskDefinitionArn', { value: archiveTask.taskDefinitionArn });
+        new CfnOutput(this, 'ArchiveClusterName', { value: clickHouseCapacity.cluster.clusterName });
+        new CfnOutput(this, 'ArchiveCapacityProviderName', {
+            value: clickHouseCapacity.provider.capacityProviderName,
+        });
+        new CfnOutput(this, 'ArchiveSubnetIds', {
+            value: vpc.privateSubnets.map((subnet) => subnet.subnetId).join(','),
+        });
+        new CfnOutput(this, 'ArchiveSecurityGroupId', { value: archiveSecurityGroup.securityGroupId });
+        new CfnOutput(this, 'ClickHouseSecretArn', { value: clickHouseSecret.secretArn });
+        new CfnOutput(this, 'CollectorAutoScalingGroupName', { value: collectorCapacity.group.autoScalingGroupName });
+        new CfnOutput(this, 'HaproxyAutoScalingGroupName', { value: haproxyCapacity.group.autoScalingGroupName });
+        new CfnOutput(this, 'ConsumerAutoScalingGroupName', { value: consumerCapacity.group.autoScalingGroupName });
+        new CfnOutput(this, 'ClickHouseAutoScalingGroupName', { value: clickHouseCapacity.group.autoScalingGroupName });
+    }
+}
+
+interface Capacity {
+    readonly cluster: ecs.Cluster;
+    readonly provider: ecs.AsgCapacityProvider;
+    readonly group: autoscaling.AutoScalingGroup;
+    readonly association: ecs.CfnClusterCapacityProviderAssociations;
+    readonly autoScalingGroupResource: autoscaling.CfnAutoScalingGroup;
+    readonly registrationCondition: CfnWaitCondition;
+}
+
+interface CapacityInput {
+    readonly id: string;
+    readonly runId: string;
+    readonly vpc: ec2.Vpc;
+    readonly securityGroup: ec2.SecurityGroup;
+    readonly amiId: string;
+    readonly instanceType: string;
+    readonly count: number;
+    readonly userData?: ec2.UserData;
+    readonly volume?: { readonly size: number; readonly iops: number; readonly throughput: number };
+}
+
+function ec2Capacity(scope: Construct, input: CapacityInput): Capacity {
+    const cluster = new ecs.Cluster(scope, `${input.id}Cluster`, {
+        vpc: input.vpc,
+        containerInsightsV2: ecs.ContainerInsights.ENABLED,
+    });
+    const registrationHandle = new CfnWaitConditionHandle(
+        scope,
+        `${input.id}CapacityProviderRegistrationHandle`,
+    );
+    const role = new iam.Role(scope, `${input.id}HostRole`, {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        managedPolicies: [
+            iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonEC2ContainerServiceforEC2Role'),
+            iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        ],
+    });
+    const asg = new autoscaling.AutoScalingGroup(scope, `${input.id}Hosts`, {
+        vpc: input.vpc,
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        machineImage: ec2.MachineImage.genericLinux({ [PHASE7_REGION]: input.amiId }),
+        instanceType: new ec2.InstanceType(input.instanceType),
+        minCapacity: input.count,
+        maxCapacity: input.count,
+        role,
+        securityGroup: input.securityGroup,
+        requireImdsv2: true,
+        userData: input.userData,
+        signals: autoscaling.Signals.waitForAll({ timeout: Duration.minutes(10) }),
+        blockDevices: input.volume ? [{
+            deviceName: '/dev/xvda',
+            volume: autoscaling.BlockDeviceVolume.ebs(input.volume.size, {
+                deleteOnTermination: true,
+                encrypted: true,
+                volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+                iops: input.volume.iops,
+                throughput: input.volume.throughput,
+            }),
+        }] : undefined,
+    });
+    const capacityProviderName = `loopad-${input.runId}-${input.id.toLowerCase()}`;
+    const provider = new ecs.AsgCapacityProvider(scope, `${input.id}CapacityProvider`, {
+        autoScalingGroup: asg,
+        capacityProviderName,
+        enableManagedDraining: false,
+        enableManagedScaling: false,
+        enableManagedTerminationProtection: false,
+    });
+    // CDK's runtime still accepts the legacy zero-drain option here even though the
+    // narrowed public type omits it. It prevents one hidden drain-hook Lambda per ASG.
+    const noDrainHook = { taskDrainTime: Duration.seconds(0) } as unknown as
+        ecs.AddAutoScalingGroupCapacityOptions;
+    const legacyCluster = cluster as unknown as {
+        addAutoScalingGroup(
+            autoScalingGroup: autoscaling.AutoScalingGroup,
+            options: ecs.AddAutoScalingGroupCapacityOptions,
+        ): void;
+    };
+    legacyCluster.addAutoScalingGroup(asg, noDrainHook);
+    const autoScalingGroupResource = asg.node.defaultChild;
+    if (!(autoScalingGroupResource instanceof autoscaling.CfnAutoScalingGroup)) {
+        throw new Error(`${input.id} Auto Scaling group resource was not synthesized`);
+    }
+    const association = new ecs.CfnClusterCapacityProviderAssociations(
+        cluster,
+        'CapacityProviderAssociation',
+        {
+            cluster: cluster.clusterName,
+            capacityProviders: [provider.capacityProviderName],
+            defaultCapacityProviderStrategy: [],
+        },
+    );
+    association.addDependency(autoScalingGroupResource);
+    const registrationCondition = new CfnWaitCondition(
+        scope,
+        `${input.id}CapacityProviderRegistration`,
+        {
+            count: input.count,
+            handle: registrationHandle.ref,
+            timeout: '600',
+        },
+    );
+    registrationCondition.addDependency(association);
+
+    const readinessPolicy = new iam.Policy(scope, `${input.id}HostReadinessPolicy`, {
+        statements: [new iam.PolicyStatement({
+            actions: ['ecs:DescribeContainerInstances'],
+            resources: [Stack.of(scope).formatArn({
+                service: 'ecs',
+                resource: 'container-instance',
+                resourceName: `${cluster.clusterName}/*`,
+            })],
+        })],
+    });
+    readinessPolicy.attachToRole(role);
+    asg.node.addDependency(readinessPolicy);
+    addPhase7EcsCapacityReadinessSignals(asg, {
+        id: input.id,
+        clusterName: cluster.clusterName,
+        capacityProviderName,
+        waitHandleUrl: registrationHandle.ref,
+    });
+
+    return {
+        cluster,
+        provider,
+        group: asg,
+        association,
+        autoScalingGroupResource,
+        registrationCondition,
+    };
+}
+
+export interface EcsCapacityReadinessSignalInput {
+    readonly id: string;
+    readonly clusterName: string;
+    readonly capacityProviderName: string;
+    readonly waitHandleUrl: string;
+}
+
+export function addPhase7EcsCapacityReadinessSignals(
+    autoScalingGroup: autoscaling.AutoScalingGroup,
+    input: EcsCapacityReadinessSignalInput,
+): void {
+    const stack = Stack.of(autoScalingGroup);
+    const resource = autoScalingGroup.node.defaultChild as autoscaling.CfnAutoScalingGroup;
+    const logicalId = stack.getLogicalId(resource);
+    const unitPrefix = `phase7-${input.id.toLowerCase()}`;
+    const marker = unitPrefix.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+    const readinessScript = `/usr/local/sbin/${unitPrefix}-ecs-readiness-signal`;
+    const readinessUnit = `${unitPrefix}-ecs-readiness-signal.service`;
+    const registrationScript = `/usr/local/sbin/${unitPrefix}-capacity-provider-signal`;
+    const registrationUnit = `${unitPrefix}-capacity-provider-signal.service`;
+
+    autoScalingGroup.addUserData(
+        'set -e',
+        'if ! command -v aws >/dev/null 2>&1; then',
+        '  yum install -y awscli',
+        'fi',
+        'command -v aws >/dev/null 2>&1',
+        `cat >${readinessScript} <<'${marker}_ECS_READINESS_SIGNAL'`,
+        '#!/bin/bash',
+        'set -euo pipefail',
+        'imds_token="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -X PUT -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\" http://169.254.169.254/latest/api/token)"',
+        'instance_id="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -H \"X-aws-ec2-metadata-token: $imds_token\" http://169.254.169.254/latest/meta-data/instance-id)"',
+        `signal=(aws cloudformation signal-resource --region ${stack.region} --stack-name ${stack.stackName} --logical-resource-id ${logicalId} --unique-id "$instance_id")`,
+        'trap \'"${signal[@]}" --status FAILURE || true\' ERR',
+        'ecs_ready=false',
+        'for attempt in $(seq 1 150); do',
+        '  if curl -fsS --max-time 2 http://127.0.0.1:51678/v1/metadata | grep -Eq \'"ContainerInstanceArn"[[:space:]]*:[[:space:]]*"arn:\'; then ecs_ready=true; break; fi',
+        '  sleep 2',
+        'done',
+        'test "$ecs_ready" = true',
+        '"${signal[@]}" --status SUCCESS',
+        'trap - ERR',
+        `${marker}_ECS_READINESS_SIGNAL`,
+        `chmod 0755 ${readinessScript}`,
+        `cat >/etc/systemd/system/${readinessUnit} <<'${marker}_ECS_READINESS_UNIT'`,
+        '[Unit]',
+        `Description=Signal ${input.id} ECS host readiness to CloudFormation`,
+        'Wants=ecs.service',
+        'After=ecs.service',
+        '',
+        '[Service]',
+        'Type=oneshot',
+        `ExecStart=${readinessScript}`,
+        'RemainAfterExit=yes',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+        `${marker}_ECS_READINESS_UNIT`,
+        `cat >${registrationScript} <<'${marker}_CAPACITY_PROVIDER_SIGNAL'`,
+        '#!/bin/bash',
+        'set -euo pipefail',
+        `wait_handle_url='${input.waitHandleUrl}'`,
+        `cluster_name='${input.clusterName}'`,
+        `expected_capacity_provider_name='${input.capacityProviderName}'`,
+        'imds_token="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -X PUT -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\" http://169.254.169.254/latest/api/token)"',
+        'instance_id="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -H \"X-aws-ec2-metadata-token: $imds_token\" http://169.254.169.254/latest/meta-data/instance-id)"',
+        'signal_wait_condition() {',
+        '  local status="$1" reason="$2" data="${3:-}" payload',
+        '  payload="$(printf \'{"Status":"%s","Reason":"%s","UniqueId":"%s","Data":"%s"}\' "$status" "$reason" "$instance_id" "$data")"',
+        '  curl --noproxy "*" -fsS --retry 5 --retry-delay 1 -X PUT -H "Content-Type:" --data-binary "$payload" "$wait_handle_url" >/dev/null',
+        '}',
+        'trap \'signal_wait_condition FAILURE "capacity provider registration readiness failed" || true\' ERR',
+        'container_instance_arn=""',
+        'for attempt in $(seq 1 150); do',
+        '  metadata="$(curl -fsS --max-time 2 http://127.0.0.1:51678/v1/metadata 2>/dev/null || true)"',
+        '  container_instance_arn="$(printf \'%s\' "$metadata" | sed -n \'s/.*"ContainerInstanceArn"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p\')"',
+        '  test -z "$container_instance_arn" || break',
+        '  sleep 2',
+        'done',
+        'test -n "$container_instance_arn"',
+        'registration_ready=false',
+        'for attempt in $(seq 1 300); do',
+        `  registration="$(aws ecs describe-container-instances --region ${stack.region} --cluster "$cluster_name" --container-instances "$container_instance_arn" --query 'containerInstances[0].[agentConnected,status,capacityProviderName]' --output text 2>/dev/null || true)"`,
+        '  read -r agent_connected container_status capacity_provider_name <<<"$registration" || true',
+        '  if test "$agent_connected" = True && test "$container_status" = ACTIVE && test "$capacity_provider_name" = "$expected_capacity_provider_name"; then registration_ready=true; break; fi',
+        '  sleep 2',
+        'done',
+        'test "$registration_ready" = true',
+        'signal_wait_condition SUCCESS "exact ECS capacity provider registration is API-visible" "$expected_capacity_provider_name"',
+        'trap - ERR',
+        `${marker}_CAPACITY_PROVIDER_SIGNAL`,
+        `chmod 0755 ${registrationScript}`,
+        `cat >/etc/systemd/system/${registrationUnit} <<'${marker}_CAPACITY_PROVIDER_UNIT'`,
+        '[Unit]',
+        `Description=Signal ${input.id} capacity provider registration to CloudFormation`,
+        `Requires=ecs.service ${readinessUnit}`,
+        `After=ecs.service ${readinessUnit}`,
+        '',
+        '[Service]',
+        'Type=oneshot',
+        `ExecStart=${registrationScript}`,
+        'RemainAfterExit=yes',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+        `${marker}_CAPACITY_PROVIDER_UNIT`,
+        'systemctl daemon-reload',
+        `systemctl enable ${readinessUnit} ${registrationUnit}`,
+        `systemctl start --no-block ${readinessUnit} ${registrationUnit}`,
+    );
+}
+
+function taskRole(scope: Construct, id: string): iam.Role {
+    return new iam.Role(scope, id, { assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com') });
+}
+
+function taskDefinition(
+    scope: Construct,
+    id: string,
+    role: iam.Role,
+    architecture: ecs.CpuArchitecture,
+): ecs.Ec2TaskDefinition {
+    const task = new ecs.Ec2TaskDefinition(scope, id, {
+        networkMode: ecs.NetworkMode.AWS_VPC,
+        taskRole: role,
+    });
+    const resource = task.node.defaultChild as ecs.CfnTaskDefinition;
+    resource.runtimePlatform = {
+        cpuArchitecture: architecture === ecs.CpuArchitecture.ARM64 ? 'ARM64' : 'X86_64',
+        operatingSystemFamily: 'LINUX',
+    };
+    return task;
+}
+
+interface ServiceInput {
+    readonly id: string;
+    readonly capacity: Capacity;
+    readonly task: ecs.Ec2TaskDefinition;
+    readonly count: number;
+    readonly securityGroup: ec2.SecurityGroup;
+    readonly vpc: ec2.Vpc;
+    readonly cloudMapOptions?: ecs.CloudMapOptions;
+}
+
+function ec2Service(scope: Construct, input: ServiceInput): ecs.Ec2Service {
+    const service = new ecs.Ec2Service(scope, `${input.id}Service`, {
+        cluster: input.capacity.cluster,
+        taskDefinition: input.task,
+        desiredCount: input.count,
+        capacityProviderStrategies: [{
+            capacityProvider: input.capacity.provider.capacityProviderName,
+            weight: 1,
+        }],
+        placementConstraints: [ecs.PlacementConstraint.distinctInstances()],
+        minHealthyPercent: 50,
+        maxHealthyPercent: 200,
+        securityGroups: [input.securityGroup],
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        enableExecuteCommand: false,
+        circuitBreaker: { rollback: true },
+        cloudMapOptions: input.cloudMapOptions,
+    });
+    const resource = service.node.defaultChild as ecs.CfnService;
+    resource.addDependency(input.capacity.association);
+    resource.addDependency(input.capacity.autoScalingGroupResource);
+    resource.addDependency(input.capacity.registrationCondition);
+    return service;
+}
+
+function createKclTables(scope: Construct, config: PerfPhase7IntegrationConfig): dynamodb.Table[] {
+    const lease = new dynamodb.Table(scope, 'LeaseTable', {
+        tableName: `${config.runId}-leases`,
+        partitionKey: { name: 'leaseKey', type: dynamodb.AttributeType.STRING },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    lease.addGlobalSecondaryIndex({
+        indexName: 'LeaseOwnerToLeaseKeyIndex',
+        partitionKey: { name: 'leaseOwner', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'leaseKey', type: dynamodb.AttributeType.STRING },
+        projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+    });
+    const workers = new dynamodb.Table(scope, 'WorkerMetricsTable', {
+        tableName: `${config.runId}-workers`,
+        partitionKey: { name: 'wid', type: dynamodb.AttributeType.STRING },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const coordinator = new dynamodb.Table(scope, 'CoordinatorStateTable', {
+        tableName: `${config.runId}-coordinator`,
+        partitionKey: { name: 'key', type: dynamodb.AttributeType.STRING },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    return [lease, workers, coordinator];
+}
+
+function repository(scope: Construct, id: string, repositoryName: string): ecr.Repository {
+    return new ecr.Repository(scope, id, {
+        repositoryName,
+        imageScanOnPush: true,
+        imageTagMutability: ecr.TagMutability.IMMUTABLE,
+        emptyOnDelete: false,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+}
+
+function runBucket(scope: Construct, id: string): s3.Bucket {
+    return new s3.Bucket(scope, id, {
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        enforceSSL: true,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        autoDeleteObjects: false,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+}
+
+function securityGroup(scope: Construct, id: string, vpc: ec2.Vpc, allowAllOutbound = true): ec2.SecurityGroup {
+    return new ec2.SecurityGroup(scope, id, { vpc, allowAllOutbound });
+}
+
+function logDriver(scope: Construct, id: string, config: PerfPhase7IntegrationConfig): ecs.LogDriver {
+    const group = new logs.LogGroup(scope, `${id}Group`, {
+        logGroupName: `/loopad/perf/phase7/${config.runId}/${id}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    return ecs.LogDrivers.awsLogs({
+        logGroup: group,
+        streamPrefix: id.toLowerCase(),
+        mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+        maxBufferSize: Size.mebibytes(25),
+    });
+}
+
+function haproxyConfig(collectorDiscoveryName: string): string {
+    return `global
+    log stdout format raw sample 1:1000 local0
+    log stdout format raw local1 err
+    maxconn 65536
+    stats socket /tmp/haproxy-admin.sock mode 660 level admin expose-fd listeners
+defaults
+    log global
+    mode http
+    option httplog
+    option log-separate-errors
+    option dontlognull
+    timeout connect 2s
+    timeout client 15s
+    timeout server 15s
+    timeout http-request 10s
+    timeout client-fin 5s
+    timeout server-fin 5s
+    retries 0
+resolvers awsdns
+    nameserver vpc 169.254.169.253:53
+    accepted_payload_size 8192
+    hold valid 1s
+    resolve_retries 3
+    timeout resolve 1s
+    timeout retry 1s
+frontend ingest
+    bind :8080 proto h2
+    acl error_status status 400:599
+    http-after-response set-log-level err if error_status
+    default_backend collectors
+frontend stats
+    bind :8404
+    http-request use-service prometheus-exporter if { path /metrics }
+    stats enable
+    stats uri /stats
+backend collectors
+    balance leastconn
+    option httpchk GET /health
+    http-check expect status 200
+    http-reuse always
+    server-template collector 1-${PHASE7_COLLECTOR_COUNT} ${collectorDiscoveryName} proto h2 check inter 2s fall 2 rise 2 resolvers awsdns init-addr last,libc,none resolve-opts allow-dup-ip
+`;
+}
+
+function clickHouseMemoryConfig(): string {
+    return `<clickhouse>
+  <max_server_memory_usage>${PHASE7_CLICKHOUSE_SERVER_MEMORY_BYTES}</max_server_memory_usage>
+  <max_server_memory_usage_to_ram_ratio>0.875</max_server_memory_usage_to_ram_ratio>
+</clickhouse>`;
+}
+
+function clickHouseAsyncInsertLogConfig(): string {
+    return `<clickhouse>
+  <asynchronous_insert_log>
+    <database>system</database>
+    <table>asynchronous_insert_log</table>
+    <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+  </asynchronous_insert_log>
+</clickhouse>`;
+}
+
+function addRunTags(stack: Stack, config: PerfPhase7IntegrationConfig): void {
+    const tags: Record<string, string> = {
+        Project: 'loop-ad',
+        Phase: '7',
+        RunId: config.runId,
+        SessionId: config.sessionId,
+        ResourceScope: 'run',
+        ManagedBy: 'codex',
+    };
+    for (const [key, value] of Object.entries(tags)) Tags.of(stack).add(key, value);
+}

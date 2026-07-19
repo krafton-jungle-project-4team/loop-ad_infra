@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260719_043415_phase7_integration",
+  "sessionId": "phase7-integration-20260719T043415Z",
+  "queriedAt": "2026-07-19T05:57:55Z",
+  "region": "ap-northeast-2",
+  "queries": [
+    {
+      "tagKey": "RunId",
+      "tagValue": "run_20260719_043415_phase7_integration",
+      "resourceArns": [],
+      "count": 0
+    },
+    {
+      "tagKey": "SessionId",
+      "tagValue": "phase7-integration-20260719T043415Z",
+      "resourceArns": [],
+      "count": 0
+    }
+  ],
+  "allZero": true
+}

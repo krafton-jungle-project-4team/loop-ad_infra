@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+test('QUIC registration derives an immutable 8-byte server ID from each task ARN', () => {
+    const registration = readFileSync(new URL('./register-quic-targets.mjs', import.meta.url), 'utf8');
+    assert.match(registration, /createHash\('sha256'\).*task\.taskArn.*slice\(0, 16\)/s);
+    assert.match(registration, /QuicServerId/);
+    assert.match(registration, /exactlyFourTargets/);
+    assert.match(registration, /allHealthy/);
+    assert.match(registration, /output \? JSON\.parse\(output\) : \{\}/);
+});

@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-07-12T07:34:41.531Z",
+  "comparisonSessionId": "phase1-compare-20260712-035928z",
+  "region": "ap-northeast-2",
+  "sharedStream": {
+    "createdAt": "2026-07-12T05:03:58.000Z",
+    "destroyStartedBeforeAgeMinutes": 149,
+    "stackAbsent": true,
+    "streamAbsent": true
+  },
+  "runScopedResources": {
+    "stackAbsent": true,
+    "autoScalingGroupsAbsent": true,
+    "activeEc2InstancesAbsent": true,
+    "ecsClusterInactive": true,
+    "loadBalancerAbsent": true,
+    "targetGroupAbsent": true,
+    "vpcAbsent": true,
+    "collectorLogGroupAbsent": true,
+    "namedIamRolesAbsent": true,
+    "ownedLambdaLogGroupsAbsent": true
+  },
+  "candidateImages": {
+    "repositoryPreserved": "loop-ad/event-collector",
+    "deletedExactTags": [
+      "phase1-compare-go-sync-d1918b629bbbf3f4499a9671c3213687a39c5d5d",
+      "phase1-compare-go-batch-d1918b629bbbf3f4499a9671c3213687a39c5d5d",
+      "phase1-compare-java-kpl-d1918b629bbbf3f4499a9671c3213687a39c5d5d"
+    ],
+    "remainingMatchingTaggedImages": [],
+    "unrelatedTagsModified": false
+  },
+  "evidence": {
+    "goSyncCleanup": "performance-tests/run_20260712_050212_phase1_kinesis_compare_go-sync/cleanup-verification.json",
+    "goBatchCleanup": "performance-tests/run_20260712_061339_phase1_kinesis_compare_go-batch/cleanup-verification.json",
+    "javaAndStreamCleanup": "performance-tests/run_20260712_065416_phase1_kinesis_compare_java-kpl/cleanup-verification.json",
+    "imageCleanup": "performance-tests/run_20260712_065416_phase1_kinesis_compare_java-kpl/ecr-cleanup-verification.json"
+  },
+  "passed": true
+}

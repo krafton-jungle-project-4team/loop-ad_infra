@@ -1,0 +1,160 @@
+{
+  "attemptType": "aws-targeted-diagnostic",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "terminalResidualCleanup": 2,
+      "authoritativeInventory": 3
+    },
+    "deadline": "2026-07-19T10:02:15.474Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/cleanup-verification.json",
+        "sha256": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c"
+      },
+      {
+        "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-inventory-20260719T074000Z.json",
+        "sha256": "9bc36deabb77489f7993a21bbf382d7995cc042ada3af075c2b2dd65a5d9e72e"
+      },
+      {
+        "path": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-terminal-attempt-3.json",
+        "sha256": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 15,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": true,
+      "taggingApiRunIdResidualArns": [],
+      "taggingApiSessionIdResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-19T07:57:07.488Z",
+    "startToAuthoritativeZeroSeconds": "1451.584000"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "16.950000",
+    "campaignChargedUpperBoundUsd": "16.950000",
+    "chargedUpperBoundUsd": "0.950000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-18-cost-explorer-20260719.json",
+    "costExplorerEvidenceSha256": "c2bf72602e9c1595df65f639dd8be09906106cc13b1edafaa1cad00b32029819",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "131.950000",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "0.940319441780",
+    "plannedOperationalUpperBoundUsd": "4.154001",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-18-cost-reconciliation.json",
+    "reconciliationSha256": "4dec36af5a5a6882ef57978d3015d4621a150fe0bd31ff1275fc463f6387bbd1",
+    "excludedFromNewAdmissionByReset": true,
+    "newActiveEpochAccruedUpperBoundUsd": "0.000000",
+    "newActiveEpochAuthorizationPath": "performance-tests/phase7_2-stabilization/budget-reset-20260719-after-attempt-18.json",
+    "newActiveEpochAuthorizationSha256": "eedc2bdf691664dfa3878633dd5acccaad2c23d7f19fa69f776529315cd71f6b"
+  },
+  "evidenceCommit": "594ca45d570c941b7eab0dcc230034d2a1ea3399",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic",
+    "deploymentReadiness": "performance-tests/run_20260719_071857_phase7_2_targeted_archive_readiness",
+    "localHandoff": null,
+    "localHandoffPolicy": "AWS-first promotion-ineligible targeted diagnostic; whole Phase 7-1 handoff is deferred until the real-AWS focused fix passes."
+  },
+  "failure": {
+    "diagnosis": "The targeted-only EC2 user data called blocking systemctl restart ecs from cloud-init modules:final. It did not return before rollback terminated the host, so the ECS agent never registered and no ClickHouse, seed, archive or verifier task started.",
+    "diagnosisEvidencePath": "performance-tests/phase7_2-stabilization/attempt-18-targeted-deploy-failure-diagnosis.json",
+    "diagnosisEvidenceSha256": "ef92729ef32673bd1aace46632b7e988bcd6a5a4ce2ad63283ddfd14fa530a99",
+    "firstFailingGate": "runtime-deploy",
+    "rawAwsError": "EC2 console: Job for ecs.service canceled; cc_scripts_user.py failed; cloud-init finished after 219.60 seconds as rollback terminated the instance.",
+    "rawAwsErrorSource": {
+      "capturedBeforeCleanup": true,
+      "instanceId": "i-064156c58ac20f37d",
+      "launchTime": "2026-07-19T07:26:02Z",
+      "terminationTime": "2026-07-19T07:29:46Z"
+    },
+    "rawRunnerError": "cdk deploy LoopAdPerfPhase7ArchiveDiagnosticStack exited with status 1",
+    "runnerEvidencePath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/failure.json",
+    "runnerEvidenceSha256": "6a89c1202d57a896e9fc91d0360a9c48ec1814c3772fedcc2dc10da32178abf9",
+    "sourceDropExecuted": false
+  },
+  "fix": {
+    "applied": "Remove the blocking restart and reuse the strict stack's ASG ResourceSignal plus exact ECS capacity-provider registration WaitCondition before creating the targeted ClickHouse service.",
+    "cleanupFixCommit": "594ca45d570c941b7eab0dcc230034d2a1ea3399",
+    "fixCommit": "3a1bc11fa3aa14b990ce4d0da7a2fe033b46c584",
+    "verification": {
+      "awsRequests": 0,
+      "build": "passed",
+      "cfnLintUnexpectedFindings": 0,
+      "decodedUserDataByteUpperBound": 8581,
+      "pythonTargetedTests": 7,
+      "status": "passed",
+      "targetedAndStrictCdkTests": 21,
+      "wholeLocalDeferred": true
+    },
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-18-fix-verification.json",
+    "verificationSha256": "4d254382a60694546b8eae63c53887e6284687d67f4c2fa84667e6d3140df871"
+  },
+  "gitCommit": "d68c0794e9f0d15f1f140b02827d56f406814409",
+  "imageDigests": {
+    "archive": "sha256:50abdfb9053a7f06d1e3e39008451313b9d48d1e327fb70d4c1e9af9e9b73466"
+  },
+  "imageSourceHashes": {
+    "archive": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "9ff098b7f9b864b1d9d85dd6a60c292a3a185c7d71fcac01f95b9e33ba36ca7b",
+    "cfnLint": "f459abd2d8ce122fa624dc21f470aa90302e57a3348beecc1b02672fc49ee5e3",
+    "commandSetFile": "f3db768decca8ec91489da56d9785dda5ab68418595437df6d6904ef541524e1",
+    "costModel": "a9adb422e7a02e9cb4ae26177c140f74c019f21e6f30e37d1f23377b4d1c4785",
+    "imageManifest": "275fa9936939d2a347380f14eecd9bc1c73c5731935a326b2c0018c07208c5e4",
+    "localHandoff": null,
+    "preparedPreflight": "9e3302fafb4be5dad29a4f97c129f1981a043caef98a55a496164eb92dfbdef4",
+    "runtimeTemplate": "e6e2711cbb80e863a32946c763456f0ecb5c456bdd7ec48aeebb1e6f7f7e7c3f",
+    "templateValidation": "99e304864b92518ff343f22367cf42030936313c82984489b25c32daf2b3d07b"
+  },
+  "implementationGitTree": "4c38f70a3336a92de04580d2d6030831422e87bc",
+  "implementationSourceClosureSha256": "187b9c2bcd01e333a6337a51af88659b55990ad5fdeacae79e2683022a63b378",
+  "ordinal": 18,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T10:02:15.474Z",
+    "deadlineBreached": false,
+    "elapsedSeconds": "2092.014000",
+    "endedAt": "2026-07-19T07:57:07.488Z",
+    "hardDeadline": "2026-07-19T10:22:15.474Z",
+    "imagePaidStartedAt": "2026-07-19T07:22:15.474Z",
+    "runtimeDeployFailedAt": "2026-07-19T07:32:55.899Z",
+    "startedAt": "2026-07-19T07:22:15.474Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "fc394d015347e66f458c49244c4168b8c0ef25239cdc0994fa9adced4a1a2e0c",
+  "promotionEligible": false,
+  "runId": "run_20260719_071857_phase7_archive_diagnostic",
+  "runnerFinalVerdict": "failed",
+  "sealedCommandSetSha256": "9221a6319174708fd2bb807322f7125a3ffb9b5fcad91cd5e943c92d821065d0",
+  "sessionId": "phase7-archive-diagnostic-20260719T071857Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 3,
+    "imagePreparation": 1,
+    "imageStackDeploy": 1,
+    "independentInventory": 3,
+    "postArchiveVerify": 0,
+    "runtimeDeploy": 1,
+    "seed15M": 0
+  },
+  "terminalEvidenceHashes": {
+    "budgetReset": "eedc2bdf691664dfa3878633dd5acccaad2c23d7f19fa69f776529315cd71f6b",
+    "cleanupVerificationInitial": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c",
+    "commands": "7dc44563701a801938d762f9ff59d00770809974ff775d7686d4d2eca7fa61ab",
+    "costReconciliation": "4dec36af5a5a6882ef57978d3015d4621a150fe0bd31ff1275fc463f6387bbd1",
+    "diagnosis": "ef92729ef32673bd1aace46632b7e988bcd6a5a4ce2ad63283ddfd14fa530a99",
+    "failure": "6a89c1202d57a896e9fc91d0360a9c48ec1814c3772fedcc2dc10da32178abf9",
+    "finalCleanup": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9",
+    "fixVerification": "4d254382a60694546b8eae63c53887e6284687d67f4c2fa84667e6d3140df871",
+    "report": "9363c0497a5b433783555f3e64b4df62eb249e389923d3265a52102ef9f43836",
+    "run": "9a206a85a21fc2857f8d15e6afd3a422a937b30f0c9430c6c6a0d328e4daea76",
+    "terminalManifest": "3bb890ac4adfc4374b84dbc33aa4e748b77a2c4af256321ff180e14aa96de094"
+  },
+  "verdict": "failed",
+  "entrySha256": "947b463d99ff9e7c623d68cb89780a6537f1701924b7d84040d0ed61327f4d6c"
+}

@@ -1,0 +1,480 @@
+{
+  "attemptType": "aws-full-stack-scoped-diagnostic",
+  "awsDiagnosticReady": true,
+  "baselineHandoff": {
+    "implementationTreeSha256": "8671124919cf012695ea4d2bbebe334e8143743ca902b1e4ed5d463335d2e98b",
+    "path": "performance-tests/run_20260719_041439_phase7_1_local_integration/local-handoff.json",
+    "scope": "path-list baseline only; this document does not claim a fresh whole-local pass",
+    "sha256": "acfc85301a155a99e4351567f9aa618d16a7fe707adf2284b1a8b0290246674e"
+  },
+  "compositePromotionPolicy": {
+    "path": "performance-tests/phase7_2-stabilization/phase8-composite-promotion-policy-20260719.json",
+    "sha256": "b8d5fbaa00558b6a2ee97d27fc37f7d4c0839d2e198e6a0bf2fc58a4b1abf501"
+  },
+  "deferredWholeLocal": {
+    "coverage": [],
+    "required": false,
+    "status": "superseded-by-user-authorized-composite-phase8-policy"
+  },
+  "focusedGates": [
+    {
+      "path": "performance-tests/phase7_2-stabilization/attempt-17-fix-verification.json",
+      "sha256": "f92950ce5df91b6a990c162a1c72ee722614450966a9ccd359ddb8ce453924e5",
+      "status": "passed"
+    },
+    {
+      "path": "performance-tests/phase7_2-stabilization/attempt-19-fix-verification.json",
+      "sha256": "af307f2bb609bd839daabfb65aa84d8bb8aeb4c5cec36e01672585ed454068fa",
+      "status": "passed"
+    },
+    {
+      "path": "performance-tests/phase7_2-stabilization/attempt-20-fix-verification.json",
+      "sha256": "8599a31907475abf43ef17322861f0927045918f40e3034da4437af78366fd3c",
+      "status": "passed"
+    },
+    {
+      "path": "performance-tests/phase7_2-stabilization/attempt-21-fix-verification.json",
+      "sha256": "ddc88420d81e9b24ef62b3aece5bb229e0751e8779d94befabde0aa3971257f9",
+      "status": "passed"
+    },
+    {
+      "path": "performance-tests/phase7_2-stabilization/attempt-22-fix-verification.json",
+      "sha256": "6ac6177f1e40228ed219116dc315ec80a0e84181bbe66f72a2b7d2ae8c5b4dd2",
+      "status": "passed"
+    },
+    {
+      "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-tooling-verification-20260719.json",
+      "sha256": "43e55d286392f584e8f2917ec18e89b4f18378adc44238c99d24c68d8c486fb2",
+      "status": "passed"
+    }
+  ],
+  "generatedAt": "2026-07-19T16:42:56.415Z",
+  "gitCommit": "241a21b337c41cee7a9057fd72cf512a1a49e405",
+  "gitTree": "ddddc091c8e5739af68ac9cf0230e7a2f9b37c11",
+  "implementationFiles": [
+    {
+      "path": "assets/clickhouse/phase4-schema.sql",
+      "sha256": "fb93f531e0499f8d714deddee18694fd9080bfe2b44ff28bf05f3a08d2e4a697"
+    },
+    {
+      "path": "bin/loop-ad_aws_cdk.ts",
+      "sha256": "9027e7cb0444e2df395e13ddd074814594b9c0f9957a7071c73a72dcd9078ba9"
+    },
+    {
+      "path": "cdk.json",
+      "sha256": "7d663b236111631fcd87a088f52eabe806246be8d2d436f7f58dd2a99fd8caf0"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "6d654abf89ebea0d61a9f7ed26c12714bb6de2b74798a9251c831bfb7c336cf6"
+    },
+    {
+      "path": "package.json",
+      "sha256": "ccc87f2f1dddba27575406f0e500b2295448391ce13646c645f751a9cd0b4c0c"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/aws-observation-retry.mjs",
+      "sha256": "dfa6861e9baf5c6976f088a212bc871776f9c316c1b82dbe042761aa6895b157"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/connection-path-destination.mjs",
+      "sha256": "d4f5d10d74b055dea3753039d5d30638b33c6195cefbda145ac527845e011edf"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/invoke-oha.mjs",
+      "sha256": "360653b4a205a4144228bf9464fa4cd0714557ad18d7f8ac8f330fdfff0a6695"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/oha-load-contract.mjs",
+      "sha256": "929414481738c6c12c0cf3d9566f24538f7c131aa22b78709b0f0c31aac4c6e3"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/oha12k-aggregate.mjs",
+      "sha256": "e686fa84d637234e2cf843a3c259ae774a8e711e68cb069d5970a6b48e76cb69"
+    },
+    {
+      "path": "performance-tests/phase1-kinesis/run-ec2-oha-worker.sh",
+      "sha256": "04b5dabf6095b9bd458573420948f7cd4ba4d04b7f683b70d03352533d417179"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/Dockerfile",
+      "sha256": "eec0035606435c0464e2fa70240861011df6b94aaac242c359c3069644980e45"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/entrypoint.sh",
+      "sha256": "eb3dca6b5e8c1cc3ceb7cf0aa8ff8f6ac7b0ced2fb45c7ac3d8aff44771a2b54"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/pom.xml",
+      "sha256": "745cb1cec284408789f7784462feb5689827be9bd8856c37b1898398719b647e"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/BatchProcessor.java",
+      "sha256": "7b03d812b00656cacac7b36f0b29934406af139fd1b00dc9a44c62b812b8d836"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ClickHouseWriter.java",
+      "sha256": "a2b9465297e38507d9e2ff28818091c919adb3287f445c2ceecdec3b6902fc0d"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerMain.java",
+      "sha256": "dc94ee7c0750eaf2c8ad7657d53dfaa6b7ecfb4b08ead68ef7a034ab42ab41e2"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/ConsumerModels.java",
+      "sha256": "680429ff101f9108fcc066b7dd18b8f5113c1eccc8c90262c2131a253086bd0e"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EmfTelemetry.java",
+      "sha256": "68ef2eb31da4edaadca387a7a52618cfe2f40e096f35f375060c5d753e0c3d66"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/EventTransformer.java",
+      "sha256": "834bbc5018f90042c7ebcf78bfd658312664a8146be9547c544bac98d9c17a48"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/KclSchedulerFactory.java",
+      "sha256": "ebad27212151cc730a3bf14e88776661e53b23c43dacc68bf995dd7ff12d5326"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/LoopAdRecordProcessor.java",
+      "sha256": "3d4483402cff86538aa5987bda2364e88299f1a2a8e55cc638615cc882466c91"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/MemoryGateMain.java",
+      "sha256": "8c21ae0f20723ece60a12f86c88d3617e377f0ad265b7e9038aa7a567c43c55b"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/RuntimeConfig.java",
+      "sha256": "31ba39ad079d8ee0779c90bfcfac8ac85e50079fc9a9126feb05c98b4fdb3c39"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/S3FailureArchiver.java",
+      "sha256": "2d861a116fe757281af50dd2cb34f0e84c35ae39449838c75190432e5498666b"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/BatchProcessorTest.java",
+      "sha256": "fe2411393a5521a6a52333aeb09705bf3377ad5b0e38d1cc9b24cb9ad3686fe2"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ClickHouseWriterTest.java",
+      "sha256": "cfb2df1d55b8aeaa50c3fa1b603456fd53e3eac9e0e6f125b2bc26ffabdffaab"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/ConsumerFixtures.java",
+      "sha256": "49ce9facee13342d182ba44eeddbf8d9e5994f29afe9bb1cc81a385a16d7c52e"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/EventTransformerTest.java",
+      "sha256": "54aa30addc0c5bbdd667a67baa99269bedd008f7e650786f5546c782a723efcc"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/KclSchedulerFactoryTest.java",
+      "sha256": "b0679ec4f1eae34fc682c005a007992e75caadcf7561f2d9bc54a87988b30678"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/LoopAdRecordProcessorTest.java",
+      "sha256": "042a6377ee10d60416803ee7bfeeb5593332fc40ea9f21b70de3b48bb8ef8ea4"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/consumer/src/test/java/com/loopad/performance/phase4/RuntimeConfigTest.java",
+      "sha256": "5aae5b2e798217d92b6524cf5cae69d0de88dbe3c74f15aa6e879ca599013652"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/producer-env/pyproject.toml",
+      "sha256": "b006c6f45c23eda97cae85e29074e4bc53714b9e4ff834e4f94ad877f317a91b"
+    },
+    {
+      "path": "performance-tests/phase4-clickhouse/producer-env/uv.lock",
+      "sha256": "8dd1569ba60cb31ebc97d1fa3723c0375ec0e2ee4351a2e230cec867ac48b585"
+    },
+    {
+      "path": "performance-tests/phase6-archive/archive.py",
+      "sha256": "8de29e6a7d7a4f7124b77ae376715c0cf06ad5e825b25791ebf8597f525c6b0a"
+    },
+    {
+      "path": "performance-tests/phase6-archive/clickhouse-config/memory.xml",
+      "sha256": "51677891063946f2ec4f676f7800aa6d4886e493d63911a7e192462be2efe848"
+    },
+    {
+      "path": "performance-tests/phase6-archive/requirements.txt",
+      "sha256": "a780b6fdf3dda829fc901f2f3df118f7fdce8d61e4ff9a9f96cc4d8e080b6af9"
+    },
+    {
+      "path": "performance-tests/phase6-archive/seed_partition.py",
+      "sha256": "2ccf3e858647b5153b39c374ea8be364c474120d750fe454220bccacf0602b99"
+    },
+    {
+      "path": "performance-tests/phase7-integration/archive/Dockerfile",
+      "sha256": "44e87269b061de3a2928f6c66677466fb5a54d692b1f55a3273e5c5d00269a1c"
+    },
+    {
+      "path": "performance-tests/phase7-integration/archive/entrypoint.py",
+      "sha256": "994c237e8ee950d099a9baaf27e0d7707e599171b38877646b686450f39ab000"
+    },
+    {
+      "path": "performance-tests/phase7-integration/archive/schema_sidecar.py",
+      "sha256": "8db86287e4cec26d7f1a39e5cccecc506503c21aa014f7ee29ed7b24b10ac566"
+    },
+    {
+      "path": "performance-tests/phase7-integration/archive/targeted_seed.py",
+      "sha256": "976ee5c75658bfc6fe6cc27011cd522746bf0684d78213f1d3a70b502a06b4b3"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/README.md",
+      "sha256": "e59218c7d5661ff8bb37e3fa9728457087dcc1b973470980a83ccc4241ab7c08"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/build_full_stack_scoped_source.py",
+      "sha256": "0d227b48b6193a21a4ec2e43c009037c553f23321775e65324da5b6af7c0f3e2"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/build_phase8_composite_handoff.py",
+      "sha256": "b0894ec27d1250032e4d5eebdec75dc865280451cc604d7ca8aff1772490bebe"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/build_run_commands.py",
+      "sha256": "fb57a89a94312032a46e6238c4a2003706f9e9424c2c75de4c5ab84ba4457eb1"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/cleanup.py",
+      "sha256": "2782a71d16652b5d7cdb5c9c0a0a982da5cf1b20b1fa01ba419e6ec0c1e77e1c"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/common.py",
+      "sha256": "4e30689116c8451162362416c4d92f3f45dfdc8b7146e7d34e26964e7151eba8"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/cost_model.py",
+      "sha256": "7bcfffc3a2c5d528b7708d67ac3393d9629e039521d48e7e2c261749b5b5d9bb"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/diagnostic_payload_pool.mjs",
+      "sha256": "9e63d68af530610a73b83ffa9e98c4083919fb0fc2618492785e9e66cec414e1"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/evaluator.py",
+      "sha256": "2d2679036b6c548249cc26b0ffd6d0fb1b729ad6688c63242be9833f425602b8"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/evidence_assembler.py",
+      "sha256": "ea6037473ee9098cfb10f137a7219b931ad4c95c0ed1030d6a913cd4fcffcb61"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/final_evaluate.py",
+      "sha256": "9fb82ce9da1b50b52362e7f6e05298da7b1f23de426a8ffc7f4612913269e4d2"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/full_stack_scoped_archive.py",
+      "sha256": "ebbabe69dbece75d9c9b638d16dbc0991c57d0076d9fd609ea7dc01c342e7feb"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/full_stack_scoped_cost_model.py",
+      "sha256": "03975c963a687f30e20494789a88658b2454f99dc956dba7272e75919825a36f"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/image_prep.py",
+      "sha256": "a4f99ce1de00a53739d6bc198fc17c933a4e7c22bac64358eae9b0e1cfee80e3"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/lookup-prices.mjs",
+      "sha256": "cb08e1e45da39c18ee0992290e3666b5d604af29689fca2577c239ce3ae8e724"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/phase7_aws_task_orchestration.mjs",
+      "sha256": "a0b577cc00f73556ec399eff68c9bd785031906e21716ec70153057e7b73ac77"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/phase7_diagnostic_contract.mjs",
+      "sha256": "61e92af692e691ee8b322c28008efc03850e855367bbcc559eb13b3dae31942f"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/preflight.py",
+      "sha256": "b3c2d6d97a58f6cba7d6aa21b7590b66013f88405c50e2f2fa0cdb21132f7c62"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/run_chain.py",
+      "sha256": "6855246045d9ebc74e82b7d190920591848d8a237c8283bdb91c96b89f89d877"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/run_diagnostic_oha.mjs",
+      "sha256": "a828d622755fc5c8241ca5c7a14165d781ea48090bbc8bf5047e96a0d490fa7c"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/runner.py",
+      "sha256": "be27a755ad2162cc72d8de2ab620f37c288c73c9e481f92f5ffd2a1c35990487"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/runtime_observability.py",
+      "sha256": "a511e0f5f58c42ea9ad59a4d8308af4e1cead873f2218e51d7256ab96fcf655c"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/runtime_stages.py",
+      "sha256": "fb6f859752c58b1ab0c511a5676a8c40fcd043425b3c9351b686eec6c287e5c8"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/seal_full_stack_scoped_attempt.py",
+      "sha256": "62616f3320e47baa6654960525be035dd37123065857abe90efa2b33c589d35d"
+    },
+    {
+      "path": "performance-tests/phase7-integration/aws/validate_template.py",
+      "sha256": "8db4af4044dfdd0984021b23a77279ba18a1f2e3c5ab057639f7904f8da6c4a4"
+    },
+    {
+      "path": "performance-tests/phase7-integration/cleanup_inventory.py",
+      "sha256": "837712885f045056a0d57e1084872c97fadc8303b5a66f00357975beb912c3db"
+    },
+    {
+      "path": "performance-tests/phase7-integration/clickhouse-config/memory.xml",
+      "sha256": "84ded425bcb0b964e763b3d438cd89a94db3074d99a322a4984eb535db11193f"
+    },
+    {
+      "path": "performance-tests/phase7-integration/docker-compose.yml",
+      "sha256": "3545ee9b881165f03f2af64ca6182c0b95116243ac44830608cd081491865845"
+    },
+    {
+      "path": "performance-tests/phase7-integration/finalize_evidence.py",
+      "sha256": "60e3640decdb0abb95fa3b9455b1bca84f91dc82ae500d76f495e8f38129e2ab"
+    },
+    {
+      "path": "performance-tests/phase7-integration/haproxy-local.cfg",
+      "sha256": "4ed50f05544e37f3d6509e1266407eb36cc5daaca234350e6d14d684ffdb50c4"
+    },
+    {
+      "path": "performance-tests/phase7-integration/local_runner.py",
+      "sha256": "af092a631f4e0e23598df91ec64f527759de796b79c0717f6f9309740e0e66df"
+    },
+    {
+      "path": "performance-tests/phase7-integration/localstack-init.sh",
+      "sha256": "9df689c58a62dd76b5b99850c0f6a3b24f622c45fda9bed8b60a1fffde38879b"
+    },
+    {
+      "path": "performance-tests/phase7-integration/run-local.sh",
+      "sha256": "df7addbe8ee8b5862947e4ebe0f80bb185c947e6fb59da42c837c8e9f57186fd"
+    },
+    {
+      "path": "performance-tests/phase7-integration/tests/test_full_stack_scoped_archive.py",
+      "sha256": "dce7c4d128b2acc8da96d3d5a9e414910975fa1360676f764de1cf92e28720a9"
+    },
+    {
+      "path": "performance-tests/phase7-integration/tests/test_runner.py",
+      "sha256": "7b194bc2167b5ec89a136442af67434780e84b6bbac4c4eff8034e2e665bb75b"
+    },
+    {
+      "path": "performance-tests/phase7-integration/topology-contract.json",
+      "sha256": "1b07d74852da550cc302fb48d6c6963c01704fb2bdc9c3780e2c8baa9025264d"
+    },
+    {
+      "path": "src/cdk-app-config.ts",
+      "sha256": "446c7d7e1d69169f01454f82d0d52f6608ad515c63d19282e036e7525216fed3"
+    },
+    {
+      "path": "src/cdk-app.ts",
+      "sha256": "09d238a3fc22f1fa2c6e9f73c8efea0882fb7a0abe4dcfe2980f05aabaff1aae"
+    },
+    {
+      "path": "src/config-validation.ts",
+      "sha256": "83badef9d42933b930b6f8f894055d8cbf56a61d4aa8fc40bf8f1f6b8a006ae2"
+    },
+    {
+      "path": "src/dev-config.ts",
+      "sha256": "9e5a73715093073dd92aa9295c5d7ddee5fba35100f13ad39c576236af83ec1f"
+    },
+    {
+      "path": "src/lifecycle-stacks.ts",
+      "sha256": "3b8eaf3f2d2078fde48e75ead17e1eeaa64da42fab78c46df42a2fb5d1580254"
+    },
+    {
+      "path": "src/loop-ad-stack.ts",
+      "sha256": "9b690cec4974a20ff6fc1912b3b7eef9c9b0583175b974dba765fd6eedc1a6d9"
+    },
+    {
+      "path": "src/perf-phase0-stack.ts",
+      "sha256": "00f7d689dfd96bbbf4b27df21dc53d41c72a13737f76da7af64b1c8ace3bd45b"
+    },
+    {
+      "path": "src/perf-phase1-generator-control-stack.ts",
+      "sha256": "ca6c8ed8a13a8fd4d2271ffcf4724c2652715dea7247c4f4e0c08aebe999f8f3"
+    },
+    {
+      "path": "src/perf-phase1-kinesis-stack.ts",
+      "sha256": "211425a3cae7b0eb9b4cdac6d0b771f348b7a3f0b86613e06d748cb376ae9ae4"
+    },
+    {
+      "path": "src/perf-phase4-clickhouse-config.ts",
+      "sha256": "c27a30a67cad2ce0ac3fb97752465f5473ed9f9137d15a11ef2672c25c3f016e"
+    },
+    {
+      "path": "src/perf-phase4-clickhouse-ecs-config.ts",
+      "sha256": "7fc96216b26ba5e366b73d76d86a6009ac011838dcd5ea0767e6289b2c05ee52"
+    },
+    {
+      "path": "src/perf-phase4-clickhouse-ecs-stack.ts",
+      "sha256": "f12bc2072c66706bcb43218994cd486b0e67dd3486cfaf62ca9baa6f130fb222"
+    },
+    {
+      "path": "src/perf-phase4-clickhouse-stack.ts",
+      "sha256": "1c62157f9916ade0d33824e9811d0c32f7c03c6bd6ad4c273a2113a92e19fcd2"
+    },
+    {
+      "path": "src/perf-phase6-archive-stack.ts",
+      "sha256": "0d9e748c930b67266c67cf61c8df148e3d27474985e0c1554dfd5f49b4617039"
+    },
+    {
+      "path": "src/perf-phase7-integration-config.ts",
+      "sha256": "ccbe8d34ef2c2e711288324e62bdb1241b7ad9cfe2efbaab3561f02d5fc85088"
+    },
+    {
+      "path": "src/perf-phase7-integration-stack.ts",
+      "sha256": "32afd68d0a4c57893f9155305eb4c58c434d71334a8e4448c1f4d72a37aa2b33"
+    },
+    {
+      "path": "src/phase4-clickhouse-handler/core.ts",
+      "sha256": "e3972292a99ea44ecf3da4f7125669da5bb12a6e2aaee0ae2d203a1056a93929"
+    },
+    {
+      "path": "src/phase4-clickhouse-handler/index.ts",
+      "sha256": "4938684efc1d4ed1e77be2588f4420aed1e625823a9c6842bb1eee21dd6e646c"
+    },
+    {
+      "path": "src/runtime-helpers.ts",
+      "sha256": "9a84cbee8ac89509fe3403c8eb867c65cc7925a291f03fc52cbc97cfe73ff4ec"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "d1be1e76b932a280897f2c7c365be42f62cf733bc8f8dc7790f526f50147fed1"
+    }
+  ],
+  "implementationTreeSha256": "bf74f842b624f23a0315c65c5a4276fdf0fc6fd79692e9a3b5b3ef6c3f92e21d",
+  "phase": "7-2",
+  "phase5": "skipped",
+  "policy": {
+    "path": "performance-tests/phase7_2-stabilization/full-stack-scoped-diagnostic-policy-20260719.json",
+    "sha256": "5eb380a8890ae6113703adbd4f0843a628fce65605cfb3e77d3bbb0a8f560d9b"
+  },
+  "promotionEligible": false,
+  "recordType": "phase7-full-stack-scoped-diagnostic-source",
+  "schemaVersion": 1,
+  "stackDefinitions": [
+    "LoopAdPerfPhase7IntegrationImageStack",
+    "LoopAdPerfPhase7IntegrationStack"
+  ],
+  "stagePlan": [
+    "deploy",
+    "verify",
+    "seed",
+    "archive",
+    "collect",
+    "cleanup",
+    "inventory"
+  ],
+  "topologyBaseline": "Attempt 17",
+  "unresolvedFailures": [],
+  "zeroAttemptStages": [
+    "correctness",
+    "replacement",
+    "warmup",
+    "score",
+    "source-drop"
+  ]
+}

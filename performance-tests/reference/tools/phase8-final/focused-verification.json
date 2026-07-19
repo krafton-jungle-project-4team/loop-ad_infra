@@ -1,0 +1,25 @@
+{
+  "awsRequests": 0,
+  "checks": {
+    "attempt17PerformanceEvidence": true,
+    "attempt23Archive15M": true,
+    "attempt23CleanupRecoveredZero": true,
+    "attempt23FunctionalStages": true,
+    "documentsHashBound": true,
+    "globalRunOwnedInventoryZero": true,
+    "handoffSelfHash": true,
+    "historicalVerdictsPreserved": true,
+    "ledgerHashChain": true,
+    "manifestSelfHash": true,
+    "phase5Skipped": true,
+    "phase8PaidAwsUpperBoundZero": true,
+    "sourceClosureRevalidated": true
+  },
+  "handoffSha256": "d66409b2a02e9c77332ec12dff6925f988a7f2a3a1ae6777a24d6a30c98d264c",
+  "manifestSha256": "1eb564874428d1ac347d858df6160d053ebbc93eae17ab1b596fb855cb4c2c50",
+  "paidAwsExperiment": false,
+  "passed": true,
+  "recordType": "phase8-focused-unpaid-verification",
+  "schemaVersion": 1,
+  "verifiedAt": "2026-07-19T18:25:39.457Z"
+}

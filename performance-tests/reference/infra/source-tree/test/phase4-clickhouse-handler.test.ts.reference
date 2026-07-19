@@ -1,0 +1,247 @@
+import type {
+    KinesisStreamEvent,
+    KinesisStreamRecord,
+} from 'aws-lambda';
+import {
+    ASYNC_INSERT_SETTINGS,
+    EVENT_COLUMNS,
+    RAW_EVENT_COLUMNS,
+    buildInsertUrl,
+    createClickHouseInserter,
+    createHandler,
+    planBatch,
+} from '../src/phase4-clickhouse-handler';
+
+const NOW = new Date('2026-07-16T12:00:00.000Z');
+
+function payload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        project_id: 'project-1',
+        write_key: 'write-key-must-not-be-logged',
+        schema_version: 'hotel_rec_promo.v1',
+        event_id: 'event-1',
+        event_name: 'promotion_viewed',
+        event_time: '2026-07-16T11:59:59.000Z',
+        source: 'phase4-test',
+        user_id: 'user-1',
+        session_id: null,
+        properties_json: ' { "rooms" : [1, 2], "nested": "{\\"x\\":1}" } ',
+        producer_sent_at: '2026-07-16T11:59:59.100Z',
+        run_id: 'run_20260716_120000_phase4_clickhouse_lambda',
+        ...overrides,
+    };
+}
+
+function record(
+    body: Record<string, unknown> | string,
+    sequenceNumber = '1',
+    encoded = false,
+): KinesisStreamRecord {
+    const source = typeof body === 'string' ? body : JSON.stringify(body);
+    return {
+        awsRegion: 'ap-northeast-2',
+        eventID: `shardId-000000000000:${sequenceNumber}`,
+        eventName: 'aws:kinesis:record',
+        eventSource: 'aws:kinesis',
+        eventSourceARN: 'arn:aws:kinesis:ap-northeast-2:123456789012:stream/phase4',
+        eventVersion: '1.0',
+        invokeIdentityArn: 'arn:aws:iam::123456789012:role/test',
+        kinesis: {
+            approximateArrivalTimestamp: NOW.getTime() / 1_000,
+            data: encoded ? source : Buffer.from(source).toString('base64'),
+            kinesisSchemaVersion: '1.0',
+            partitionKey: 'partition-1',
+            sequenceNumber,
+        },
+    } as KinesisStreamRecord;
+}
+
+function event(records: KinesisStreamRecord[]): KinesisStreamEvent {
+    return { Records: records };
+}
+
+describe('Phase 4 ClickHouse Lambda record contract', () => {
+    it('maps valid records without parsing or re-stringifying properties_json', () => {
+        const originalProperties = payload().properties_json;
+        const plan = planBatch([record(payload())], NOW);
+
+        expect(plan.eventRows).toHaveLength(1);
+        expect(plan.rawEventRows).toHaveLength(0);
+        expect(plan.lateEventCount).toBe(0);
+        expect(plan.eventRows[0]).toMatchObject({
+            project_id: 'project-1',
+            event_id: 'event-1',
+            event_time: '2026-07-16 11:59:59.000',
+            producer_sent_at: '2026-07-16 11:59:59.100',
+            properties_json: originalProperties,
+            kinesis_shard_id: 'shardId-000000000000',
+            kinesis_sequence_number: '1',
+        });
+    });
+
+    it.each([
+        ['invalid JSON', record('{', '1'), 'invalid_json'],
+        ['unsupported schema', record(payload({ schema_version: 'other.v1' }), '2'), 'unsupported_schema_version'],
+        ['missing required field', record(payload({ event_id: undefined }), '3'), 'invalid_required_field'],
+        ['timestamp without offset', record(payload({ event_time: '2026-07-16 11:59:59' }), '4'), 'invalid_event_time'],
+        ['invalid base64', record('not-base64', '5', true), 'invalid_base64'],
+    ])('routes %s to raw_events', (_name, input, expectedCode) => {
+        const plan = planBatch([input], NOW);
+
+        expect(plan.eventRows).toHaveLength(0);
+        expect(plan.rawEventRows).toHaveLength(1);
+        expect(plan.rawEventRows[0]).toMatchObject({
+            sequence_number: input.kinesis.sequenceNumber,
+            raw_payload_base64: input.kinesis.data,
+            error_code: expectedCode,
+        });
+    });
+
+    it('drops only events before the fixed UTC seven-day boundary and counts them as metrics', () => {
+        const plan = planBatch([
+            record(payload({ event_id: 'too-old', event_time: '2026-07-08T23:59:59.999Z' }), '1'),
+            record(payload({ event_id: 'boundary', event_time: '2026-07-09T00:00:00.000Z' }), '2'),
+        ], NOW);
+
+        expect(plan.lateEventCount).toBe(1);
+        expect(plan.eventRows).toHaveLength(1);
+        expect(plan.eventRows[0]?.event_id).toBe('boundary');
+        expect(plan.rawEventRows).toHaveLength(0);
+    });
+
+    it('inserts both tables, emits late count only after inserts, and reports no failures', async () => {
+        const calls: Array<{ table: string; columns: readonly string[]; rows: readonly object[] }> = [];
+        const order: string[] = [];
+        const summaries: Record<string, unknown>[] = [];
+        const handler = createHandler({
+            now: () => NOW,
+            insertRows: async (table, columns, rows) => {
+                calls.push({ table, columns, rows });
+                order.push(`insert:${table}`);
+            },
+            emitLateEventMetric: (count) => order.push(`metric:${count}`),
+            logSummary: (summary) => summaries.push(summary),
+        });
+
+        const response = await handler(event([
+            record(payload({ event_id: 'valid' }), '10'),
+            record('{', '11'),
+            record(payload({ event_id: 'late', event_time: '2026-07-08T23:59:59Z' }), '12'),
+        ]));
+
+        expect(response).toEqual({ batchItemFailures: [] });
+        expect(calls.map((call) => call.table).sort()).toEqual(['events', 'raw_events']);
+        expect(calls.find((call) => call.table === 'events')?.columns).toEqual(EVENT_COLUMNS);
+        expect(calls.find((call) => call.table === 'raw_events')?.columns).toEqual(RAW_EVENT_COLUMNS);
+        expect(order.at(-1)).toBe('metric:1');
+        expect(summaries).toEqual([expect.objectContaining({
+            event: 'phase4_batch_success',
+            inputRecords: 3,
+            eventRows: 1,
+            rawEventRows: 1,
+            lateEventDropped: 1,
+        })]);
+    });
+
+    it('returns the numerically lowest sequence after an insert failure without logging payload fields', async () => {
+        const summaries: Record<string, unknown>[] = [];
+        const handler = createHandler({
+            now: () => NOW,
+            insertRows: async () => {
+                throw new Error('database unavailable write-key-must-not-be-logged');
+            },
+            emitLateEventMetric: jest.fn(),
+            logSummary: (summary) => summaries.push(summary),
+        });
+
+        const response = await handler(event([
+            record(payload({ event_id: 'ten' }), '10'),
+            record(payload({ event_id: 'two' }), '2'),
+        ]));
+
+        expect(response).toEqual({ batchItemFailures: [{ itemIdentifier: '2' }] });
+        const serialized = JSON.stringify(summaries);
+        expect(serialized).toContain('phase4_batch_retry');
+        expect(serialized).not.toContain('write-key-must-not-be-logged');
+        expect(serialized).not.toContain('event-1');
+        expect(serialized).not.toContain('properties_json');
+    });
+});
+
+describe('Phase 4 ClickHouse HTTP inserts', () => {
+    it('uses private HTTP, exact async settings, headers, and NDJSON', async () => {
+        const fetchMock = jest.fn(async () => new Response('', { status: 200 }));
+        const insert = createClickHouseInserter({
+            getBaseUrl: () => 'http://10.44.0.10:8123',
+            getDatabase: () => 'loopad',
+            loadCredentials: async () => ({ username: 'ingest', password: 'test-only-password' }),
+            fetchImpl: fetchMock as unknown as typeof fetch,
+            timeoutMs: 1234,
+        });
+
+        await insert('events', ['event_id', 'properties_json'], [{
+            event_id: 'event-1',
+            properties_json: ' { "unchanged" : true } ',
+        }]);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+        expect(url.protocol).toBe('http:');
+        expect(url.hostname).toBe('10.44.0.10');
+        expect(url.searchParams.get('query')).toBe(
+            'INSERT INTO loopad.events (event_id, properties_json) FORMAT JSONEachRow',
+        );
+        for (const [key, value] of Object.entries(ASYNC_INSERT_SETTINGS)) {
+            expect(url.searchParams.get(key)).toBe(value);
+        }
+        expect(init.headers).toEqual(expect.objectContaining({
+            'Content-Type': 'application/x-ndjson',
+            'X-ClickHouse-User': 'ingest',
+            'X-ClickHouse-Key': 'test-only-password',
+        }));
+        expect(init.body).toBe('{"event_id":"event-1","properties_json":" { \\"unchanged\\" : true } "}\n');
+        expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it.each([400, 503])('turns ClickHouse HTTP %i into a sanitized retry error', async (status) => {
+        const insert = createClickHouseInserter({
+            getBaseUrl: () => 'http://127.0.0.1:8123',
+            getDatabase: () => 'loopad',
+            loadCredentials: async () => ({ username: 'ingest', password: 'secret' }),
+            fetchImpl: (async () => new Response('sensitive server body', { status })) as typeof fetch,
+        });
+
+        await expect(insert('events', ['event_id'], [{ event_id: 'x' }])).rejects.toMatchObject({
+            name: 'ClickHouseInsertError',
+            message: 'ClickHouse insert failed.',
+            statusCode: status,
+        });
+    });
+
+    it('turns timeout/network failures into a sanitized retry error', async () => {
+        const insert = createClickHouseInserter({
+            getBaseUrl: () => 'http://127.0.0.1:8123',
+            getDatabase: () => 'loopad',
+            loadCredentials: async () => ({ username: 'ingest', password: 'secret' }),
+            fetchImpl: (async () => {
+                throw new Error('connect ETIMEDOUT 127.0.0.1 with secret details');
+            }) as typeof fetch,
+        });
+
+        await expect(insert('events', ['event_id'], [{ event_id: 'x' }])).rejects.toEqual(
+            expect.objectContaining({
+                name: 'ClickHouseInsertError',
+                message: 'ClickHouse insert failed.',
+            }),
+        );
+    });
+
+    it('rejects public, DNS, and HTTPS endpoints before making a request', () => {
+        expect(() => buildInsertUrl('https://10.44.0.10:8123', 'loopad', 'events', ['event_id']))
+            .toThrow('ClickHouseEndpointMustBePrivateHttp');
+        expect(() => buildInsertUrl('http://clickhouse.example.test:8123', 'loopad', 'events', ['event_id']))
+            .toThrow('ClickHouseEndpointMustBePrivateHttp');
+        expect(() => buildInsertUrl('http://203.0.113.10:8123', 'loopad', 'events', ['event_id']))
+            .toThrow('ClickHouseEndpointMustBePrivateHttp');
+    });
+});

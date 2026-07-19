@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "runId": "local_20260710_204642_phase1_payload_contract",
+  "phase": "phase1",
+  "category": "validation",
+  "executedAt": "2026-07-10T20:46:42",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "local_20260710_204642_phase1_payload_contract"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "local_20260710_204642_phase1_payload_contract/commands.md",
+      "bytes": 1145,
+      "sha256": "c194b381ec4ef6ecd6a4687b610de4036aa9555cfb798afe27b58355b682d162"
+    },
+    {
+      "path": "local_20260710_204642_phase1_payload_contract/hypothesis.md",
+      "bytes": 954,
+      "sha256": "ba4eb3c4efdc466a90ae69c36aec6761d0fc0abba6e9f099010b68a17c5e149d"
+    },
+    {
+      "path": "local_20260710_204642_phase1_payload_contract/verdict.md",
+      "bytes": 1135,
+      "sha256": "2c4e90d339c0fab835803a6ac5da3860582baec0f0e671f71cc4ff875eb79a37"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+<clickhouse>
+  <asynchronous_insert_log>
+    <database>system</database>
+    <table>asynchronous_insert_log</table>
+    <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+  </asynchronous_insert_log>
+</clickhouse>

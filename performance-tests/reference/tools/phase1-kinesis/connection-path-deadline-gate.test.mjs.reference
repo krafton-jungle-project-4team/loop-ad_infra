@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateConnectionPathDeadlineGate } from './connection-path-deadline-gate.mjs';
+
+const costModel = {
+    budget: {
+        hardCapUsd: 60,
+        newDeployAccruedStopUsd: 54,
+        accruedUpperBoundUsd: 10,
+        projectedPlusReserveUsd: 35,
+        cleanupReserveUsd: 5,
+        mayStart: true,
+    },
+};
+const deadlines = { newWorkEnd: '2026-07-15T11:30:00+09:00', hardDeadline: '2026-07-15T12:00:00+09:00' };
+
+test('allows deploy before 11:30 KST when cost gates pass', () => {
+    const result = evaluateConnectionPathDeadlineGate({ now: '2026-07-15T11:29:59+09:00', action: 'deploy', costModel, ...deadlines });
+    assert.equal(result.allowed, true);
+});
+
+test('rejects new work at 11:30 while permitting cleanup before noon', () => {
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T11:30:00+09:00', action: 'stage', costModel, ...deadlines }).allowed, false);
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T11:59:59+09:00', action: 'cleanup', costModel, ...deadlines }).allowed, true);
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T12:00:00+09:00', action: 'cleanup', costModel, ...deadlines }).allowed, false);
+});
+
+test('fails closed at accrued USD 54 or projected plus reserve USD 60', () => {
+    const accrued = structuredClone(costModel);
+    accrued.budget.accruedUpperBoundUsd = 54;
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'deploy', costModel: accrued, ...deadlines }).allowed, false);
+    const projected = structuredClone(costModel);
+    projected.budget.projectedPlusReserveUsd = 60;
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'stage', costModel: projected, ...deadlines }).allowed, false);
+});
+
+test('uses budget thresholds from the cost model and rejects missing thresholds', () => {
+    const custom = structuredClone(costModel);
+    custom.budget.hardCapUsd = 70;
+    custom.budget.newDeployAccruedStopUsd = 64;
+    custom.budget.accruedUpperBoundUsd = 63.99;
+    custom.budget.projectedPlusReserveUsd = 69.99;
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'deploy', costModel: custom, ...deadlines }).allowed, true);
+    const invalid = structuredClone(costModel);
+    delete invalid.budget.hardCapUsd;
+    assert.throws(() => evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'deploy', costModel: invalid, ...deadlines }), /thresholds are invalid/);
+});
+
+test('requires at least a 30-minute cleanup window and absolute timestamps', () => {
+    assert.throws(() => evaluateConnectionPathDeadlineGate({ now: '2026-07-15 10:00', action: 'deploy', costModel, ...deadlines }), /absolute ISO-8601/);
+    assert.equal(evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'deploy', costModel,
+        newWorkEnd: deadlines.newWorkEnd, hardDeadline: '2026-07-15T12:15:00+09:00' }).allowed, true);
+    assert.throws(() => evaluateConnectionPathDeadlineGate({ now: '2026-07-15T10:00:00+09:00', action: 'deploy', costModel,
+        newWorkEnd: deadlines.newWorkEnd, hardDeadline: '2026-07-15T11:59:00+09:00' }), /at least 30 minutes/);
+});

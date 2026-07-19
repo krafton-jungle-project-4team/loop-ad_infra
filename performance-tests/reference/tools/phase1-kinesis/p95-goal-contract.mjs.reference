@@ -1,0 +1,58 @@
+export const P95_GOAL = Object.freeze({
+    region: 'ap-northeast-2', targetPath: '/events', acknowledgement: 'kinesis-final-ack',
+    offeredRps: 50_000, physicalConnections: 12_000, streamsPerConnection: 1,
+    generators: 8, processesPerGenerator: 2, collectors: 6, kinesisShards: 120,
+    haproxyProfile: 'sampled-202', haproxyInstances: 2, haproxyInstanceType: 'c6in.xlarge',
+    haproxyVcpusPerInstance: 4, haproxyThreadMode: 'automatic',
+    loadGenerator: 'oha', customLoadGeneratorAllowed: false,
+    warmupMode: 'separate-unscored-oha-stage', warmupSecondsByRepetition: [180],
+    warmupInstrumentation: 'off', scoreInstrumentation: 'on', measurementSeconds: 300, repetitions: 1,
+    reuseWarmupConnectionsForScore: false,
+    latencyVerdict: 'maximum-of-16-oha-process-latency-corrected-p95',
+    exactFleetPooledHistogramAvailable: false,
+    liveP95Available: false,
+    serviceP95LimitMs: 300, worstWorkerP95LimitMs: 360,
+    minimumAchievedRatio: .99, minimumPhysicalConnectionRatio: .99, maximumTransportErrorRate: .001,
+    maximumKinesisRetryRate: .00001,
+    finalAckAccounting: 'aligned client/Kinesis boundaries: client HTTP 202 <= Kinesis successes <= client HTTP 202 + transport errors',
+    intermediateLoadAccuracy: 'observation-only', automaticRetryAllowed: false, e3Allowed: false,
+    costCapUsd: 85, cleanupReserveUsd: 12,
+    startBefore: '2026-07-15T20:00:00+09:00', newStageCutoff: '2026-07-16T03:15:00+09:00', hardDeadline: '2026-07-16T04:00:00+09:00',
+});
+
+export const P95_OHA_AMENDMENT = Object.freeze({
+    supersedes: [
+        'custom reference load driver',
+        'same-connection histogram reset',
+        'mergeable fleet pooled histogram',
+        'live client p95 abort',
+    ],
+    warmupExclusion: 'warmup and score are independent oha invocations and artifact windows',
+    scoreWindow: 'fresh synchronized 300-second oha invocation with 12,000 new connections',
+    conservativeLatencyRationale: 'the maximum worker p95 below 300ms implies every worker p95 is below 300ms; no pooled estimate is fabricated',
+    liveSafetySubstitutes: [
+        'HAProxy final response delta for observation-only achieved RPS',
+        'generator socket observations for physical connections',
+        'full HAProxy error logs for immediate 429/5xx detection',
+        'collector queue and Kinesis counters',
+        'collector and HAProxy runtime health',
+    ],
+    deferredUntilOhaExit: ['latency-corrected p95', 'transport error distribution'],
+    finalAckAmbiguity: 'a transport error may hide a server-side final ACK; oha does not retry, so each transport error contributes at most one ambiguous Kinesis success',
+    finalAckBoundaryRule: 'collector Kinesis counters are captured before the synchronized client start and after the synchronized end plus queue drain',
+    boundaryMismatchClassification: 'instrumentation-failure; preserve evidence and do not retry automatically',
+});
+
+export function p95GoalLoadArithmetic(goal = P95_GOAL) {
+    const processCount = goal.generators * goal.processesPerGenerator;
+    if (goal.offeredRps % processCount !== 0 || goal.physicalConnections % processCount !== 0) {
+        throw new Error('p95 goal load must divide exactly across every generator process');
+    }
+    return {
+        processCount,
+        rpsPerGenerator: goal.offeredRps / goal.generators,
+        connectionsPerGenerator: goal.physicalConnections / goal.generators,
+        rpsPerProcess: goal.offeredRps / processCount,
+        connectionsPerProcess: goal.physicalConnections / processCount,
+    };
+}

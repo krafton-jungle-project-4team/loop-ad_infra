@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const candidate = requiredOption('--candidate');
+const label = requiredOption('--label');
+const outputDir = requiredOption('--output-dir');
+const expectedCount = integerOption('--expected-count', 1);
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(label)) throw new Error('invalid label');
+
+const instanceIds = awsJson([
+    'ec2', 'describe-instances', '--region', REGION, '--filters',
+    'Name=tag:Name,Values=perf-phase1-loop-ad-collector',
+    'Name=instance-state-name,Values=running',
+    '--query', 'Reservations[].Instances[].InstanceId',
+]);
+if (instanceIds.length !== expectedCount) throw new Error(`expected ${expectedCount} collector instances, found ${instanceIds.length}`);
+instanceIds.sort();
+
+mkdirSync(outputDir, { recursive: true });
+const command = [
+    'set -euo pipefail',
+    "cid=$(sudo -n docker ps --filter 'label=com.amazonaws.ecs.container-name=collector' --format '{{.ID}}')",
+    'test -n "$cid"',
+    "printf '%s\\n' LOOPAD_DOCKER_INSPECT_BEGIN",
+    `sudo -n docker inspect "$cid" | jq 'walk(if type == "array" then map(if type == "string" and test("(^|_)(SECRET|TOKEN|PASSWORD|PRIVATE_KEY)[A-Z0-9_]*=") then capture("^(?<name>[^=]+)=").name + "=[REDACTED]" else . end) else . end)'`,
+    "printf '%s\\n' LOOPAD_DOCKER_STATS_BEGIN",
+    "sudo -n docker stats --no-stream --format '{{json .}}' \"$cid\"",
+    "printf '%s\\n' LOOPAD_HOST_PROC_BEGIN",
+    "printf 'loadavg='; cat /proc/loadavg",
+    'free -b',
+    "printf 'netdev\\n'; cat /proc/net/dev",
+  ].join('; ');
+const sent = awsJson([
+    'ssm', 'send-command', '--region', REGION, '--document-name', 'AWS-RunShellScript',
+    '--instance-ids', ...instanceIds, '--timeout-seconds', '60',
+    '--parameters', JSON.stringify({ commands: [command], executionTimeout: ['30'] }),
+    '--comment', `loop-ad comparison runtime ${candidate} ${label}`,
+]);
+const results = [];
+for (const [index, instanceId] of instanceIds.entries()) {
+    const invocation = await wait(sent.Command.CommandId, instanceId);
+    const hostLabel = `collector-${(index + 1).toString().padStart(2, '0')}`;
+    const result = {
+        collectedAt: new Date().toISOString(), candidate, label, hostLabel, instanceId,
+        commandId: sent.Command.CommandId, status: invocation.Status,
+        responseCode: invocation.ResponseCode,
+    };
+    writeFileSync(`${outputDir}/${hostLabel}.json`, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    writeFileSync(`${outputDir}/${hostLabel}.stdout`, invocation.StandardOutputContent ?? '', 'utf8');
+    writeFileSync(`${outputDir}/${hostLabel}.stderr`, invocation.StandardErrorContent ?? '', 'utf8');
+    results.push(result);
+    if (invocation.Status !== 'Success' || invocation.ResponseCode !== 0) process.exitCode = 1;
+}
+const summary = { collectedAt: new Date().toISOString(), candidate, label, expectedCount, collectors: results };
+writeFileSync(`${outputDir}/index.json`, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
+if (expectedCount === 1) {
+    writeFileSync(`${outputDir}/runtime-state.json`, `${JSON.stringify(results[0], null, 2)}\n`, 'utf8');
+    writeFileSync(`${outputDir}/runtime-state.stdout`, readFileSync(`${outputDir}/collector-01.stdout`), 'utf8');
+    writeFileSync(`${outputDir}/runtime-state.stderr`, readFileSync(`${outputDir}/collector-01.stderr`), 'utf8');
+}
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+
+async function wait(commandId, target) {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        try {
+            const invocation = awsJson(['ssm', 'get-command-invocation', '--region', REGION,
+                '--command-id', commandId, '--instance-id', target]);
+            if (!['Pending', 'InProgress', 'Delayed'].includes(invocation.Status)) return invocation;
+        } catch (error) {
+            if (!`${error.stderr ?? ''}`.includes('InvocationDoesNotExist')) throw error;
+        }
+    }
+    throw new Error('runtime-state command timed out');
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function integerOption(name, fallback) {
+    const index = process.argv.indexOf(name);
+    if (index < 0) return fallback;
+    const value = Number(process.argv[index + 1]);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}

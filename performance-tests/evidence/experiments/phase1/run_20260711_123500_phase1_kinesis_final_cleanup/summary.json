@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_123500_phase1_kinesis_final_cleanup",
+  "phase": "phase1",
+  "category": "cleanup",
+  "executedAt": "2026-07-11T12:35:00",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "nextRequiredCandidate.collectorCount",
+      "value": 8,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.targetRps",
+      "value": 35000,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.durationSeconds",
+      "value": 60,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.requestsUpperBound",
+      "value": 2100000,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "hardLimitUsd",
+      "value": 50,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "lastCumulativeUpperBoundUsd",
+      "value": 49.174260766247215,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.collectorCount",
+      "value": 8,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.targetRps",
+      "value": 35000,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.durationSeconds",
+      "value": 60,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "nextRequiredCandidate.requestsUpperBound",
+      "value": 2100000,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    },
+    {
+      "name": "cleanupPassed",
+      "value": true,
+      "source": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_123500_phase1_kinesis_final_cleanup"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_123500_phase1_kinesis_final_cleanup/artifacts.md",
+      "bytes": 559,
+      "sha256": "c06029bbdd5105db8805568c4aecb29901dbae4fdc2290ced8da4460e6abed6c"
+    },
+    {
+      "path": "run_20260711_123500_phase1_kinesis_final_cleanup/report.md",
+      "bytes": 559,
+      "sha256": "f14e9b8a2dc1e551ac10f2316d3e1bcdeaf30b46e6c739a9b5059756f5032099"
+    },
+    {
+      "path": "run_20260711_123500_phase1_kinesis_final_cleanup/run.json",
+      "bytes": 950,
+      "sha256": "1fe718ff5df9668ef5d359b0554811c1eae786f9d2b253eec3b242fda2316baa"
+    }
+  ]
+}

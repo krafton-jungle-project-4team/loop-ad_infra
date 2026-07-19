@@ -1,0 +1,78 @@
+{
+  "verifiedAt": "2026-07-12T09:02:06Z",
+  "sessionId": "phase1-capacity-20260712T081500Z",
+  "baseInfraRevision": "1312f4e165dc6e66a4c6525cb410fe178a0390ff",
+  "collectorRevision": "ec6d39195ca3ef9c08a48aafa841c31a1510236d",
+  "toolchain": {
+    "node": "v26.3.1",
+    "npm": "11.16.0",
+    "cdkCli": "2.1128.1 (build d179981)",
+    "awsCdkLib": "2.260.0",
+    "docker": "29.5.2",
+    "awsCli": "2.35.9"
+  },
+  "infra": {
+    "command": "npm run verify",
+    "result": "pass",
+    "jest": {
+      "suitesPassed": 10,
+      "testsPassed": 64
+    },
+    "nodeTest": {
+      "testsPassed": 23,
+      "testsFailed": 0
+    },
+    "strictCapacitySynth": {
+      "result": "pass_without_warnings",
+      "outputDirectory": "/tmp/loopad-capacity-cdk-clean-20260712",
+      "stacks": [
+        "LoopAdPerfPhase1KinesisCapacityStreamStack",
+        "LoopAdPerfPhase1KinesisCapacityStack"
+      ]
+    }
+  },
+  "collector": {
+    "go": {
+      "commands": [
+        "go test ./...",
+        "go test -race ./...",
+        "go vet ./..."
+      ],
+      "result": "pass",
+      "linuxAmd64ImageId": "sha256:7a927e6ea34614562aa356b610dd973a7bbf458f94e9c35f91f17a4dacb496ce",
+      "runtimeChecks": [
+        "health endpoint returned success",
+        "container OOM flag remained false",
+        "SIGTERM shutdown completed"
+      ]
+    },
+    "javaKpl": {
+      "commands": [
+        "mvn verify",
+        "mvn -Dtest=KplLocalIntegrationTest test"
+      ],
+      "result": "pass",
+      "kplVersion": "1.0.7",
+      "nativeIntegrationTestsPassed": 1,
+      "linuxAmd64ImageId": "sha256:ac651587183c872f86f95e7fa6ddba91e3da7a9cb39fa9e1bb0e8622a80a2e08",
+      "runtimeChecks": [
+        "health endpoint returned success",
+        "debug variables reported zero outstanding records",
+        "native child live count was one and restart count was zero",
+        "container OOM flag remained false",
+        "SIGTERM shutdown completed"
+      ]
+    }
+  },
+  "remoteImagePolicy": {
+    "platform": "linux/amd64",
+    "tagFormat": "<session-id>-<candidate>-<full-collector-sha>",
+    "mutableLatestTagUsed": false,
+    "remoteDigestStatus": "verified",
+    "remoteDigests": {
+      "go-sync": "sha256:7a927e6ea34614562aa356b610dd973a7bbf458f94e9c35f91f17a4dacb496ce",
+      "go-batch": "sha256:7a927e6ea34614562aa356b610dd973a7bbf458f94e9c35f91f17a4dacb496ce",
+      "java-kpl": "sha256:ac651587183c872f86f95e7fa6ddba91e3da7a9cb39fa9e1bb0e8622a80a2e08"
+    }
+  }
+}

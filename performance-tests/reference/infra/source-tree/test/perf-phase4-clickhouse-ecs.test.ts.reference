@@ -1,0 +1,337 @@
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+    ROOT,
+    resourcesOf,
+    synthPerfPhase4ClickHouseEcs,
+    synthPerfPhase4ClickHouseEcsImage,
+    testPhase4EcsContext,
+} from './helpers';
+
+describe('Phase 4 Kinesis to ECS on EC2 to ClickHouse infrastructure', () => {
+    it('creates a run-owned immutable ECR repository without hidden Lambda resources', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcsImage());
+
+        template.resourceCountIs('AWS::ECR::Repository', 1);
+        template.resourceCountIs('AWS::Lambda::Function', 0);
+        template.hasResourceProperties('AWS::ECR::Repository', {
+            EmptyOnDelete: false,
+            ImageScanningConfiguration: { ScanOnPush: true },
+            ImageTagMutability: 'IMMUTABLE',
+            RepositoryName: `loop-ad/perf-phase4-clickhouse/${testPhase4EcsContext.phase4RunId}`,
+        });
+    });
+
+    it('locks candidate A to two private ARM64 EC2 tasks on two c7g.large hosts', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcs());
+
+        template.resourceCountIs('AWS::ECS::Cluster', 1);
+        template.resourceCountIs('AWS::ECS::Service', 1);
+        template.resourceCountIs('AWS::ECS::TaskDefinition', 1);
+        template.resourceCountIs('AWS::ECS::CapacityProvider', 1);
+        template.resourceCountIs('AWS::AutoScaling::AutoScalingGroup', 1);
+        template.resourceCountIs('AWS::Kinesis::Stream', 1);
+        template.resourceCountIs('AWS::EC2::Instance', 2);
+        template.resourceCountIs('AWS::Lambda::Function', 0);
+        template.resourceCountIs('AWS::Lambda::EventSourceMapping', 0);
+        template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 0);
+        template.resourceCountIs('AWS::EC2::NatGateway', 0);
+
+        template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+            MinSize: '2',
+            DesiredCapacity: '2',
+            MaxSize: '2',
+        });
+        template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                ImageId: testPhase4EcsContext.phase4EcsAmiId,
+                InstanceType: 'c7g.large',
+                MetadataOptions: Match.objectLike({ HttpTokens: 'required' }),
+            }),
+        });
+        template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+            Cpu: '1024',
+            Memory: '2048',
+            NetworkMode: 'awsvpc',
+            RequiresCompatibilities: ['EC2'],
+            RuntimePlatform: {
+                CpuArchitecture: 'ARM64',
+                OperatingSystemFamily: 'LINUX',
+            },
+            ContainerDefinitions: [Match.objectLike({
+                Cpu: 1024,
+                Memory: 2048,
+                StopTimeout: 120,
+                Image: Match.anyValue(),
+            })],
+        });
+        template.hasResourceProperties('AWS::ECS::Service', {
+            DesiredCount: 2,
+            EnableExecuteCommand: false,
+            LaunchType: Match.absent(),
+            PlacementConstraints: [{ Type: 'distinctInstance' }],
+            NetworkConfiguration: {
+                AwsvpcConfiguration: Match.objectLike({ AssignPublicIp: 'DISABLED' }),
+            },
+        });
+        const service = Object.values(resourcesOf(template)).find(
+            (resource) => resource.Type === 'AWS::ECS::Service',
+        );
+        const deploymentConfiguration = service?.Properties?.DeploymentConfiguration as
+            Record<string, unknown> | undefined;
+        expect(deploymentConfiguration?.DeploymentCircuitBreaker).toBeUndefined();
+        template.hasResourceProperties('AWS::Kinesis::Stream', {
+            ShardCount: 120,
+            RetentionPeriodHours: 24,
+            StreamModeDetails: { StreamMode: 'PROVISIONED' },
+            StreamEncryption: { EncryptionType: 'KMS', KeyId: 'alias/aws/kinesis' },
+        });
+        template.hasResourceProperties('AWS::EC2::Instance', {
+            ImageId: testPhase4EcsContext.phase4ClickHouseAmiId,
+            InstanceType: 'c7g.2xlarge',
+            NetworkInterfaces: [Match.objectLike({
+                AssociatePublicIpAddress: true,
+                DeviceIndex: '0',
+            })],
+        });
+
+        const text = JSON.stringify(template.toJSON());
+        expect(text).toContain(`@${testPhase4EcsContext.phase4ConsumerImageDigest}`);
+        expect(text).not.toContain('FARGATE');
+    });
+
+    it('precreates the exact three on-demand KCL 3.4 metadata table schemas', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcs());
+        const resources = Object.values(resourcesOf(template));
+        const tables = resources.filter((resource) => resource.Type === 'AWS::DynamoDB::Table');
+
+        expect(tables).toHaveLength(3);
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'leaseKey', KeyType: 'HASH' }],
+            GlobalSecondaryIndexes: [{
+                IndexName: 'LeaseOwnerToLeaseKeyIndex',
+                KeySchema: [
+                    { AttributeName: 'leaseOwner', KeyType: 'HASH' },
+                    { AttributeName: 'leaseKey', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'KEYS_ONLY' },
+            }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'wid', KeyType: 'HASH' }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'key', KeyType: 'HASH' }],
+        });
+        for (const table of tables) {
+            expect(table.DeletionPolicy).toBe('Delete');
+            expect(table.UpdateReplacePolicy).toBe('Delete');
+        }
+    });
+
+    it('keeps the consumer isolated and exposes 8123 only from the task security group', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcs());
+        const resources = Object.values(resourcesOf(template));
+        const endpoints = resources.filter((resource) => resource.Type === 'AWS::EC2::VPCEndpoint');
+        const endpointNames = endpoints.map((endpoint) => JSON.stringify(endpoint.Properties?.ServiceName));
+
+        expect(endpoints).toHaveLength(11);
+        for (const name of [
+            'kinesis-streams',
+            'ecr.api',
+            'ecr.dkr',
+            'logs',
+            'secretsmanager',
+            'ecs',
+            'ecs-agent',
+            'ecs-telemetry',
+            'monitoring',
+            's3',
+            'dynamodb',
+        ]) {
+            expect(endpointNames.some((value) => value.includes(name))).toBe(true);
+        }
+
+        const s3Endpoint = endpoints.find((endpoint) => (
+            JSON.stringify(endpoint.Properties?.ServiceName).includes('.s3')
+        ));
+        const s3EndpointPolicy = JSON.stringify(s3Endpoint?.Properties?.PolicyDocument);
+        expect(s3EndpointPolicy).toContain(
+            's3:::al2023-repos-ap-northeast-2-de612dc2/*',
+        );
+        const kinesisEndpoint = endpoints.find((endpoint) => (
+            JSON.stringify(endpoint.Properties?.ServiceName).includes('kinesis-streams')
+        ));
+        expect(JSON.stringify(kinesisEndpoint?.Properties?.PolicyDocument)).toContain(
+            'kinesis:PutRecords',
+        );
+        expect(JSON.stringify(template.toJSON())).toContain(
+            'Qualified producer uses private-DNS AWS interface endpoints.',
+        );
+
+        const ingress8123 = resources.filter((resource) => (
+            resource.Type === 'AWS::EC2::SecurityGroupIngress' &&
+            resource.Properties?.FromPort === 8123 &&
+            resource.Properties?.ToPort === 8123
+        ));
+        expect(ingress8123).toHaveLength(1);
+        expect(ingress8123[0]?.Properties).toHaveProperty('SourceSecurityGroupId');
+        expect(ingress8123[0]?.Properties).not.toHaveProperty('CidrIp');
+
+        const routes = resources.filter((resource) => resource.Type === 'AWS::EC2::Route');
+        expect(routes).toHaveLength(1);
+        expect(routes[0]?.Properties).toMatchObject({ DestinationCidrBlock: '0.0.0.0/0' });
+        expect(JSON.stringify(template.toJSON())).not.toContain('0.0.0.0:8123');
+    });
+
+    it('pins ClickHouse compute/storage/image and never embeds secret plaintext', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcs());
+        const resources = Object.values(resourcesOf(template));
+        const templateText = JSON.stringify(template.toJSON());
+
+        template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+            LaunchTemplateData: Match.objectLike({
+                ImageId: testPhase4EcsContext.phase4ClickHouseAmiId,
+                InstanceType: 'r7g.2xlarge',
+                BlockDeviceMappings: [{
+                    DeviceName: '/dev/xvda',
+                    Ebs: {
+                        DeleteOnTermination: true,
+                        Encrypted: true,
+                        Iops: 3000,
+                        Throughput: 500,
+                        VolumeSize: 500,
+                        VolumeType: 'gp3',
+                    },
+                }],
+            }),
+        });
+        template.hasResourceProperties('AWS::SecretsManager::Secret', {
+            GenerateSecretString: {
+                ExcludePunctuation: true,
+                GenerateStringKey: 'password',
+                PasswordLength: 40,
+                SecretStringTemplate: '{"username":"loopad_ingest"}',
+            },
+        });
+        const secret = resources.find((resource) => resource.Type === 'AWS::SecretsManager::Secret');
+        expect(secret?.Properties).not.toHaveProperty('SecretString');
+        expect(templateText).toContain(
+            'clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797',
+        );
+        const taskDefinition = resources.find(
+            (resource) => resource.Type === 'AWS::ECS::TaskDefinition',
+        );
+        const containers = taskDefinition?.Properties?.ContainerDefinitions as Array<{
+            Environment?: Array<{ Name: string }>;
+        }>;
+        expect(containers[0]?.Environment?.map(({ Name }) => Name)).not.toContain(
+            'CLICKHOUSE_PASSWORD',
+        );
+    });
+
+    it('limits runtime IAM to polling, exact metadata, one secret, failure writes, and metrics', () => {
+        const template = Template.fromStack(synthPerfPhase4ClickHouseEcs());
+        const resources = Object.values(resourcesOf(template));
+        const policies = resources.filter((resource) => resource.Type === 'AWS::IAM::Policy');
+        const consumerPolicy = policies.find((resource) => (
+            JSON.stringify(resource.Properties?.Roles).includes('ConsumerTaskRole')
+        ));
+        const producerPolicy = policies.find((resource) => (
+            JSON.stringify(resource.Properties?.Roles).includes('ProducerInstanceRole')
+        ));
+        const policyText = JSON.stringify(consumerPolicy);
+
+        for (const action of [
+            'kinesis:GetRecords',
+            'kinesis:GetShardIterator',
+            'kinesis:ListShards',
+            'dynamodb:DescribeTable',
+            'dynamodb:Query',
+            'dynamodb:UpdateItem',
+            'secretsmanager:GetSecretValue',
+            's3:PutObject',
+            'cloudwatch:PutMetricData',
+        ]) {
+            expect(policyText).toContain(action);
+        }
+        for (const forbidden of [
+            'kinesis:PutRecord',
+            'kinesis:SubscribeToShard',
+            'kinesis:RegisterStreamConsumer',
+            'dynamodb:CreateTable',
+            'dynamodb:UpdateTable',
+            'secretsmanager:ListSecrets',
+            's3:DeleteObject',
+        ]) {
+            expect(policyText).not.toContain(forbidden);
+        }
+        expect(policyText).toContain('LeaseOwnerToLeaseKeyIndex');
+        expect(policyText).toContain('s3:x-amz-server-side-encryption');
+        expect(policyText).toContain('cloudwatch:namespace');
+        const producerPolicyText = JSON.stringify(producerPolicy);
+        expect(producerPolicyText).toContain('"kinesis:PutRecords"');
+        expect(producerPolicyText).not.toContain('"kinesis:PutRecord"');
+        expect(producerPolicyText).toContain(`/producer/${testPhase4EcsContext.phase4RunId}/*`);
+        expect(producerPolicyText).toContain(
+            `/producer-evidence/${testPhase4EcsContext.phase4RunId}/*`,
+        );
+    });
+
+    it('pins KCL polling/LATEST/graceful settings and reproducible image inputs', () => {
+        const entrypoint = readFileSync(
+            join(ROOT, 'performance-tests/phase4-clickhouse/consumer/entrypoint.sh'),
+            'utf8',
+        );
+        const dockerfile = readFileSync(
+            join(ROOT, 'performance-tests/phase4-clickhouse/consumer/Dockerfile'),
+            'utf8',
+        );
+        const pom = readFileSync(
+            join(ROOT, 'performance-tests/phase4-clickhouse/consumer/pom.xml'),
+            'utf8',
+        );
+        const runtimeConfig = readFileSync(
+            join(ROOT, 'performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/RuntimeConfig.java'),
+            'utf8',
+        );
+        const schedulerFactory = readFileSync(
+            join(ROOT, 'performance-tests/phase4-clickhouse/consumer/src/main/java/com/loopad/performance/phase4/KclSchedulerFactory.java'),
+            'utf8',
+        );
+
+        expect(entrypoint).toContain('sha256sum --check --strict');
+        expect(entrypoint).toContain('-XX:MaxRAMPercentage=65.0');
+        expect(entrypoint).toContain('-XX:MaxDirectMemorySize=256m');
+        expect(runtimeConfig).toContain('MAX_RECORDS = 1_000');
+        expect(runtimeConfig).toContain('MAX_PENDING_PROCESS_RECORDS_INPUT = 0');
+        expect(runtimeConfig).toContain('MAX_LEASES_PER_WORKER = 60');
+        expect(runtimeConfig).toContain('MAX_CONCURRENT_BATCHES = 10');
+        expect(schedulerFactory).toContain('InitialPositionInStream.LATEST');
+        expect(schedulerFactory).toContain('.maxPendingProcessRecordsInput(');
+        expect(schedulerFactory).toContain('gracefulLeaseHandoffTimeoutMillis(');
+        expect(dockerfile).not.toContain('node:');
+        expect(dockerfile).not.toContain('socat');
+        expect(dockerfile).toContain('eclipse-temurin:21.0.8_9-jre-jammy@sha256:');
+        expect(dockerfile).toContain('maven:3.9.11-eclipse-temurin-21@sha256:');
+        expect(pom).toContain('<amazon-kinesis-client.version>3.4.3</amazon-kinesis-client.version>');
+        expect(pom).not.toContain('<artifactId>amazon-kinesis-client-multilang</artifactId>');
+    });
+
+    it('rejects missing or malformed immutable run, digest, and AMI context', () => {
+        expect(() => synthPerfPhase4ClickHouseEcs({ phase4RunId: 'run_bad' }))
+            .toThrow('phase4RunId must match');
+        expect(() => synthPerfPhase4ClickHouseEcs({ phase4SessionId: 'session_bad' }))
+            .toThrow('phase4SessionId must match');
+        expect(() => synthPerfPhase4ClickHouseEcs({ phase4ConsumerImageDigest: 'latest' }))
+            .toThrow('phase4ConsumerImageDigest must be a sha256 digest');
+        expect(() => synthPerfPhase4ClickHouseEcs({ phase4EcsAmiId: 'latest' }))
+            .toThrow('phase4EcsAmiId must be an exact AMI ID');
+        expect(() => synthPerfPhase4ClickHouseEcs({ phase4ClickHouseAmiId: 'ami-bad' }))
+            .toThrow('phase4ClickHouseAmiId must be an exact AMI ID');
+    });
+});

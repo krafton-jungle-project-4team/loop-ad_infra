@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const DEADLINE = Date.parse('2026-07-13T01:00:00Z');
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const candidate = requiredOption('--candidate');
+const priorCleanup = JSON.parse(readFileSync(requiredOption('--prior-cleanup'), 'utf8'));
+const cost = JSON.parse(readFileSync(requiredOption('--cost'), 'utf8'));
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-alb-warmup-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId)) throw new Error('invalid session or run ID');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+const identity = aws(['sts', 'get-caller-identity']);
+const quota = aws(['service-quotas', 'get-service-quota', '--region', REGION, '--service-code', 'ec2', '--quota-code', 'L-1216C47A']).Quota;
+const activePerfInstances = aws(['ec2', 'describe-instances', '--region', REGION, '--filters', 'Name=tag:Environment,Values=perf-phase1-kinesis', 'Name=instance-state-name,Values=pending,running,stopping,stopped']).Reservations.flatMap((reservation) => reservation.Instances);
+const activeStacks = (aws(['cloudformation', 'list-stacks', '--region', REGION, '--stack-status-filter', 'CREATE_IN_PROGRESS', 'CREATE_COMPLETE', 'UPDATE_IN_PROGRESS', 'UPDATE_COMPLETE', 'DELETE_FAILED', 'ROLLBACK_COMPLETE']).StackSummaries ?? []).filter((stack) => stack.StackName.includes('LoopAdPerfPhase1Kinesis'));
+const checks = {
+    priorCleanupPassed: priorCleanup.passed === true,
+    exactAccount: identity.Account === process.env.CDK_DEFAULT_ACCOUNT,
+    exactRegion: process.env.LOOP_AD_REGION === REGION,
+    quotaEnough: quota.Value >= 20,
+    noActivePerfInstances: activePerfInstances.length === 0,
+    noActivePhase1Stacks: activeStacks.length === 0,
+    costMayStart: cost.budget?.mayStart === true && cost.projectedCumulativeUpperBoundUsd < 30 && cost.inputs?.previousUpperBoundUsd < 28,
+    beforeDeadline: Date.now() < DEADLINE,
+    enoughTimeForRunAndCleanup: DEADLINE - Date.now() >= 45 * 60_000,
+};
+const result = { checkedAt: new Date().toISOString(), sessionId, runId, candidate, identity, region: REGION, quota: { name: quota.QuotaName, value: quota.Value },
+    activePerfInstances: activePerfInstances.map((instance) => instance.InstanceId), activeStacks: activeStacks.map((stack) => ({ name: stack.StackName, status: stack.StackStatus })), cost, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8'); process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); if (!result.passed) process.exitCode = 2;
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

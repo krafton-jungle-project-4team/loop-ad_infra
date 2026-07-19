@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_050834_phase6_archive_local_bootstrap_fix",
+  "phase": "phase6",
+  "category": "diagnostic",
+  "executedAt": "2026-07-17T05:08:34",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "local-only",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "passed",
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/run.json"
+    },
+    {
+      "name": "previousAwsRun.verdict",
+      "value": "failed",
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/run.json"
+    },
+    {
+      "name": "scale15M.attemptCount",
+      "value": 1,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.uniqueEvents",
+      "value": 15000000,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.workerDurationSeconds",
+      "value": 732.355012,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.cpuP95PercentOfDockerCapacity",
+      "value": 28.774,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.memoryP95PercentOfDockerLimit",
+      "value": 54.702834,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryBytes",
+      "value": 5322301243,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryPercentOfDockerLimit",
+      "value": 63.956806,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.oomCount",
+      "value": 0,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.restartCount",
+      "value": 0,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "cost.deterministicMaximumUsd",
+      "value": "6.089506",
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "cost.hardCapUsd",
+      "value": "15",
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    },
+    {
+      "name": "cost.passed",
+      "value": true,
+      "source": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "passed",
+  "conclusion": "passed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase6-archive-local-fixes"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_050834_phase6_archive_local_bootstrap_fix"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/cleanup-verification.json",
+      "bytes": 714,
+      "sha256": "4a4d7e36a8cad791101dbdab980f1fa040d4029c3445af9763d3acb57960e963"
+    },
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/commands.md",
+      "bytes": 644,
+      "sha256": "e1fd02ee54fc6b8f7d0390850498ffd91a3fa4bf14404b2c38c56f57bfea8e3b"
+    },
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/correctness-summary.json",
+      "bytes": 1369,
+      "sha256": "cf359474ddf5ae1fb9043534bd7883c4981a794368c88ccf7b57b182b535e217"
+    },
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/metrics-summary.json",
+      "bytes": 1130,
+      "sha256": "54e5944a3ec7fc300024bc7ced65a1d8d00d019986396a62c8a9f92016d5da5d"
+    },
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/report.md",
+      "bytes": 965,
+      "sha256": "3efc261b99b429db2c427c9413f70a1ef10edb36532e7eba3aaf470d8a07a91d"
+    },
+    {
+      "path": "run_20260717_050834_phase6_archive_local_bootstrap_fix/run.json",
+      "bytes": 761,
+      "sha256": "5483ee6d4de238b0c5607eccf46a8ef710c8b28971f8df9795633aba629e5cb5"
+    }
+  ]
+}

@@ -1,0 +1,521 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_144444_phase1_kinesis_conn256",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-11T14:44:44",
+  "purpose": "not_recorded",
+  "hypothesis": "Capping each process at 256 Kinesis HTTP connections, for 1024 aggregate across four collectors, will bound synchronous AWS work and eliminate the 1024-per-process backlog while retaining 1024 admission and oha connections.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "kinesisShardCount",
+      "value": 80,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 4,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "kinesisShardCount",
+      "value": 80,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "maxInFlightRequests",
+      "value": 1024,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/run.json"
+    },
+    {
+      "name": "generatedAt",
+      "value": "2026-07-11T06:01:59.812Z",
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.targetRps",
+      "value": 10000,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.completedRequests",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.attemptedRequests",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.actualRps",
+      "value": 9996.570860449492,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p50",
+      "value": 11.468655,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p95",
+      "value": 16.189486,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.load.latencyMs.p99",
+      "value": 161.69246800000002,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.kinesisIncomingRecords",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.albRequests",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 26.622380638122557,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 8.2421875,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_operations_total",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_attempts_total",
+      "value": 599994,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_successes_total",
+      "value": 599993,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.collectorDeltas.put_record_retries_total",
+      "value": 1,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.actualRpsAtLeast99Percent",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.p95AtMost100ms",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.p99AtMost200ms",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.10k.passed",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.targetRps",
+      "value": 20000,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.completedRequests",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.attemptedRequests",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.actualRps",
+      "value": 19989.894122816888,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p50",
+      "value": 13.05458,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p95",
+      "value": 41.506797999999996,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.load.latencyMs.p99",
+      "value": 135.989936,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.kinesisIncomingRecords",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.albRequests",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 53.1561279296875,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 9.755859375,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_operations_total",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_attempts_total",
+      "value": 1199997,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_successes_total",
+      "value": 1199987,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.collectorDeltas.put_record_retries_total",
+      "value": 10,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.actualRpsAtLeast99Percent",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.p95AtMost100ms",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.p99AtMost200ms",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.20k.passed",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.targetRps",
+      "value": 30000,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.completedRequests",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.transportErrors",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.attemptedRequests",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.actualRps",
+      "value": 24235.81097755831,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p50",
+      "value": 5523.426557,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p95",
+      "value": 10906.858839,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.load.latencyMs.p99",
+      "value": 11397.241573000001,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.kinesisIncomingRecords",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.albRequests",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsCpuMaximumPercent",
+      "value": 69.0455732345581,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.cloudWatch.ecsMemoryMaximumPercent",
+      "value": 11.455078125,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_operations_total",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_attempts_total",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_successes_total",
+      "value": 1455050,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_throttles_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_failures_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.collectorDeltas.put_record_retries_total",
+      "value": 0,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.expectedCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.profiles.presentCount",
+      "value": 28,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.actualRpsAtLeast99Percent",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.transportErrorsZero",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p95AtMost100ms",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.p99AtMost200ms",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.checks.albRequestsEquals202",
+      "value": true,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "stages.30k.passed",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    },
+    {
+      "name": "passed",
+      "value": false,
+      "source": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_144444_phase1_kinesis_conn256"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/cleanup-verification.json",
+      "bytes": 1014,
+      "sha256": "fa1d0dfe1b7ddfec0f47b278e8c45ad98a93bfcdb5ba68170f02c030d2e98ace"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/commands.md",
+      "bytes": 216,
+      "sha256": "18706ce603a9cd1837929aa32ed7ff85a564f5d6e6e460b3601f122c1725ba0a"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/cost-realtime.json",
+      "bytes": 1514,
+      "sha256": "47c46941c4ec40637d8a1b5232e94b780d5726a60bcc7274315f7723e9905c34"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/cost-upper-bound.json",
+      "bytes": 1513,
+      "sha256": "c13ec8a75110df5c54955a0fc27ad4da821a0c34c809ff98d3cf304f65a57e6a"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/cost.md",
+      "bytes": 169,
+      "sha256": "a73632cffcd971f8e149de2b8dbd254408781e1e1f27b945af0e16d1123a279e"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/hypothesis.md",
+      "bytes": 376,
+      "sha256": "76f2770f4dacfbe548b397bf14b413eef02d6fd20ea7375fc3488cadb7168bee"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/metrics-summary.json",
+      "bytes": 8045,
+      "sha256": "14527dadf3c38acc358789c98c6c5c68ef3271a5300fdaaa46e55e85a9414847"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/report.md",
+      "bytes": 793,
+      "sha256": "3e5f26d7595bcb83a91e3edcfb805e72ccee90de57aef8a21d1c407f92c7f103"
+    },
+    {
+      "path": "run_20260711_144444_phase1_kinesis_conn256/run.json",
+      "bytes": 780,
+      "sha256": "01d5d6846f5417d335328cdd0c2f3d59258c3738565cec2b8c0ce8a1377e1159"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+    CONNECTION_PATH_HAPROXY_PROFILES,
+    DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE,
+    evaluateHAProxyRuntimeProfiles,
+    parseHAProxyRuntimeOutput,
+    PINNED_HAPROXY_IMAGE,
+} from './connection-path-haproxy-profile.mjs';
+
+test('sampled-202 keeps c6in.xlarge and uses automatic four-vCPU thread selection', () => {
+    assert.equal(DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE, 'sampled-202');
+    assert.deepEqual(CONNECTION_PATH_HAPROXY_PROFILES['sampled-202'], {
+        instanceType: 'c6in.xlarge', vcpus: 4, loggingPolicy: 'normal-202-deterministic-0.1-percent', threadMode: 'automatic',
+    });
+    assert.equal(CONNECTION_PATH_HAPROXY_PROFILES['sampled-202-capacity'].instanceType, 'c6in.2xlarge');
+    assert.match(PINNED_HAPROXY_IMAGE, /^haproxy:3\.2\.4-alpine@sha256:[0-9a-f]{64}$/);
+});
+
+test('runtime verification requires each HAProxy worker thread count to equal the instance vCPUs', () => {
+    const outputs = {
+        Phase1ConnectionPathProxyProfile: 'sampled-202',
+        Phase1ConnectionPathProxyInstanceType: 'c6in.xlarge',
+        Phase1ConnectionPathProxyVcpusPerInstance: '4',
+        Phase1ConnectionPathProxyThreadMode: 'automatic',
+        Phase1ConnectionPathProxyLoggingPolicy: 'normal-202-deterministic-0.1-percent',
+        Phase1ConnectionPathProxyConfigSha256: 'a'.repeat(64),
+    };
+    const invocation = (instanceId, runtimeThreadCount = 4) => ({
+        instanceId, status: 'Success', responseCode: 0, validOutput: true, runtimeThreadCount, availableCpuCount: 4,
+        configSha256: 'a'.repeat(64), configValid: true,
+    });
+    const passed = evaluateHAProxyRuntimeProfiles({ expectedProfileName: 'sampled-202', outputs,
+        expectedInstanceIds: ['i-a', 'i-b'], invocations: [invocation('i-a'), invocation('i-b')] });
+    assert.equal(passed.passed, true);
+    const wrongThreadCount = evaluateHAProxyRuntimeProfiles({ expectedProfileName: 'sampled-202', outputs,
+        expectedInstanceIds: ['i-a', 'i-b'], invocations: [invocation('i-a', 8), invocation('i-b')] });
+    assert.equal(wrongThreadCount.passed, false);
+    assert.equal(wrongThreadCount.checks.runtimeThreadsMatchVcpus, false);
+});
+
+test('runtime output parser fails closed on missing or malformed evidence', () => {
+    assert.equal(parseHAProxyRuntimeOutput('{"runtimeThreadCount":4,"availableCpuCount":4,"configSha256":"' + 'b'.repeat(64) + '","configValid":true}', 'i-a').validOutput, true);
+    assert.equal(parseHAProxyRuntimeOutput('not-json', 'i-a').validOutput, false);
+    assert.equal(parseHAProxyRuntimeOutput('', 'i-a').validOutput, false);
+});

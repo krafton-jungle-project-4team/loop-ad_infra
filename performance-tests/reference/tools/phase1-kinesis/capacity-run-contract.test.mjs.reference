@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { capacityRunPlan } from './capacity-run-contract.mjs';
+
+test('freezes the ordered 10k/30k/50k matrix with exactly three measurements', () => {
+    const plan = capacityRunPlan('go-batch');
+    assert.equal(plan.collectorHosts, 4);
+    assert.deepEqual(plan.stages.map((stage) => stage.targetRps), [10_000, 30_000, 50_000]);
+    for (const stage of plan.stages) {
+        assert.equal(stage.probe.durationSeconds, 15);
+        assert.equal(stage.warmup.durationSeconds, 30);
+        assert.deepEqual(stage.measurements.map((item) => item.durationSeconds), [60, 60, 60]);
+        assert.equal(stage.cooldownSeconds, 15);
+    }
+    assert.equal(plan.optional50k300Seconds.status, 'not-run-optional');
+});

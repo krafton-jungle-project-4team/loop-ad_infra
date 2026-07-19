@@ -1,0 +1,107 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import test from 'node:test';
+import { analyzeReadinessInvocations, buildReadinessCommand, buildReadinessEndpoints, parseReadinessOutput } from './connection-path-readiness.mjs';
+
+const collectors = [
+    { instanceId: 'i-00000000000000001', privateIp: '10.0.0.10' },
+    { instanceId: 'i-00000000000000002', privateIp: '10.0.0.11' },
+    { instanceId: 'i-00000000000000003', privateIp: '10.0.1.10' },
+    { instanceId: 'i-00000000000000004', privateIp: '10.0.1.11' },
+];
+const sixCollectors = [
+    ...collectors,
+    { instanceId: 'i-00000000000000005', privateIp: '10.0.0.12' },
+    { instanceId: 'i-00000000000000006', privateIp: '10.0.1.12' },
+];
+const generators = ['i-10000000000000001', 'i-10000000000000002', 'i-10000000000000003', 'i-10000000000000004'];
+const eightGenerators = [...generators, 'i-10000000000000005', 'i-10000000000000006', 'i-10000000000000007', 'i-10000000000000008'];
+const endpoints = buildReadinessEndpoints({
+    albDnsName: 'internal-perf-p1-conn-alb-123.ap-northeast-2.elb.amazonaws.com',
+    directNlbDnsName: 'perf-p1-conn-direct-abc.elb.ap-northeast-2.amazonaws.com',
+    proxyNlbDnsName: 'perf-p1-conn-proxy-def.elb.ap-northeast-2.amazonaws.com',
+    collectorInstances: collectors,
+});
+
+test('freezes three load balancers and the supported direct collector TLS readiness endpoints', () => {
+    assert.equal(endpoints.length, 7);
+    assert.deepEqual(endpoints.map((item) => item.label), ['alb', 'direct-nlb', 'proxy-nlb', 'collector-01', 'collector-02', 'collector-03', 'collector-04']);
+    assert.equal(new Set(endpoints.map((item) => item.destination)).size, 7);
+    assert.throws(() => buildReadinessEndpoints({
+        albDnsName: 'example.com', directNlbDnsName: 'example.com', proxyNlbDnsName: 'example.com', collectorInstances: collectors,
+    }), /exact run-scoped/);
+    const sixCollectorEndpoints = buildReadinessEndpoints({
+        albDnsName: 'internal-perf-p1-conn-alb-123.ap-northeast-2.elb.amazonaws.com',
+        directNlbDnsName: 'perf-p1-conn-direct-abc.elb.ap-northeast-2.amazonaws.com',
+        proxyNlbDnsName: 'perf-p1-conn-proxy-def.elb.ap-northeast-2.amazonaws.com',
+        collectorInstances: sixCollectors,
+    });
+    assert.equal(sixCollectorEndpoints.length, 9);
+    assert.deepEqual(sixCollectorEndpoints.slice(-2).map((item) => item.label), ['collector-05', 'collector-06']);
+    assert.throws(() => buildReadinessEndpoints({
+        albDnsName: 'internal-perf-p1-conn-alb-123.ap-northeast-2.elb.amazonaws.com',
+        directNlbDnsName: 'perf-p1-conn-direct-abc.elb.ap-northeast-2.amazonaws.com',
+        proxyNlbDnsName: 'perf-p1-conn-proxy-def.elb.ap-northeast-2.amazonaws.com',
+        collectorInstances: sixCollectors.slice(0, 5),
+    }), /four or six/);
+});
+
+test('builds a bounded public-CA-only SSM probe command', () => {
+    const certificate = '-----BEGIN CERTIFICATE-----\nunit-test-public-certificate\n-----END CERTIFICATE-----\n';
+    const certificateBuffer = Buffer.from(certificate);
+    const command = buildReadinessCommand({
+        runId: 'run_20260715_011247_connection_path_60usd',
+        tlsServerName: 'loopad-protocol.internal',
+        caCertificateBase64: certificateBuffer.toString('base64'),
+        caCertificateSha256: createHash('sha256').update(certificateBuffer).digest('hex'), endpoints,
+    });
+    assert.match(command, /timeout --signal=TERM --kill-after=1s 5s openssl s_client/);
+    assert.match(command, /-servername 'loopad-protocol\.internal' -alpn h2/);
+    assert.match(command, /PROBE\\t%s\\t%s\\t%s\\t%s\\t%s/);
+    for (const endpoint of endpoints) assert.match(command, new RegExp(`probe '${endpoint.label}'`));
+    assert.doesNotMatch(command, /PRIVATE KEY/);
+    const syntax = spawnSync('bash', ['-n'], { input: command, encoding: 'utf8' });
+    assert.equal(syntax.status, 0, syntax.stderr);
+    const privateKey = Buffer.from(['-----BEGIN ', 'PRIVATE KEY-----\nnot-allowed\n-----END PRIVATE KEY-----\n'].join(''));
+    assert.throws(() => buildReadinessCommand({
+        runId: 'run_20260715_011247_connection_path_60usd', tlsServerName: 'loopad-protocol.internal',
+        caCertificateBase64: privateKey.toString('base64'), caCertificateSha256: createHash('sha256').update(privateKey).digest('hex'), endpoints,
+    }), /public CA/);
+});
+
+test('accepts only exact complete TLS evidence from every generator', () => {
+    const standardOutput = endpoints.map((endpoint, index) =>
+        `PROBE\t${endpoint.label}\t${endpoint.destination}\t${index % 2 === 0 ? 0 : 124}\th2\t0`).join('\n');
+    assert.equal(parseReadinessOutput(standardOutput).length, 7);
+    const pass = analyzeReadinessInvocations({
+        expectedGeneratorIds: generators, endpoints,
+        invocations: generators.map((instanceId) => ({ instanceId, status: 'Success', responseCode: 0, standardOutput })),
+    });
+    assert.equal(pass.passed, true);
+    const doubled = analyzeReadinessInvocations({
+        expectedGeneratorIds: eightGenerators, endpoints,
+        invocations: eightGenerators.map((instanceId) => ({ instanceId, status: 'Success', responseCode: 0, standardOutput })),
+    });
+    assert.equal(doubled.passed, true);
+
+    const failedOutput = standardOutput.replace(/\th2\t0$/, '\th2\t1');
+    const fail = analyzeReadinessInvocations({
+        expectedGeneratorIds: generators, endpoints,
+        invocations: generators.map((instanceId, index) => ({ instanceId, status: index === 0 ? 'Failed' : 'Success', responseCode: index === 0 ? 1 : 0, standardOutput: failedOutput })),
+    });
+    assert.equal(fail.passed, false);
+    assert.equal(fail.checks.allSsmCommandsSucceeded, false);
+    assert.equal(fail.checks.allTlsChecksPassed, false);
+});
+
+test('fails closed on missing, duplicate, or malformed readiness records', () => {
+    assert.throws(() => parseReadinessOutput('PROBE\talb\tbad.example:443\t0\th2\t0'), /malformed/);
+    const output = endpoints.map((endpoint) => `PROBE\t${endpoint.label}\t${endpoint.destination}\t0\th2\t0`).join('\n');
+    const missing = analyzeReadinessInvocations({
+        expectedGeneratorIds: generators, endpoints,
+        invocations: generators.slice(0, 3).map((instanceId) => ({ instanceId, status: 'Success', responseCode: 0, standardOutput: output })),
+    });
+    assert.equal(missing.passed, false);
+    assert.equal(missing.checks.supportedGeneratorCount, false);
+});

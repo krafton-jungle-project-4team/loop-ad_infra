@@ -1,0 +1,83 @@
+{
+  "cfnLint": {
+    "acceptedAssemblyOnlyFindings": {
+      "E1022": 8,
+      "W3005": 3
+    },
+    "effectiveExitCode": 0,
+    "unexpectedFindings": 0,
+    "version": "1.53.0"
+  },
+  "exactContextSynth": {
+    "associationCount": 4,
+    "launchTemplateCount": 5,
+    "resourceCount": 138,
+    "serviceCount": 4,
+    "sha256": "071e118a8072394d9f448bf3fea2482f525eadecae682ab93b1bb95e7dcf8576"
+  },
+  "fixCommit": "8ec753ce1680ec6aa680ea75995eb0a86e136a02",
+  "generatedAt": "2026-07-18T04:05:43Z",
+  "repositoryTemplateValidator": {
+    "passed": true,
+    "schemaGuardRetries": 10,
+    "taskDefinitionsChecked": 5
+  },
+  "serviceDependencies": {
+    "ClickHouseService22DFEBD8": [
+      "ClickHouseClusterCapacityProviderAssociationE1A618B7",
+      "ClickHouseHostsASG16B5CF47"
+    ],
+    "CollectorService16EB6072": [
+      "CollectorClusterCapacityProviderAssociation4DFB7035",
+      "CollectorHostsASGC619C4B1"
+    ],
+    "ConsumerServiceA0C08F44": [
+      "ConsumerClusterCapacityProviderAssociation0BC1345D",
+      "ConsumerHostsASG3BB43C3D"
+    ],
+    "HaproxyServiceE1B870CD": [
+      "HaproxyClusterCapacityProviderAssociationA9CB29CD",
+      "HaproxyHostsASG4770AEE3"
+    ],
+    "passed": true
+  },
+  "tests": {
+    "build": "passed",
+    "nodeTests": 27,
+    "phase7JestTests": 13,
+    "pythonTests": 123,
+    "status": "passed"
+  },
+  "userData": {
+    "ec2DecodedLimitBytes": 16384,
+    "launchTemplates": [
+      {
+        "decodedUpperBoundBytes": 1076,
+        "instanceType": "c6i.xlarge",
+        "logicalId": "CollectorHostsLaunchTemplate1D2E4C33"
+      },
+      {
+        "decodedUpperBoundBytes": 2452,
+        "instanceType": "c6in.xlarge",
+        "logicalId": "HaproxyHostsLaunchTemplate084D73FB"
+      },
+      {
+        "decodedUpperBoundBytes": 15216,
+        "instanceType": "c6in.large",
+        "logicalId": "LoadGeneratorHostsLaunchTemplateD1280896"
+      },
+      {
+        "decodedUpperBoundBytes": 1771,
+        "instanceType": "r7g.2xlarge",
+        "logicalId": "ClickHouseHostsLaunchTemplate3443F4FC"
+      },
+      {
+        "decodedUpperBoundBytes": 1076,
+        "instanceType": "c7g.large",
+        "logicalId": "ConsumerHostsLaunchTemplateEBE3623F"
+      }
+    ],
+    "loadGeneratorMarginLimitBytes": 15360,
+    "passed": true
+  }
+}

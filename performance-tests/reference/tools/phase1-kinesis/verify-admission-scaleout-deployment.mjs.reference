@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+loadDotenv({ path: '.env', quiet: true });
+
+const REGION = 'ap-northeast-2';
+const profile = required('--profile');
+const sessionId = required('--session-id');
+const runId = required('--run-id');
+const digest = required('--image-digest');
+const output = required('--output');
+if (!['A', 'B'].includes(profile)) throw new Error('profile must be A or B');
+if (!/^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId) || !/^sha256:[0-9a-f]{64}$/.test(digest)) throw new Error('invalid run ID or digest');
+const expected = profile === 'A' ? { count: 4, type: 'c6i.xlarge' } : { count: 8, type: 'c6i.large' };
+const stack = aws(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', 'LoopAdPerfPhase1KinesisAdmissionScaleoutStack']).Stacks[0];
+const outputs = Object.fromEntries(stack.Outputs.map((entry) => [entry.OutputKey, entry.OutputValue]));
+const asg = aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION,
+    '--auto-scaling-group-names', 'perf-phase1-loop-ad-collector']).AutoScalingGroups[0];
+const instanceIds = asg.Instances.map((instance) => instance.InstanceId);
+const instances = aws(['ec2', 'describe-instances', '--region', REGION, '--instance-ids', ...instanceIds,
+    '--query', 'Reservations[].Instances[].{id:InstanceId,type:InstanceType,state:State.Name,az:Placement.AvailabilityZone}']);
+const sessionInstances = aws(['ec2', 'describe-instances', '--region', REGION, '--filters', `Name=tag:SessionId,Values=${sessionId}`,
+    'Name=instance-state-name,Values=pending,running', '--query', 'Reservations[].Instances[].{id:InstanceId,type:InstanceType}']);
+const service = aws(['ecs', 'describe-services', '--region', REGION, '--cluster', outputs.Phase1CollectorClusterName,
+    '--services', outputs.Phase1CollectorServiceName]).services[0];
+const taskDefinition = aws(['ecs', 'describe-task-definition', '--region', REGION, '--task-definition', service.taskDefinition]).taskDefinition;
+const environment = Object.fromEntries(taskDefinition.containerDefinitions.find((container) => container.name === 'collector').environment.map((entry) => [entry.name, entry.value]));
+const targetHealth = aws(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', outputs.Phase1TargetGroupArn]).TargetHealthDescriptions;
+const alb = aws(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-loop-ad-alb']).LoadBalancers[0];
+const listener = aws(['elbv2', 'describe-listeners', '--region', REGION, '--load-balancer-arn', alb.LoadBalancerArn]).Listeners.find((item) => item.Port === 80);
+const fixedRule = aws(['elbv2', 'describe-rules', '--region', REGION, '--listener-arn', listener.ListenerArn]).Rules.find((rule) => rule.Priority === '5');
+const attributes = Object.fromEntries(aws(['elbv2', 'describe-load-balancer-attributes', '--region', REGION,
+    '--load-balancer-arn', alb.LoadBalancerArn]).Attributes.map((entry) => [entry.Key, entry.Value]));
+const flowLog = aws(['ec2', 'describe-flow-logs', '--region', REGION, '--flow-log-ids', outputs.Phase1VpcFlowLogId]).FlowLogs[0];
+const placementPath = `${output}.generator-placement.json`;
+execFileSync(process.execPath, [new URL('./collect-generator-placement.mjs', import.meta.url).pathname,
+    '--asg-names', outputs.Phase1LoadGeneratorAutoScalingGroupName, '--output', placementPath], { stdio: 'inherit' });
+const placement = JSON.parse(readFileSync(placementPath, 'utf8'));
+const taskStatePath = `${output}.task-state.json`;
+execFileSync(process.execPath, [new URL('./collect-capacity-task-state.mjs', import.meta.url).pathname,
+    '--image-digest', digest, '--expected-collector-count', String(expected.count), '--expected-instance-type', expected.type,
+    '--output', taskStatePath], { stdio: 'inherit' });
+const taskState = JSON.parse(readFileSync(taskStatePath, 'utf8'));
+const checks = {
+    stackComplete: ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.StackStatus),
+    exactOutputs: outputs.Phase1ExperimentMode === 'admission-scaleout-capacity' && outputs.Phase1CapacityProfile === profile &&
+        outputs.Phase1RunId === runId && outputs.Phase1ComparisonSessionId === sessionId && outputs.Phase1Candidate === 'go-batch' &&
+        outputs.Phase1CollectorCount === String(expected.count) && outputs.Phase1CollectorInstanceType === expected.type &&
+        outputs.Phase1ApplicationMaxInFlight === '2048' && outputs.Phase1KinesisMaxConnections === '1024' &&
+        outputs.Phase1CollectorTotalVcpus === '16' && outputs.Phase1CollectorTotalMemoryGiB === '32',
+    exactCollectorAsg: asg.MinSize === expected.count && asg.MaxSize === expected.count && asg.DesiredCapacity === expected.count &&
+        instances.length === expected.count && instances.every((instance) => instance.type === expected.type && instance.state === 'running'),
+    noMixedCollectors: profile !== 'B' || sessionInstances.filter((instance) => instance.type === 'c6i.xlarge').length === 0,
+    exactService: service.desiredCount === expected.count && service.runningCount === expected.count && service.pendingCount === 0,
+    oneTaskPerHost: taskState.topology?.passed === true && taskState.topology?.placements?.length === expected.count,
+    exactTaskEnvironment: environment.LOOPAD_MAX_INFLIGHT_REQUESTS === '2048' && environment.LOOPAD_KINESIS_MAX_CONNECTIONS === '1024' &&
+        environment.LOOPAD_KINESIS_PRODUCER === 'go-batch',
+    allTargetsHealthy: targetHealth.length === expected.count && targetHealth.every((target) => target.TargetHealth.State === 'healthy'),
+    imageDigest: taskState.imageDigest === digest && taskState.topology?.placements?.every((placement) => placement.imageDigest === digest),
+    generatorPlacement: placement.passed === true,
+    fixedControlRoute: fixedRule?.Actions?.[0]?.FixedResponseConfig?.StatusCode === '202',
+    pathEvidence: flowLog?.FlowLogStatus === 'ACTIVE' && attributes['access_logs.s3.enabled'] === 'true' &&
+        attributes['access_logs.s3.prefix'] === `${sessionId}/${runId}`,
+};
+const result = { verifiedAt: new Date().toISOString(), region: REGION, sessionId, runId, profile, expected,
+    stackStatus: stack.StackStatus, outputs, collector: { asg, instances, sessionInstances, service, taskDefinitionArn: taskDefinition.taskDefinitionArn, environment },
+    targetHealth, generatorPlacement: placement, fixedRule, flowLog, albAttributes: attributes, taskStatePath, checks,
+    passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+function aws(args) { const text = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).trim(); return text ? JSON.parse(text) : {}; }
+function required(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

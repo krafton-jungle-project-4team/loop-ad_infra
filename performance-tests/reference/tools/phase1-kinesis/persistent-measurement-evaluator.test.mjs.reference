@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluatePersistentMeasurement } from './persistent-measurement-evaluator.mjs';
+
+function input(targetRps = 30_000) {
+    const count = targetRps * 15;
+    return { targetRps, gate: { passed: true },
+        aggregate: { actualRps: targetRps * 0.995, attemptedRequests: targetRps * 140, transportErrors: 1,
+            persistent: { measurement: { start: '2026-07-12T18:10:00.000Z', end: '2026-07-12T18:10:15.000Z', seconds: 15 } } },
+        accessLog: { passed: true, completeness: { status: 'complete-enough-for-analysis' },
+            measurement: { start: '2026-07-12T18:10:00.000Z', end: '2026-07-12T18:10:15.000Z' },
+            measurementWindow: { count, elbStatusDistribution: { '202': count, '400': 0, '408': 0, '413': 0, '429': 0, '460': 0, '5xx': 0, other: 0 } } },
+        cloudwatch: { kinesisWriteThrottle: 0 }, producer: { failures: 0, timeouts: 0 }, taskSafety: { passed: true }, recovery: { passed: true } };
+}
+test('qualifies aligned 30k and 50k windows', () => {
+    assert.equal(evaluatePersistentMeasurement(input(30_000)).classification, 'qualified');
+    assert.equal(evaluatePersistentMeasurement(input(50_000)).passed, true);
+});
+test('fails closed on timestamp misalignment', () => {
+    const value = input(); value.accessLog.measurement.end = '2026-07-12T18:10:14.000Z';
+    const result = evaluatePersistentMeasurement(value);
+    assert.equal(result.passed, false); assert.equal(result.checks.timestampAlignment, false);
+});
+test('reconciles aggregate access status counts and treats safety failures as unsafe', () => {
+    const value = input(); value.accessLog.measurementWindow.elbStatusDistribution['460'] = 1; value.producer.failures = 1;
+    const result = evaluatePersistentMeasurement(value);
+    assert.equal(result.checks.accessLogDistributionReconciles, false);
+    assert.equal(result.classification, 'unsafe');
+});

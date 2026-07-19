@@ -1,0 +1,644 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
+import { histogramLatencyMs, mergeFixedHistograms } from './merge-fixed-latency-histograms.mjs';
+import { evaluateAlignedFinalAckAccounting, readCollectorBoundaryEvidence } from './aligned-final-ack-accounting.mjs';
+
+const REGION = 'ap-northeast-2';
+const scripts = dirname(fileURLToPath(import.meta.url));
+const runDir = requiredOption('--run-dir');
+const runId = requiredOption('--run-id');
+const artifactRunId = optionValue('--artifact-run-id') ?? runId;
+const sessionId = requiredOption('--session-id');
+const stageLabel = requiredOption('--stage-label');
+const repetition = requiredInteger('--repetition');
+const targetPath = requiredOption('--target-path');
+const targetRps = integerOption('--target-rps', 30_000);
+const connections = integerOption('--connections', 12_000);
+const durationSeconds = requiredInteger('--duration-seconds');
+const targetBaseUrl = requiredOption('--target-base-url');
+const targetConnectBaseUrl = optionValue('--target-connect-base-url') ?? targetBaseUrl;
+const topology = optionValue('--topology');
+const evidenceBucket = requiredOption('--evidence-bucket');
+const albAccessLogPrefix = requiredOption('--alb-access-log-prefix');
+const sessionManifest = requiredOption('--session-manifest');
+const accruedCost = requiredOption('--accrued-cost');
+const projectedCost = requiredOption('--projected-cost');
+const instrumentation = optionValue('--instrumentation') ?? 'on';
+const driver = optionValue('--driver') ?? 'oha';
+const referenceBinaryS3Uri = optionValue('--reference-binary-s3-uri');
+const referenceBinarySha256 = optionValue('--reference-binary-sha256');
+const randomSeed = integerOption('--random-seed', 20_260_713);
+const clientProtocol = optionValue('--client-protocol') ?? 'h1';
+const streamsPerConnection = integerOption('--streams-per-connection', 1);
+const caCertificate = optionValue('--ca-certificate');
+const tlsServerName = optionValue('--tls-server-name') ?? 'loopad-protocol.internal';
+const loadBalancerKind = optionValue('--load-balancer-kind') ?? 'alb';
+const targetProtocolVersion = optionValue('--target-protocol-version') ?? 'HTTP1';
+const directTarget = process.argv.includes('--direct-target');
+const processStartMode = optionValue('--process-start-mode') ?? 'synchronized';
+const connectionPathMode = sessionId.includes('-connection-path-');
+const costModel = optionValue('--cost-model');
+const newWorkEnd = optionValue('--new-work-end');
+const hardDeadline = optionValue('--hard-deadline');
+const unscoredWarmup = process.argv.includes('--unscored-warmup');
+const singleFinalRun = process.argv.includes('--single-final-run');
+const resumeCompletedOhaStage = process.argv.includes('--resume-completed-oha-stage');
+const ohaP95Phase = optionValue('--oha-p95-phase') ?? 'none';
+const ohaWarmupSummaryPath = optionValue('--oha-warmup-summary');
+const persistentWarmupSeconds = integerOption('--persistent-warmup-seconds', 0);
+const minimumAchievedRatio = numberOption('--minimum-achieved-ratio', .95, 0, 1);
+const maximumTransportErrorRate = numberOption('--maximum-transport-error-rate', .01, 0, 1);
+const maximumKinesisRetryRate = numberOption('--maximum-kinesis-retry-rate', .00001, 0, 1);
+const serviceP95LimitMs = numberOption('--service-p95-limit-ms', 500, 0, 60_000);
+const worstWorkerP95LimitMs = numberOption('--worst-worker-p95-limit-ms', 60_000, 0, 60_000);
+const liveSafetyRequired = connectionPathMode && topology === 'T3' && driver === 'oha' && ohaP95Phase === 'score' &&
+    targetPath === '/events' && targetRps === 50_000 && connections === 12_000 && durationSeconds === 300;
+
+if (basename(runDir) !== artifactRunId || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId) ||
+    !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(artifactRunId)) throw new Error('invalid immutable run directory');
+if (!/^phase1-kinesis-(?:tcp-alb-path-diagnosis|protocol-crossover|connection-path)-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session ID');
+if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(stageLabel) || repetition < 1 || repetition > 999) throw new Error('invalid stage identity');
+if (!isAllowedTargetPath(targetPath)) throw new Error('invalid target path');
+if (!['on', 'off'].includes(instrumentation)) throw new Error('invalid instrumentation mode');
+if (!['oha', 'reference'].includes(driver)) throw new Error('invalid load driver');
+if (!['none', 'warmup', 'score'].includes(ohaP95Phase)) throw new Error('invalid oha p95 phase');
+if (driver === 'reference' && (!referenceBinaryS3Uri || !/^[0-9a-f]{64}$/.test(referenceBinarySha256 ?? ''))) throw new Error('reference driver requires an immutable binary URI and SHA-256');
+if (driver === 'reference' && !caCertificate) throw new Error('reference driver requires the run-scoped public CA certificate');
+if (driver === 'reference' && instrumentation !== 'on') throw new Error('reference driver stages require instrumentation on');
+if (durationSeconds < 1 || durationSeconds > (connectionPathMode ? 900 : 600)) throw new Error('invalid load arithmetic');
+if (albAccessLogPrefix !== `${sessionId}/${runId}`) throw new Error('ALB access-log prefix does not match run ownership');
+if (!['h1', 'h2', 'h3'].includes(clientProtocol) || !['alb', 'nlb'].includes(loadBalancerKind) || !['HTTP1', 'HTTP2', 'TCP', 'QUIC'].includes(targetProtocolVersion)) throw new Error('invalid protocol path identity');
+if (streamsPerConnection !== 1) throw new Error('independent devices require one in-flight stream per connection');
+if (persistentWarmupSeconds < 0 || persistentWarmupSeconds > 900 || (persistentWarmupSeconds > 0 && (driver !== 'reference' || unscoredWarmup))) throw new Error('persistent warm-up requires a scored reference stage and must not exceed 900 seconds');
+if (clientProtocol === 'h3' && (loadBalancerKind !== 'nlb' || targetProtocolVersion !== 'QUIC')) throw new Error('HTTP/3 requires the NLB QUIC path');
+if (connectionPathMode) {
+    if (!['T0', 'T1', 'T2', 'T3'].includes(topology)) throw new Error('connection-path stage requires T0, T1, T2, or T3');
+    if (!/^https:\/\/[a-z0-9.-]+$/.test(targetBaseUrl) || !/^https:\/\/(?:internal-perf-p1-conn-alb|perf-p1-conn-(?:direct|proxy))-[a-z0-9-]+\.(?:ap-northeast-2\.elb\.amazonaws\.com|elb\.ap-northeast-2\.amazonaws\.com)$/.test(targetConnectBaseUrl)) throw new Error('invalid connection-path TLS endpoint');
+    if (!caCertificate || !costModel || !newWorkEnd || !hardDeadline) throw new Error('connection-path stage requires CA, cost model, and absolute deadlines');
+    if (!['synchronized', 'staggered'].includes(processStartMode)) throw new Error('invalid process start mode');
+}
+if (ohaP95Phase !== 'none') {
+	const expectedWarmupSeconds = singleFinalRun ? 180 : repetition === 1 ? 900 : 180;
+    if (!connectionPathMode || topology !== 'T3' || driver !== 'oha' || targetPath !== '/events' || targetRps !== 50_000 ||
+        connections !== 12_000 || clientProtocol !== 'h2' || processStartMode !== 'synchronized' || persistentWarmupSeconds !== 0 || repetition > 3) {
+        throw new Error('oha p95 phase requires the fixed synchronized T3 50k/12k HTTP/2 contract');
+    }
+    if (ohaP95Phase === 'warmup' && (!unscoredWarmup || instrumentation !== 'off' || durationSeconds !== expectedWarmupSeconds)) {
+        throw new Error(`oha repetition ${repetition} warm-up must be an unscored ${expectedWarmupSeconds}-second instrumentation-off stage`);
+    }
+    if (ohaP95Phase === 'score' && (unscoredWarmup || instrumentation !== 'on' || durationSeconds !== 300)) {
+        throw new Error('oha score must be an independent 300-second instrumentation-on stage');
+    }
+}
+if (singleFinalRun && (!connectionPathMode || artifactRunId === runId || repetition !== 1 ||
+    stageLabel !== (ohaP95Phase === 'warmup' ? 'final_auto_warmup' : ohaP95Phase === 'score' ? 'final_auto_score' : '') ||
+    resumeCompletedOhaStage)) {
+    throw new Error('single final run requires a distinct artifact run, fixed warm-up/score stage names, repetition 1, and no resume');
+}
+if (resumeCompletedOhaStage && (driver !== 'oha' || !['warmup', 'score'].includes(ohaP95Phase))) {
+    throw new Error('completed-stage resume is restricted to an oha p95 stage');
+}
+
+let ohaWarmupEvidence = null;
+if (ohaP95Phase === 'score') {
+    if (!ohaWarmupSummaryPath || !resolve(ohaWarmupSummaryPath).startsWith(`${resolve(runDir, 'stages')}/`) ||
+        basename(ohaWarmupSummaryPath) !== 'stage-summary.json' || !existsSync(ohaWarmupSummaryPath)) {
+        throw new Error('oha score requires a completed run-local warm-up summary');
+    }
+    ohaWarmupEvidence = json(ohaWarmupSummaryPath);
+	const expectedWarmupSeconds = singleFinalRun ? 180 : repetition === 1 ? 900 : 180;
+	if (ohaWarmupEvidence.runId !== runId || ohaWarmupEvidence.artifactRunId !== artifactRunId ||
+        ohaWarmupEvidence.singleFinalRun !== singleFinalRun || ohaWarmupEvidence.repetition !== repetition || ohaWarmupEvidence.driver !== 'oha' ||
+        ohaWarmupEvidence.ohaP95Phase !== 'warmup' || ohaWarmupEvidence.unscoredWarmup !== true ||
+        ohaWarmupEvidence.instrumentation !== 'off' || ohaWarmupEvidence.durationSeconds !== expectedWarmupSeconds ||
+        ohaWarmupEvidence.targetRps !== targetRps || ohaWarmupEvidence.connections !== connections ||
+        ohaWarmupEvidence.safetyPassed !== true || ohaWarmupEvidence.checks?.recoveryPassed !== true) {
+        throw new Error('oha warm-up evidence does not satisfy the score precondition');
+    }
+}
+
+const stageDir = join(runDir, 'stages', stageLabel, `repetition-${String(repetition).padStart(2, '0')}`);
+if (!resumeCompletedOhaStage && existsSync(stageDir)) throw new Error('immutable stage artifact already exists');
+mkdirSync(stageDir, { recursive: true });
+const resumeAbortedScore = resumeCompletedOhaStage && ohaP95Phase === 'score' && existsSync(join(stageDir, 'safety-monitor', 'summary.json')) &&
+    json(join(stageDir, 'safety-monitor', 'summary.json')).abortCommands !== null;
+if (resumeCompletedOhaStage && ohaP95Phase === 'score' && !resumeAbortedScore) {
+    throw new Error('scored oha resume requires a previously safety-aborted stage');
+}
+if (connectionPathMode) {
+    runNode('connection-path-deadline-gate.mjs', ['--now', new Date().toISOString(), '--new-work-end', newWorkEnd,
+        '--hard-deadline', hardDeadline, '--action', 'stage', '--cost-model', costModel, '--output',
+        join(stageDir, resumeCompletedOhaStage ? 'resume-postprocess-start-gate.json' : 'stage-start-gate.json')]);
+} else {
+    runNode('tcp-alb-diagnosis-start-gate.mjs', ['--session-id', sessionId, '--session', sessionManifest,
+        '--action', 'stage', '--estimated-work-seconds', `${Math.max(300, durationSeconds + 240)}`,
+        '--accrued-cost', accruedCost, '--projected-cost', projectedCost, '--output', join(stageDir, 'stage-start-gate.json')]);
+}
+const generators = generatorInstances();
+const protocolOutputs = sessionId.includes('-protocol-crossover-') || connectionPathMode ? protocolStackOutputs() : null;
+const collectorCount = connectionPathMode ? Number(protocolOutputs?.Phase1CollectorCount) : 4;
+const generatorCount = Number(protocolOutputs?.Phase1LoadGeneratorCount ?? 4);
+if (!Number.isInteger(collectorCount) || collectorCount < 1 || collectorCount > 17) throw new Error('invalid deployed collector count');
+if (![4, 8].includes(generatorCount) || targetRps % generatorCount !== 0 || connections % generatorCount !== 0) throw new Error('invalid deployed generator count or load arithmetic');
+if (protocolOutputs && !connectionPathMode && (protocolOutputs.Phase1LoadBalancerKind !== loadBalancerKind ||
+    protocolOutputs.Phase1TargetProtocolVersion !== targetProtocolVersion || protocolOutputs.Phase1TargetBaseUrl !== targetBaseUrl)) {
+    throw new Error('stage protocol identity does not match deployed stack outputs');
+}
+if (connectionPathMode) validateConnectionPathIdentity(protocolOutputs);
+const azCounts = Object.groupBy(generators, (item) => item.availabilityZone);
+if (generators.length !== generatorCount || azCounts['ap-northeast-2a']?.length !== generatorCount / 2 || azCounts['ap-northeast-2c']?.length !== generatorCount / 2) throw new Error('generator placement must be balanced across 2a and 2c');
+const stageManifest = {
+	createdAt: new Date().toISOString(), runId, artifactRunId, deploymentOwnerRunId: runId, singleFinalRun, sessionId, stageLabel, repetition, targetPath,
+		targetRps, connections, durationSeconds, persistentWarmupSeconds, targetBaseUrl, targetConnectBaseUrl, topology: topology ?? null, processStartMode,
+	collectorCount, generatorCount,
+	    evidenceBucket, albAccessLogPrefix, instrumentation, driver, unscoredWarmup, ohaP95Phase,
+		ohaWarmupSummaryPath: ohaWarmupSummaryPath ?? null,
+		minimumAchievedRatio, maximumTransportErrorRate, maximumKinesisRetryRate, serviceP95LimitMs, worstWorkerP95LimitMs,
+		liveSafetyRequired,
+	clientProtocol, streamsPerConnection, loadBalancerKind, targetProtocolVersion,
+	caCertificate: caCertificate ?? null, tlsServerName,
+	collectorInstrumentation: { warmup: ohaP95Phase === 'warmup' ? 'off' : persistentWarmupSeconds > 0 ? 'off' : null,
+		measurement: ohaP95Phase === 'score' ? 'on' : instrumentation },
+	referenceBinaryS3Uri: referenceBinaryS3Uri ?? null, referenceBinarySha256: referenceBinarySha256 ?? null, randomSeed, directTarget,
+	generators, exactCommand: [process.execPath, ...process.argv.slice(1)],
+};
+const stageManifestPath = join(stageDir, 'stage-manifest.json');
+if (resumeCompletedOhaStage) {
+    const savedManifest = json(stageManifestPath);
+    const identityFields = ['runId', 'artifactRunId', 'deploymentOwnerRunId', 'singleFinalRun', 'sessionId', 'stageLabel', 'repetition', 'targetPath', 'targetRps', 'connections', 'durationSeconds',
+        'targetBaseUrl', 'targetConnectBaseUrl', 'topology', 'processStartMode', 'collectorCount', 'generatorCount', 'evidenceBucket',
+        'albAccessLogPrefix', 'instrumentation', 'driver', 'unscoredWarmup', 'ohaP95Phase', 'clientProtocol', 'streamsPerConnection',
+        'loadBalancerKind', 'targetProtocolVersion', 'tlsServerName'];
+    const mismatches = identityFields.filter((field) => JSON.stringify(savedManifest[field]) !== JSON.stringify(stageManifest[field]));
+    if (mismatches.length > 0) throw new Error(`saved stage identity does not match resume request: ${mismatches.join(', ')}`);
+    if (existsSync(join(stageDir, 'stage-summary.json'))) {
+        const previousSummary = json(join(stageDir, 'stage-summary.json'));
+        if (previousSummary.safetyPassed === true) throw new Error('successful stage summary already exists; refusing to resume post-processing');
+        copyFileSync(join(stageDir, 'stage-summary.json'), join(stageDir, `stage-summary-before-resume-${Date.now()}.json`));
+    }
+    writeJson(join(stageDir, 'resume-postprocess-manifest.json'), {
+        resumedAt: new Date().toISOString(), originalExactCommand: savedManifest.exactCommand, resumeExactCommand: stageManifest.exactCommand,
+        identityFields, identityVerified: true,
+    });
+} else {
+    writeJson(stageManifestPath, stageManifest);
+}
+
+let directAccessRevoked = !directTarget;
+if (directTarget) runNode('configure-direct-target-access.mjs', ['--run-id', runId, '--action', 'allow', '--output', join(stageDir, 'direct-access-allow.json')]);
+try {
+
+if (!resumeCompletedOhaStage) {
+    runNode('collect-debug-vars.mjs', ['--expected-count', `${collectorCount}`, '--candidate', 'go-batch', '--label', `${stageLabel}-pre`, '--output-dir', join(stageDir, 'debug', 'before')]);
+    runNode('collect-runtime-state.mjs', ['--expected-count', `${collectorCount}`, '--candidate', 'go-batch', '--label', `${stageLabel}-pre`, '--output-dir', join(stageDir, 'runtime', 'before')]);
+}
+const beforeSnapshots = Array.from({ length: collectorCount }, (_, index) => json(join(stageDir, 'debug', 'before', `collector-${String(index + 1).padStart(2, '0')}.json`)));
+const minimumTraceHeadroomBytes = liveSafetyRequired ? 512 * 1024 * 1024 : 0;
+const traceCapacityPreflight = resumeCompletedOhaStage ? json(join(stageDir, 'trace-capacity-preflight.json')) : {
+	checkedAt: new Date().toISOString(), minimumTraceHeadroomBytes,
+	collectors: beforeSnapshots.map((snapshot, index) => ({ collector: `collector-${String(index + 1).padStart(2, '0')}`,
+		maxBytes: snapshot.trace?.max_bytes ?? 0, reservedBytes: snapshot.trace?.reserved_bytes ?? 0,
+		headroomBytes: (snapshot.trace?.max_bytes ?? 0) - (snapshot.trace?.reserved_bytes ?? 0) })),
+};
+if (!resumeCompletedOhaStage) {
+    traceCapacityPreflight.passed = !liveSafetyRequired || traceCapacityPreflight.collectors.every((item) => item.maxBytes > 0 && item.headroomBytes >= minimumTraceHeadroomBytes);
+    writeJson(join(stageDir, 'trace-capacity-preflight.json'), traceCapacityPreflight);
+}
+if (!traceCapacityPreflight.passed) throw new Error('collector trace capacity is insufficient for an undistorted 300-second scored window');
+
+// Eight independent SSM invocations must finish TLS/payload setup before the
+// common epoch. The longer lead time prevents a slow node from starting late.
+const startEpoch = resumeCompletedOhaStage
+    ? json(join(stageDir, 'collector-telemetry', 'collection-start.json')).startEpoch
+    : Math.floor(Date.now() / 1000) + (ohaP95Phase === 'none' ? 25 : 60);
+const telemetryDurationSeconds = persistentWarmupSeconds + durationSeconds + (connectionPathMode && processStartMode === 'staggered' ? generatorCount * 10 : 0) + (persistentWarmupSeconds > 0 ? 60 : 0);
+const collectorPrefix = `${sessionId}/${runId}/collector-evidence/${stageLabel}/repetition-${String(repetition).padStart(2, '0')}`;
+const telemetryArgs = [join(scripts, 'collect-latency-root-cause-telemetry.mjs'), '--run-id', runId, '--stage-label', stageLabel,
+    '--duration-seconds', `${telemetryDurationSeconds}`, '--start-epoch', `${startEpoch}`, '--evidence-bucket', evidenceBucket,
+    '--evidence-prefix', collectorPrefix, '--output-dir', join(stageDir, 'collector-telemetry'), '--expected-count', `${collectorCount}`, '--wait'];
+const telemetry = resumeCompletedOhaStage ? Promise.resolve({ code: 0, signal: null, resumed: true })
+    : spawnLogged('node', telemetryArgs, join(stageDir, 'collector-telemetry-process'));
+const proxyTelemetry = connectionPathMode && topology === 'T3' ? (resumeCompletedOhaStage
+    ? Promise.resolve({ code: 0, signal: null, resumed: true }) : spawnLogged('node', [join(scripts, 'collect-haproxy-telemetry.mjs'),
+    '--run-id', runId, '--session-id', sessionId, '--stage-label', stageLabel, '--repetition', `${repetition}`,
+    '--duration-seconds', `${telemetryDurationSeconds}`, '--start-epoch', `${startEpoch}`, '--evidence-bucket', evidenceBucket,
+    '--evidence-prefix', `${sessionId}/${runId}/proxy-evidence/${stageLabel}/repetition-${String(repetition).padStart(2, '0')}`,
+    '--output-dir', join(stageDir, 'proxy-telemetry')], join(stageDir, 'proxy-telemetry-process'))) : null;
+
+const generatorPrefix = `${sessionId}/${runId}/diagnostics/${stageLabel}/repetition-${String(repetition).padStart(2, '0')}`;
+const directCollectors = directTarget ? collectorInstances() : [];
+const resumeArtifactVerification = resumeCompletedOhaStage
+    ? validateCompletedOhaArtifacts(stageDir, startEpoch, durationSeconds, generators.length, collectorCount, topology === 'T3', resumeAbortedScore)
+    : { passed: true, checks: {}, resumed: false };
+if (resumeCompletedOhaStage) {
+    writeJson(join(stageDir, 'resume-artifact-verification.json'), resumeArtifactVerification);
+    if (!resumeArtifactVerification.passed) throw new Error('completed oha artifacts do not satisfy post-processing resume requirements');
+}
+const loads = generators.map((generator, index) => {
+    const nodeId = `node-${String(index + 1).padStart(2, '0')}`;
+    const output = join(stageDir, 'load', nodeId);
+    mkdirSync(output, { recursive: true });
+	const directArgs = directTarget ? ['--direct-target-ip', directCollectors[index].privateIp] : [];
+	if (resumeCompletedOhaStage) return Promise.resolve({ code: 0, signal: null, resumed: true, nodeId });
+	const commonArgs = ['--instance-id', generator.instanceId,
+        '--target-base-url', targetBaseUrl, '--target-path', targetPath, '--run-id', runId,
+			'--rps', `${targetRps / generatorCount}`, '--duration-seconds', `${durationSeconds}`,
+		'--connections', `${connections / generatorCount}`, '--processes-per-node', '2', '--start-epoch', `${startEpoch}`, '--node-id', nodeId,
+        '--stage-label', stageLabel, '--repetition', `${repetition}`, '--evidence-bucket', evidenceBucket,
+		...directArgs, '--evidence-prefix', generatorPrefix, '--output-dir', output];
+		if (driver === 'reference') {
+			return spawnLogged('node', [join(scripts, 'invoke-reference-driver.mjs'), ...commonArgs.filter((value, position, values) => value !== '--processes-per-node' && values[position - 1] !== '--processes-per-node'),
+				'--warmup-seconds', `${persistentWarmupSeconds}`,
+			'--binary-s3-uri', referenceBinaryS3Uri, '--binary-sha256', referenceBinarySha256,
+			'--random-seed', `${randomSeed + index * 100}`, '--protocol', clientProtocol,
+			'--streams-per-connection', `${streamsPerConnection}`, '--ca-certificate', caCertificate,
+			'--tls-server-name', tlsServerName], join(stageDir, 'load', `${nodeId}-invoke`));
+	}
+		return spawnLogged('node', [join(scripts, 'invoke-oha.mjs'), ...commonArgs,
+            '--experiment-mode', connectionPathMode ? 'connection-path-crossover' : 'tcp-alb-path-diagnosis',
+            ...(connectionPathMode ? ['--target-connect-base-url', targetConnectBaseUrl, '--tls-server-name', tlsServerName,
+                '--ca-certificate', caCertificate, '--process-start-spacing-seconds', processStartMode === 'staggered' ? '5' : '0',
+                '--process-start-offset-seconds', processStartMode === 'staggered' ? `${index * 10}` : '0'] : []),
+			'--instrumentation', instrumentation], join(stageDir, 'load', `${nodeId}-invoke`));
+});
+
+const safetyMonitor = liveSafetyRequired ? (resumeCompletedOhaStage
+    ? Promise.resolve({ code: resumeAbortedScore ? 2 : 0, signal: null, resumed: true }) : spawnLogged('node', [join(scripts, 'monitor-oha-connection-path-safety.mjs'),
+    '--run-id', runId, '--session-id', sessionId, '--stage-label', stageLabel, '--repetition', `${repetition}`,
+    '--start-epoch', `${startEpoch}`, '--duration-seconds', `${durationSeconds}`,
+    '--expected-rps', `${targetRps}`, '--expected-connections', `${connections}`,
+    '--generator-instance-ids', generators.map((item) => item.instanceId).join(','),
+    '--collector-baseline-dir', join(stageDir, 'debug', 'before'),
+    '--collector-collection-start', join(stageDir, 'collector-telemetry', 'collection-start.json'),
+    '--proxy-collection-start', join(stageDir, 'proxy-telemetry', 'collection-start.json'),
+    '--cost-model', costModel, '--new-work-end', newWorkEnd, '--hard-deadline', hardDeadline,
+    '--output-dir', join(stageDir, 'safety-monitor')], join(stageDir, 'safety-monitor-process'))) : null;
+const [loadResults, safetyMonitorResult, telemetryResult, proxyTelemetryResult] = await Promise.all([
+    Promise.all(loads), safetyMonitor ?? Promise.resolve(null), telemetry, proxyTelemetry ?? Promise.resolve(null),
+]);
+const safetyMonitorSummary = liveSafetyRequired && existsSync(join(stageDir, 'safety-monitor', 'summary.json'))
+    ? json(join(stageDir, 'safety-monitor', 'summary.json')) : null;
+const stageAborted = liveSafetyRequired && safetyMonitorSummary?.abortCommands !== null;
+if (directTarget) {
+	runNode('configure-direct-target-access.mjs', ['--run-id', runId, '--action', 'revoke', '--output', join(stageDir, 'direct-access-revoke.json')]);
+	runNode('configure-direct-target-access.mjs', ['--run-id', runId, '--action', 'verify-absent', '--output', join(stageDir, 'direct-access-verify-absent.json')]);
+	directAccessRevoked = true;
+}
+if (telemetryResult.code === 0 && !unscoredWarmup) {
+	runNode('summarize-latency-root-cause-telemetry.mjs', ['--input-dir', join(stageDir, 'collector-telemetry'), '--output', join(stageDir, 'collector-telemetry-summary.json')]);
+}
+const recoveryResult = runNodeStatus('verify-tcp-alb-recovery.mjs', [
+	'--instance-ids', generators.map((generator) => generator.instanceId).join(','),
+	'--output-dir', join(stageDir, 'recovery'), '--stable-seconds', '30', '--max-seconds', '600',
+]);
+const summaryName = driver === 'reference' ? 'reference-summary.json' : 'oha-summary.json';
+const loadSummaries = generators.map((_, index) => json(join(stageDir, 'load', `node-${String(index + 1).padStart(2, '0')}`, summaryName)));
+const startedAt = loadSummaries.map((item) => item.startedAt).sort()[0];
+const measurementStartedAt = loadSummaries.map((item) => item.measurementStartedAt ?? item.startedAt).sort()[0];
+const endedAt = loadSummaries.map((item) => item.endedAt).sort().at(-1);
+const measurementEndedAt = driver === 'oha' && !stageAborted
+    ? new Date((startEpoch + durationSeconds) * 1_000).toISOString()
+    : endedAt;
+const measurementStartEpochs = [...new Set(loadSummaries.flatMap((item) => item.measurementStartEpochs ?? [item.measurementStartedAt ?? item.startedAt]))];
+const expectedMeasurementStartEpoch = startEpoch + (persistentWarmupSeconds > 0 ? persistentWarmupSeconds + 10 : 0);
+const ohaNodeStartEpochs = loadSummaries.map((item) => Math.floor(Date.parse(item.startedAt) / 1_000));
+const ohaNodeStartSkewSeconds = Math.max(...ohaNodeStartEpochs) - Math.min(...ohaNodeStartEpochs);
+const measurementStartSynchronized = driver === 'oha'
+    ? loadSummaries.every((item) => item.startEpoch === startEpoch) && ohaNodeStartSkewSeconds <= 2
+    : measurementStartEpochs.length === 1 && Math.floor(Date.parse(measurementStartEpochs[0]) / 1_000) === expectedMeasurementStartEpoch;
+let scoredCollectorSummaryResult = null;
+if (telemetryResult.code === 0 && !unscoredWarmup) {
+	scoredCollectorSummaryResult = runNodeStatus('summarize-latency-root-cause-telemetry.mjs', ['--input-dir', join(stageDir, 'collector-telemetry'),
+		'--start-time', measurementStartedAt, '--end-time', measurementEndedAt, '--output', join(stageDir, 'collector-telemetry-scored-summary.json')]);
+	if (!stageAborted && scoredCollectorSummaryResult.code !== 0) throw new Error('collector scored telemetry summary failed');
+}
+if (unscoredWarmup) {
+    writeJson(join(stageDir, 'collector-latency-summary-policy.json'), {
+        recordedAt: new Date().toISOString(), skipped: true,
+        reason: 'collector request-trace instrumentation is intentionally disabled for the unscored oha warm-up',
+    });
+}
+const scoredCollectorTelemetry = telemetryResult.code === 0 && !unscoredWarmup && existsSync(join(stageDir, 'collector-telemetry-scored-summary.json'))
+    ? json(join(stageDir, 'collector-telemetry-scored-summary.json')) : null;
+let scoredProxySummaryResult = null;
+if (topology === 'T3' && proxyTelemetryResult?.code === 0) {
+	scoredProxySummaryResult = runNodeStatus('summarize-haproxy-telemetry.mjs', ['--input-dir', join(stageDir, 'proxy-telemetry'),
+		'--start-time', measurementStartedAt, '--end-time', measurementEndedAt, '--output', join(stageDir, 'proxy-telemetry-scored-summary.json')]);
+	if (!stageAborted && scoredProxySummaryResult.code !== 0) throw new Error('HAProxy scored telemetry summary failed');
+}
+const scoredProxyTelemetry = topology === 'T3' && proxyTelemetryResult?.code === 0 && existsSync(join(stageDir, 'proxy-telemetry-scored-summary.json'))
+    ? json(join(stageDir, 'proxy-telemetry-scored-summary.json')) : null;
+const proxyCollectionSummary = topology === 'T3' && proxyTelemetryResult?.code === 0 ? json(join(stageDir, 'proxy-telemetry', 'summary.json')) : null;
+
+runNode('collect-debug-vars.mjs', ['--expected-count', `${collectorCount}`, '--candidate', 'go-batch', '--label', `${stageLabel}-post`, '--output-dir', join(stageDir, 'debug', 'after')]);
+runNode('collect-runtime-state.mjs', ['--expected-count', `${collectorCount}`, '--candidate', 'go-batch', '--label', `${stageLabel}-post`, '--output-dir', join(stageDir, 'runtime', 'after')]);
+const metricIdentity = connectionPathMode ? connectionPathMetricIdentity(protocolOutputs) : null;
+runNode('collect-metrics.mjs', ['--expected-collector-count', `${collectorCount}`, '--expected-load-generator-count', `${generatorCount}`, '--include-shards',
+		...(metricIdentity ? ['--load-balancer-name', metricIdentity.loadBalancerName, '--load-balancer-kind', metricIdentity.loadBalancerKind,
+            '--target-group-arn', metricIdentity.targetGroupArn] : protocolOutputs ? ['--load-balancer-name', loadBalancerKind === 'alb' ? 'perf-phase1-loop-ad-alb' : targetProtocolVersion === 'QUIC' ? 'perf-p1-protocol-n3' : 'perf-p1-protocol-n2',
+            '--load-balancer-kind', loadBalancerKind, '--target-group-arn', protocolOutputs.Phase1TargetGroupArn] : []),
+    '--start-time', startedAt, '--end-time', endedAt, '--output-dir', join(stageDir, 'metrics')]);
+runNode('collect-logs.mjs', ['--start-time', startedAt, '--end-time', endedAt, '--output-dir', join(stageDir, 'logs')]);
+
+const aggregate = aggregateLoad(loadSummaries, targetRps, connections, stageDir);
+const ohaProcessCount = driver === 'oha' ? loadSummaries.reduce((sum, summary) => sum + (summary.processes?.length ?? 0), 0) : null;
+const protocolCorrect = !connectionPathMode || generators.every((_, index) => json(join(stageDir, 'load', `node-${String(index + 1).padStart(2, '0')}`, 'protocol-correctness.json')).passed === true);
+const physicalConnectionFraction = aggregate.maxEstablished / connections;
+const afterSnapshots = Array.from({ length: collectorCount }, (_, index) => json(join(stageDir, 'debug', 'after', `collector-${String(index + 1).padStart(2, '0')}.json`)));
+const snapshotKinesisCounterDeltas = afterSnapshots.map((snapshot, index) => {
+    const before = beforeSnapshots[index];
+    const fields = ['enqueued', 'api_calls', 'record_attempts', 'successes', 'failures', 'retries', 'partial_failures', 'timeouts', 'queue_full'];
+    return Object.fromEntries(fields.map((field) => [field,
+        (snapshot.kinesis.put_records?.[field] ?? 0) - (before.kinesis.put_records?.[field] ?? 0)]));
+});
+const alignedFinalAckAccounting = driver === 'oha' && ohaP95Phase === 'score'
+    ? evaluateAlignedFinalAckAccounting({
+        evidence: readCollectorBoundaryEvidence(join(stageDir, 'collector-telemetry'), collectorCount),
+        measurementStartEpoch: startEpoch,
+        measurementDurationSeconds: durationSeconds,
+        clientHttp202: aggregate.totalHttp202IncludingWarmup,
+        clientTransportErrors: aggregate.transportErrors,
+        expectedCollectorCount: collectorCount,
+    })
+    : null;
+if (alignedFinalAckAccounting) writeJson(join(stageDir, 'final-ack-accounting.json'), alignedFinalAckAccounting);
+const kinesisCounterDeltas = alignedFinalAckAccounting?.counterDeltas ?? snapshotKinesisCounterDeltas;
+const errorLogs = json(join(stageDir, 'logs', 'collector-error-logs.json'));
+const traceDrops = afterSnapshots.reduce((sum, snapshot) => sum + (snapshot.trace?.dropped ?? 0) + (snapshot.trace?.write_errors ?? 0) +
+	(snapshot.backend_connections?.recorder?.dropped ?? 0) + (snapshot.backend_connections?.recorder?.write_errors ?? 0), 0) +
+	(driver === 'reference' ? loadSummaries.reduce((sum, summary) => sum + (summary.trace_dropped ?? 0), 0) : 0);
+const telemetryComplete = telemetryResult.code === 0 && collectorTelemetryComplete(stageDir, telemetryDurationSeconds, collectorCount);
+const kinesisSuccesses = kinesisCounterDeltas.reduce((total, value) => total + value.successes, 0);
+const kinesisRetries = kinesisCounterDeltas.reduce((total, value) => total + value.retries, 0);
+const kinesisRecordAttempts = kinesisCounterDeltas.reduce((total, value) => total + value.record_attempts, 0);
+const kinesisRetryRate = kinesisRecordAttempts === 0 ? 0 : kinesisRetries / kinesisRecordAttempts;
+const finalAckAccounting = alignedFinalAckAccounting ?? {
+    classification: 'legacy-snapshot-accounting',
+    measurementAligned: null,
+    clientHttp202: aggregate.totalHttp202IncludingWarmup,
+    clientTransportErrors: aggregate.transportErrors,
+    kinesisSuccesses,
+    lowerBound: aggregate.totalHttp202IncludingWarmup,
+    upperBound: aggregate.totalHttp202IncludingWarmup + aggregate.transportErrors,
+    ambiguityCount: kinesisSuccesses - aggregate.totalHttp202IncludingWarmup,
+};
+const checks = {
+    fullDurationCompleted: !stageAborted,
+    allLoadCommandsSucceeded: loadResults.every((item) => item.code === 0),
+		resumedArtifactsVerified: !resumeCompletedOhaStage || resumeArtifactVerification.passed === true,
+		realtimeSafetyPassed: !liveSafetyRequired || (safetyMonitorResult?.code === 0 && safetyMonitorSummary?.passed === true),
+		collectorTelemetryComplete: telemetryComplete,
+		collectorScoredWindowComplete: unscoredWarmup || (!stageAborted && scoredCollectorTelemetry?.passed === true),
+		proxyTelemetryComplete: topology !== 'T3' || (proxyTelemetryResult?.code === 0 && (!stageAborted || proxyCollectionSummary?.results?.length === 2)),
+		proxyScoredWindowComplete: topology !== 'T3' || (!stageAborted && scoredProxyTelemetry?.passed === true),
+		proxyRuntimeProfileCorrect: topology !== 'T3' || (proxyCollectionSummary?.results?.every((item) => item.configValidationPassed === true &&
+			item.runtimeConfigSha256 === protocolOutputs.Phase1ConnectionPathProxyConfigSha256) === true &&
+			(protocolOutputs.Phase1ConnectionPathProxyThreadMode !== 'automatic' || (
+				Number(protocolOutputs.Phase1ConnectionPathProxyVcpusPerInstance) > 0 &&
+				scoredProxyTelemetry?.nodes?.length === 2 && scoredProxyTelemetry.nodes.every((node) =>
+					node.runtimeThreadCountMax === Number(protocolOutputs.Phase1ConnectionPathProxyVcpusPerInstance))))),
+	recoveryPassed: recoveryResult.code === 0,
+		traceBufferClean: traceDrops === 0,
+		protocolCorrect,
+		physicalConnectionsAtLeast99Percent: !connectionPathMode || physicalConnectionFraction >= 0.99,
+    actualRpsWithinStageLimit: aggregate.actualRps >= targetRps * (unscoredWarmup ? .95 : minimumAchievedRatio),
+		transportErrorWithinStageLimit: aggregate.transportErrorRate <= (unscoredWarmup ? 0.05 : maximumTransportErrorRate),
+	clientP95Observed: Number.isFinite(aggregate.latencyMs.p95),
+		clientP95WithinStageLimit: unscoredWarmup || aggregate.latencyMs.p95 < serviceP95LimitMs,
+		worstWorkerP95WithinStageLimit: unscoredWarmup || (driver !== 'reference' && ohaP95Phase !== 'score') ||
+			aggregate.worstWorkerServiceP95Ms < worstWorkerP95LimitMs,
+		mergeableHistogramComplete: driver !== 'reference' || aggregate.serviceLatencyHistogram?.count === aggregate.completedRequests && aggregate.serviceLatencyHistogram?.overflow_count === 0 && aggregate.scheduledLatencyHistogram?.overflow_count === 0,
+		ohaDriverContract: ohaP95Phase === 'none' || (measurementStartSynchronized && ohaProcessCount === 16 && loadSummaries.every((summary) =>
+			summary.processesPerNode === 2 && summary.offeredRps === targetRps / generatorCount &&
+			summary.configuredConnections === connections / generatorCount && summary.processes?.every((process) =>
+				Number.isFinite(process.latencyCorrectedMs?.p50) && Number.isFinite(process.latencyCorrectedMs?.p95) &&
+				Number.isFinite(process.latencyCorrectedMs?.p99) && process.configuredConnections === connections / generatorCount / 2 &&
+				process.offeredRps === targetRps / generatorCount / 2))),
+	referenceDriverContract: driver !== 'reference' || (measurementStartSynchronized && loadSummaries.every((summary) => summary.valid && summary.aborted !== true &&
+		summary.measurement_start_synchronized === true && summary.schedule_accuracy >= 0.99 &&
+		summary.collector_instrumentation_modes?.length === 1 && summary.collector_instrumentation_modes[0] === 'on' &&
+		summary.dispatch_accuracy >= 0.99 && summary.connection_establishment_accuracy >= 0.99 && summary.connection_establishment_accuracy <= 1.01 &&
+		summary.logical_devices === connections / generatorCount && summary.target_physical_connections === connections / generatorCount &&
+		summary.cross_device_reuse_violations === 0 && summary.max_concurrent_streams_per_connection <= 1 &&
+		summary.protocol_fallbacks === 0 && summary.tls_verification === 'required' && summary.hidden_retries === 0 && summary.silent_drops === 0 &&
+		(persistentWarmupSeconds === 0 || (summary.persistent_warmup_seconds === persistentWarmupSeconds && summary.connection_reuse_across_measurement_reset === true &&
+			summary.warmup?.valid === true && summary.warmup.completedRequests === summary.warmup.expectedRequests &&
+			summary.warmup.collectorInstrumentationModes?.length === 1 && summary.warmup.collectorInstrumentationModes[0] === 'off' &&
+			summary.warmup.http202 === summary.warmup.completedRequests && summary.warmup.errors === 0 && summary.warmup.traceDropped === 0 &&
+			summary.warmup.hiddenRetries === 0 && summary.warmup.protocolErrors === 0)))),
+    noApplicationRejection: afterSnapshots.every((snapshot, index) =>
+        snapshot.admission.rejected_total - beforeSnapshots[index].admission.rejected_total === 0 && kinesisCounterDeltas[index].queue_full === 0),
+    applicationDrained: (alignedFinalAckAccounting?.queueDrained ?? true) && afterSnapshots.every((snapshot) => snapshot.admission.current_in_flight === 0 &&
+		(snapshot.kinesis.put_records?.queue_depth ?? 0) === 0 && (snapshot.kinesis.put_records?.sender_queue_depth ?? 0) === 0 &&
+		(snapshot.kinesis.put_records?.outstanding_records ?? 0) === 0 && (snapshot.kinesis.put_records?.api_calls_in_flight ?? 0) === 0),
+    kinesisCountersMonotonic: kinesisCounterDeltas.every((deltas) => Object.values(deltas).every((value) => value >= 0)),
+	finalAckMeasurementAligned: targetPath !== '/events' || alignedFinalAckAccounting === null || alignedFinalAckAccounting.measurementAligned === true,
+	finalAckKinesisCountMatch: targetPath !== '/events' || (alignedFinalAckAccounting?.finalAckCountMatch ??
+		(kinesisSuccesses >= finalAckAccounting.lowerBound && kinesisSuccesses <= finalAckAccounting.upperBound)),
+    kinesisFailuresZero: kinesisCounterDeltas.every((deltas) => deltas.failures === 0 && deltas.partial_failures === 0 && deltas.timeouts === 0) &&
+        kinesisRetryRate <= maximumKinesisRetryRate,
+	unexpectedHttpStatusZero: aggregate.http429 === 0 && aggregate.http5xx === 0,
+	noFatalRuntimeLogs: errorLogs.complete === true && Object.values(errorLogs.categories ?? {}).every((value) => value === 0),
+};
+const safetyPassed = Object.values(checks).every(Boolean);
+const outcomeClassification = stageAborted
+    ? 'safety-failure'
+    : alignedFinalAckAccounting?.measurementAligned === false
+    ? 'instrumentation-failure'
+    : safetyPassed ? 'pass' : 'performance-failure';
+const result = {
+		runId, artifactRunId, deploymentOwnerRunId: runId, singleFinalRun, sessionId, stageLabel, repetition, targetPath, targetRps, connections, durationSeconds, persistentWarmupSeconds, instrumentation, driver, unscoredWarmup, ohaP95Phase,
+		resumeCompletedOhaStage, resumeAbortedScore, resumeArtifactVerification, stageAborted, maximumKinesisRetryRate,
+		ohaWarmupSummaryPath: ohaWarmupSummaryPath ?? null, ohaWarmupEvidence,
+		topology: topology ?? null, processStartMode, targetConnectBaseUrl,
+	clientProtocol, streamsPerConnection, loadBalancerKind, targetProtocolVersion,
+	referenceBinaryS3Uri: referenceBinaryS3Uri ?? null, referenceBinarySha256: referenceBinarySha256 ?? null, randomSeed,
+	directTarget, directCollectors, startEpoch,
+	    startedAt, measurementStartedAt, measurementEndedAt, measurementStartEpochs, expectedMeasurementStartEpoch, measurementStartSynchronized,
+		ohaNodeStartEpochs, ohaNodeStartSkewSeconds, endedAt, traceCapacityPreflight,
+		generators, aggregate, ohaProcessCount, physicalConnectionFraction, traceDrops, snapshotKinesisCounterDeltas, kinesisCounterDeltas,
+		kinesisSuccesses, kinesisRetries, kinesisRecordAttempts, kinesisRetryRate, finalAckAccounting, telemetryDurationSeconds,
+	        telemetryResult, proxyTelemetryResult, safetyMonitorResult, safetyMonitorSummary,
+		scoredCollectorSummaryResult, scoredProxySummaryResult, recoveryResult, checks, safetyPassed, outcomeClassification,
+		automaticRetryAllowed: false,
+    stopReason: safetyPassed ? null : Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
+	evidence: { stageDir, collectorPrefix, generatorPrefix, albAccessLogPrefix,
+		collectorScoredSummary: unscoredWarmup ? null : join(stageDir, 'collector-telemetry-scored-summary.json'),
+		proxyScoredSummary: topology === 'T3' ? join(stageDir, 'proxy-telemetry-scored-summary.json') : null,
+		safetyMonitorSummary: liveSafetyRequired ? join(stageDir, 'safety-monitor', 'summary.json') : null,
+		finalAckAccounting: alignedFinalAckAccounting ? join(stageDir, 'final-ack-accounting.json') : null },
+};
+writeJson(join(stageDir, 'stage-summary.json'), result);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!safetyPassed) process.exitCode = 2;
+} finally {
+	if (directTarget && !directAccessRevoked) {
+		runNodeStatus('configure-direct-target-access.mjs', ['--run-id', runId, '--action', 'revoke', '--output', join(stageDir, 'direct-access-emergency-revoke.json')]);
+		runNodeStatus('configure-direct-target-access.mjs', ['--run-id', runId, '--action', 'verify-absent', '--output', join(stageDir, 'direct-access-emergency-verify-absent.json')]);
+	}
+}
+
+function aggregateLoad(summaries, offeredRps, configuredConnections, directory) {
+    const sum = (field) => summaries.reduce((total, item) => total + (item[field] ?? 0), 0);
+    const attempted = sum('attemptedRequests');
+    const transportErrors = sum('transportErrors');
+	const serviceHistogram = driver === 'reference' ? mergeFixedHistograms(summaries.flatMap((item) => item.service_latency_histograms ?? [])) : null;
+	const scheduledHistogram = driver === 'reference' ? mergeFixedHistograms(summaries.flatMap((item) => item.scheduled_latency_histograms ?? [])) : null;
+	const workers = driver === 'oha'
+		? summaries.flatMap((item, nodeIndex) => (item.processes ?? []).map((process) => ({
+			node: `node-${String(nodeIndex + 1).padStart(2, '0')}`, process: process.processId,
+			p50Ms: process.latencyCorrectedMs?.p50, p95Ms: process.latencyCorrectedMs?.p95, p99Ms: process.latencyCorrectedMs?.p99,
+		})))
+		: summaries.flatMap((item) => item.worker_service_latency ?? []);
+	const serviceLatencyMs = serviceHistogram ? histogramLatencyMs(serviceHistogram) : null;
+	const scheduledLatencyMs = scheduledHistogram ? histogramLatencyMs(scheduledHistogram) : null;
+	const warmup = {
+		expectedRequests: summaries.reduce((total, item) => total + (item.warmup?.expectedRequests ?? 0), 0),
+		completedRequests: summaries.reduce((total, item) => total + (item.warmup?.completedRequests ?? 0), 0),
+		http202: summaries.reduce((total, item) => total + (item.warmup?.http202 ?? 0), 0),
+		errors: summaries.reduce((total, item) => total + (item.warmup?.errors ?? 0), 0),
+		traceDropped: summaries.reduce((total, item) => total + (item.warmup?.traceDropped ?? 0), 0),
+		hiddenRetries: summaries.reduce((total, item) => total + (item.warmup?.hiddenRetries ?? 0), 0),
+		protocolErrors: summaries.reduce((total, item) => total + (item.warmup?.protocolErrors ?? 0), 0),
+		valid: summaries.every((item) => item.warmup?.valid !== false),
+	};
+    return {
+        offeredRps, configuredConnections, actualRps: driver === 'reference' ? sum('achieved_rps') : sum('actualRps'), completedRequests: sum('completedRequests'), attemptedRequests: attempted,
+        transportErrors, transportErrorRate: attempted === 0 ? 1 : transportErrors / attempted,
+		http202: sum('http202'), http429: sum('http429'), http5xx: sum('http5xx'), warmup,
+		totalHttp202IncludingWarmup: sum('http202') + warmup.http202,
+		measurementMethod: driver === 'reference' ? 'fleet-pooled-fixed-histogram-dispatch-to-final-ack' :
+			'worst-of-16-oha-process-latency-corrected-quantiles',
+        latencyMs: serviceLatencyMs ?? { p50: Math.max(...summaries.map((item) => item.latencyMs.p50)), p95: Math.max(...summaries.map((item) => item.latencyMs.p95)), p99: Math.max(...summaries.map((item) => item.latencyMs.p99)) },
+		serviceLatencyMs, scheduledLatencyMs,
+		worstWorkerServiceP95Ms: workers.length === 0 ? null : Math.max(...workers.map((item) => item.p95Ms)),
+		workerServiceLatency: workers,
+		serviceLatencyHistogram: serviceHistogram,
+		scheduledLatencyHistogram: scheduledHistogram,
+        firstByteMs: { p95: Math.max(...summaries.map((item) => item.firstByteMs.p95)), p99: Math.max(...summaries.map((item) => item.firstByteMs.p99)) },
+		maxEstablished: driver === 'reference' ? sum('connection_establishment_count') : summaries.reduce((total, item) => total + item.connectionObservation.maxOhaEstablished, 0),
+		maxSynSent: Math.max(...summaries.map((_, index) => maxTsvColumn(join(directory, 'load', `node-${String(index + 1).padStart(2, '0')}`, driver === 'reference' ? 'host-250ms.tsv' : 'load-generator-telemetry.tsv'), driver === 'reference' ? 'syn_sent' : 'oha_syn_sent'))),
+		maxTimeWait: Math.max(...summaries.map((_, index) => maxTsvColumn(join(directory, 'load', `node-${String(index + 1).padStart(2, '0')}`, driver === 'reference' ? 'host-250ms.tsv' : 'load-generator-telemetry.tsv'), driver === 'reference' ? 'time_wait' : 'tcp_tw'))),
+    };
+}
+
+function maxTsvColumn(path, field) {
+	const lines = readFileSync(path, 'utf8').trim().split('\n');
+	const header = lines.shift()?.split('\t') ?? [];
+	const index = header.indexOf(field);
+	if (index < 0) throw new Error(`missing ${field} in ${path}`);
+	return Math.max(0, ...lines.map((line) => Number(line.split('\t')[index]) || 0));
+}
+
+function validateCompletedOhaArtifacts(directory, expectedStartEpoch, expectedDurationSeconds, expectedGeneratorCount, expectedCollectorCount, requireProxy, allowAborted = false) {
+    const collectorStart = json(join(directory, 'collector-telemetry', 'collection-start.json'));
+    const collectorComplete = json(join(directory, 'collector-telemetry', 'collection-complete.json'));
+    const nodeSummaries = Array.from({ length: expectedGeneratorCount }, (_, index) =>
+        json(join(directory, 'load', `node-${String(index + 1).padStart(2, '0')}`, 'oha-summary.json')));
+    const protocolChecks = Array.from({ length: expectedGeneratorCount }, (_, index) =>
+        json(join(directory, 'load', `node-${String(index + 1).padStart(2, '0')}`, 'protocol-correctness.json')));
+    const proxySummary = requireProxy ? json(join(directory, 'proxy-telemetry', 'summary.json')) : null;
+    const checks = {
+        collectorStartIdentity: collectorStart.startEpoch === expectedStartEpoch && collectorStart.durationSeconds === expectedDurationSeconds,
+        collectorCollectionComplete: collectorComplete.passed === true && collectorComplete.startEpoch === expectedStartEpoch &&
+            collectorComplete.durationSeconds === expectedDurationSeconds && collectorComplete.instanceIds?.length === expectedCollectorCount,
+        exactGeneratorSummaries: nodeSummaries.length === expectedGeneratorCount && nodeSummaries.every((summary) =>
+            summary.startEpoch === expectedStartEpoch && summary.exitCode === 0 && Number.isFinite(summary.actualRps) &&
+            Number.isFinite(summary.latencyMs?.p95) && summary.processesPerNode === 2 && summary.processes?.length === 2 &&
+            summary.processes.every((process) => process.exitCode === 0)),
+        protocolChecksPassed: protocolChecks.length === expectedGeneratorCount && protocolChecks.every((item) => item.passed === true),
+        proxyCollectionComplete: !requireProxy || (proxySummary?.startEpoch === expectedStartEpoch &&
+            proxySummary.durationSeconds === expectedDurationSeconds && proxySummary.results?.length === 2 &&
+            (proxySummary.passed === true || (allowAborted && proxySummary.results.every((item) => item.runtimeEvidencePresent === true &&
+                Object.values(item.sampleCounts ?? {}).every((count) => count > 0))))),
+    };
+    return { verifiedAt: new Date().toISOString(), resumed: true, expectedStartEpoch, expectedDurationSeconds,
+        expectedGeneratorCount, expectedCollectorCount, requireProxy, allowAborted, checks, passed: Object.values(checks).every(Boolean) };
+}
+
+function collectorTelemetryComplete(directory, expectedSeconds, expectedCollectorCount) {
+    for (let index = 1; index <= expectedCollectorCount; index += 1) {
+        const collector = join(directory, 'collector-telemetry', `collector-${String(index).padStart(2, '0')}`);
+        const compressed = join(collector, 'debug-vars.ndjson.gz');
+        const content = existsSync(compressed)
+            ? gunzipSync(readFileSync(compressed)).toString('utf8')
+            : readFileSync(join(collector, 'debug-vars.ndjson'), 'utf8');
+        const lines = content.trim().split('\n').filter(Boolean);
+        if (lines.length < expectedSeconds || lines.some((line) => !JSON.parse(line).snapshot)) return false;
+    }
+    return true;
+}
+
+function generatorInstances() {
+    const instances = awsJson(['ec2', 'describe-instances', '--region', REGION, '--filters',
+        'Name=tag:Name,Values=perf-phase1-loop-ad-load-generator-2a,perf-phase1-loop-ad-load-generator-2c', 'Name=instance-state-name,Values=running',
+        '--query', 'Reservations[].Instances[].{instanceId:InstanceId,availabilityZone:Placement.AvailabilityZone,privateIp:PrivateIpAddress}']);
+    return instances.toSorted((a, b) => a.availabilityZone.localeCompare(b.availabilityZone) || a.instanceId.localeCompare(b.instanceId));
+}
+
+function collectorInstances() {
+	const instances = awsJson(['ec2', 'describe-instances', '--region', REGION, '--filters',
+		'Name=tag:Name,Values=perf-phase1-loop-ad-collector', 'Name=instance-state-name,Values=running',
+		'--query', 'Reservations[].Instances[].{instanceId:InstanceId,availabilityZone:Placement.AvailabilityZone,privateIp:PrivateIpAddress}']);
+	if (instances.length !== 4) throw new Error(`expected four direct collectors, found ${instances.length}`);
+	return instances.toSorted((a,b)=>a.availabilityZone.localeCompare(b.availabilityZone)||a.instanceId.localeCompare(b.instanceId));
+}
+
+function protocolStackOutputs() {
+    const stack = awsJson(['cloudformation', 'describe-stacks', '--region', REGION,
+        '--stack-name', connectionPathMode ? 'LoopAdPerfPhase1KinesisConnectionPathStack' : 'LoopAdPerfPhase1KinesisProtocolCrossoverStack']).Stacks?.[0];
+    if (!stack || !['CREATE_COMPLETE', 'UPDATE_COMPLETE'].includes(stack.StackStatus)) throw new Error('protocol stack is not stable');
+    return Object.fromEntries((stack.Outputs ?? []).map((item) => [item.OutputKey, item.OutputValue]));
+}
+
+function validateConnectionPathIdentity(outputs) {
+    const identities = {
+        T0: { dns: outputs.Phase1ConnectionPathAlbDnsName, path: '/__generator_control', kind: 'alb', targetProtocol: 'HTTP2' },
+        T1: { dns: outputs.Phase1ConnectionPathAlbDnsName, path: '/events', kind: 'alb', targetProtocol: 'HTTP2' },
+        T2: { dns: outputs.Phase1ConnectionPathDirectNlbDnsName, path: '/events', kind: 'nlb', targetProtocol: 'TCP' },
+        T3: { dns: outputs.Phase1ConnectionPathProxyNlbDnsName, path: targetPath, kind: 'nlb', targetProtocol: 'TCP' },
+    };
+    const expected = identities[topology];
+    const actualDns = targetConnectBaseUrl.slice('https://'.length);
+    if (expected.dns !== actualDns || expected.path !== targetPath || expected.kind !== loadBalancerKind ||
+        expected.targetProtocol !== targetProtocolVersion || clientProtocol !== 'h2' || streamsPerConnection !== 1) {
+        throw new Error('stage connection-path identity does not match deployed stack outputs');
+    }
+}
+
+function connectionPathMetricIdentity(outputs) {
+    if (topology === 'T0' || topology === 'T1') return {
+        loadBalancerName: 'perf-p1-conn-alb', loadBalancerKind: 'alb', targetGroupArn: outputs.Phase1ConnectionPathAlbTargetGroupArn,
+    };
+    if (topology === 'T2') return {
+        loadBalancerName: 'perf-p1-conn-direct', loadBalancerKind: 'nlb', targetGroupArn: outputs.Phase1ConnectionPathDirectTargetGroupArn,
+    };
+    return { loadBalancerName: 'perf-p1-conn-proxy', loadBalancerKind: 'nlb', targetGroupArn: outputs.Phase1ConnectionPathProxyTargetGroupArn };
+}
+
+function spawnLogged(command, args, outputBase) {
+    mkdirSync(dirname(outputBase), { recursive: true });
+    const stdoutFd = openSync(`${outputBase}.stdout`, 'w');
+    const stderrFd = openSync(`${outputBase}.stderr`, 'w');
+    const child = spawn(command, args, { stdio: ['ignore', stdoutFd, stderrFd] });
+    return new Promise((resolve) => child.on('close', (code, signal) => { closeSync(stdoutFd); closeSync(stderrFd); resolve({ code, signal }); }));
+}
+function runNode(script, args) { execFileSync('node', [join(scripts, script), ...args], { stdio: 'inherit' }); }
+function runNodeStatus(script, args) {
+	const result = spawnSync('node', [join(scripts, script), ...args], { stdio: 'inherit' });
+	return { code: result.status, signal: result.signal, error: result.error?.message ?? null };
+}
+function awsJson(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })); }
+function isAllowedTargetPath(value) { return value === '/events' || value === '/__generator_control' || value === '/__proxy_control' || value === '/__collector_control' || value === '/__decode_control' || /^\/__delay_control\?delay=(?:0|50|100|200|300)$/.test(value) || /^\/__batch_control\?ack_delay=(?:0|20|50)$/.test(value); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function integerOption(name, fallback) { const raw = optionValue(name); if (raw === undefined) return fallback; const value = Number(raw); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive`); return value; }
+function numberOption(name, fallback, minimum, maximum) { const raw = optionValue(name); if (raw === undefined) return fallback; const value = Number(raw); if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error(`${name} is out of range`); return value; }

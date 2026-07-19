@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import {
+    analyzeCorrectness,
+    buildEvents,
+    curlClientProtocolOption,
+    hashKey,
+    selectEventIds,
+    validatedClientProtocol,
+    validatedTargetUrl,
+} from './verify-actual-kinesis-correctness.mjs';
+
+const shard = {
+    ShardId: 'shardId-000000000000',
+    HashKeyRange: {
+        StartingHashKey: '0',
+        EndingHashKey: ((1n << 128n) - 1n).toString(),
+    },
+    SequenceNumberRange: { StartingSequenceNumber: '1' },
+};
+
+test('target URL accepts regional ALB and NLB DNS roots only', () => {
+    assert.equal(
+        validatedTargetUrl('https://internal-example.ap-northeast-2.elb.amazonaws.com'),
+        'https://internal-example.ap-northeast-2.elb.amazonaws.com',
+    );
+    assert.equal(
+        validatedTargetUrl('https://example.elb.ap-northeast-2.amazonaws.com'),
+        'https://example.elb.ap-northeast-2.amazonaws.com',
+    );
+    assert.throws(() => validatedTargetUrl('https://example.com'));
+    assert.throws(() => validatedTargetUrl('https://example.elb.ap-northeast-2.amazonaws.com/events'));
+});
+
+test('correctness curl fails closed to the requested HTTP version', () => {
+    assert.equal(validatedClientProtocol('h3'), 'h3');
+    assert.equal(curlClientProtocolOption('h1'), '--http1.1 ');
+    assert.equal(curlClientProtocolOption('h2'), '--http2 ');
+    assert.equal(curlClientProtocolOption('h3'), '--http3-only ');
+    assert.throws(() => validatedClientProtocol('quic-auto'));
+});
+
+test('HTTP/3 correctness uses the pinned reference driver and proves negotiated h3', () => {
+    const source = readFileSync(new URL('./verify-actual-kinesis-correctness.mjs', import.meta.url), 'utf8');
+    assert.match(source, /HTTP\/3 correctness requires one regular event and an immutable reference driver/);
+    assert.match(source, /--protocol h3/);
+    assert.match(source, /\.protocol == "HTTP\/3\.0" and \.negotiated_protocol == "h3"/);
+    assert.match(source, /referenceBinarySha256:\$referenceBinarySha256/);
+});
+
+test('task replacement timeout covers NLB deregistration and ECS replacement', () => {
+    const source = readFileSync(new URL('./verify-actual-kinesis-correctness.mjs', import.meta.url), 'utf8');
+    assert.match(source, /TASK_REPLACEMENT_TIMEOUT_MS = 240_000/);
+    assert.match(source, /Date\.now\(\) \+ TASK_REPLACEMENT_TIMEOUT_MS/);
+});
+
+test('selectEventIds maps every key inside the selected shard', () => {
+    const narrowShard = {
+        ...shard,
+        HashKeyRange: {
+            StartingHashKey: '0',
+            EndingHashKey: ((1n << 124n) - 1n).toString(),
+        },
+    };
+    const ids = selectEventIds('run_candidate', 8, narrowShard);
+    assert.equal(ids.length, 8);
+    for (const id of ids) {
+        assert.ok(hashKey(id) >= 0n);
+        assert.ok(hashKey(id) <= BigInt(narrowShard.HashKeyRange.EndingHashKey));
+    }
+});
+
+test('buildEvents preserves event id as partition key and unique original bytes', () => {
+    const events = buildEvents({
+        runId: 'run_20260712_130000_correctness',
+        candidate: 'go-batch',
+        regularCount: 2,
+        shutdownCount: 2,
+        shard,
+    });
+    assert.equal(events.length, 4);
+    assert.equal(new Set(events.map((event) => event.eventId)).size, 4);
+    for (const event of events) {
+        assert.equal(event.partitionKey, event.eventId);
+        assert.equal(Buffer.byteLength(event.body), event.bodyBytes);
+        const parsed = JSON.parse(event.body);
+        assert.equal(parsed.event_id, event.eventId);
+        assert.equal(parsed.source, 'browser_sdk');
+    }
+});
+
+test('analyzeCorrectness passes exact one-record ACK and shutdown evidence', () => {
+    const events = buildEvents({
+        runId: 'run_20260712_130000_correctness',
+        candidate: 'go-sync',
+        regularCount: 1,
+        shutdownCount: 1,
+        shard,
+    });
+    const requests = events.map((event, index) => ({
+        eventId: event.eventId,
+        status: 202,
+        completedEpochMs: 2_000 + index,
+    }));
+    const records = events.map((event, index) => ({
+        eventId: event.eventId,
+        partitionKey: event.partitionKey,
+        bodySha256: event.bodySha256,
+        bodyBytes: event.bodyBytes,
+        approximateArrivalEpochMs: 1_000 + index,
+    }));
+    const summary = analyzeCorrectness({ events, requests, records, candidate: 'go-sync' });
+    assert.equal(summary.passed, true);
+    assert.equal(summary.aggregationDisabled, true);
+    assert.equal(summary.shutdown.flushObserved, true);
+});
+
+test('analyzeCorrectness fails loss, duplicate, bytes, key, and pre-arrival HTTP success', () => {
+    const events = buildEvents({
+        runId: 'run_20260712_130000_correctness',
+        candidate: 'java-kpl',
+        regularCount: 1,
+        shutdownCount: 1,
+        shard,
+    });
+    const requests = events.map((event) => ({ eventId: event.eventId, status: 202, completedEpochMs: 1_000 }));
+    const records = [
+        {
+            eventId: events[0].eventId,
+            partitionKey: 'wrong',
+            bodySha256: 'wrong',
+            bodyBytes: 1,
+            approximateArrivalEpochMs: 2_000,
+        },
+        {
+            eventId: events[0].eventId,
+            partitionKey: 'wrong',
+            bodySha256: 'wrong',
+            bodyBytes: 1,
+            approximateArrivalEpochMs: 2_000,
+        },
+    ];
+    const summary = analyzeCorrectness({ events, requests, records, candidate: 'java-kpl' });
+    assert.equal(summary.passed, false);
+    assert.deepEqual(summary.missingAcceptedEvents, [events[1].eventId]);
+    assert.deepEqual(summary.duplicateEventIds, [events[0].eventId]);
+    assert.deepEqual(summary.partitionKeyMismatches, [events[0].eventId]);
+    assert.deepEqual(summary.bodyMismatches, [events[0].eventId]);
+    assert.deepEqual(summary.http202BeforeApproximateArrival, [events[0].eventId]);
+});

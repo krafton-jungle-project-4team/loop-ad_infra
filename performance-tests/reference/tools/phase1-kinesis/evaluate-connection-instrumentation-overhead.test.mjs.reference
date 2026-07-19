@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateConnectionInstrumentationOverhead } from './evaluate-connection-instrumentation-overhead.mjs';
+
+test('uses independent benchmark repetitions and enforces the two-percent limit', () => {
+    const lines = [100, 101, 99, 100, 100].flatMap((off, index) => [
+        `BenchmarkCollectorControlConnectionInstrumentation/off-8 ${index + 1} ${off} ns/op`,
+        `BenchmarkCollectorControlConnectionInstrumentation/on-8 ${index + 1} ${off + 1} ns/op`,
+    ]).join('\n');
+    const result = evaluateConnectionInstrumentationOverhead(lines);
+    assert.equal(result.passed, true);
+    assert.ok(Math.abs(result.overheadPercent - 1) < 1e-9);
+});

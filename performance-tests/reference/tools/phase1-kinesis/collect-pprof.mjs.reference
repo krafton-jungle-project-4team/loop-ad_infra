@@ -1,0 +1,198 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import http from 'node:http';
+import net from 'node:net';
+
+const REGION = 'ap-northeast-2';
+const expectedCount = requiredInteger('--expected-count');
+const mode = requiredOption('--mode');
+const outputDir = requiredOption('--output-dir');
+const cpuSeconds = integerOption('--seconds', 30);
+if (!['snapshot', 'cpu'].includes(mode)) throw new Error('--mode must be snapshot or cpu');
+if (mode === 'cpu' && (cpuSeconds < 1 || cpuSeconds > 60)) throw new Error('--seconds must be from 1 through 60');
+
+const instances = awsJson([
+    'ec2', 'describe-instances', '--region', REGION,
+    '--filters',
+    'Name=tag:Name,Values=perf-phase1-loop-ad-collector',
+    'Name=instance-state-name,Values=running',
+    '--query', 'Reservations[].Instances[].InstanceId',
+]).sort();
+if (instances.length !== expectedCount) {
+    throw new Error(`expected ${expectedCount} collector instances, found ${instances.length}`);
+}
+
+mkdirSync(outputDir, { recursive: true });
+const sessions = [];
+
+try {
+    for (const [index, instanceId] of instances.entries()) {
+        const port = await availablePort();
+        const hostLabel = `collector-${(index + 1).toString().padStart(2, '0')}`;
+        const output = [];
+        const errorOutput = [];
+        const child = spawn('aws', [
+            'ssm', 'start-session', '--region', REGION,
+            '--target', instanceId,
+            '--document-name', 'AWS-StartPortForwardingSession',
+            '--parameters', JSON.stringify({ portNumber: ['8080'], localPortNumber: [String(port)] }),
+        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', (chunk) => output.push(chunk));
+        child.stderr.on('data', (chunk) => errorOutput.push(chunk));
+        sessions.push({ child, instanceId, hostLabel, port, output, errorOutput });
+    }
+
+    await Promise.all(sessions.map((session) => waitForHealth(session)));
+    const collectors = await Promise.all(sessions.map((session) => collect(session)));
+    const result = {
+        collectedAt: new Date().toISOString(),
+        region: REGION,
+        mode,
+        cpuSeconds: mode === 'cpu' ? cpuSeconds : null,
+        collectorCount: collectors.length,
+        collectors,
+        complete: collectors.length === expectedCount && collectors.every((collector) => collector.artifacts.every((artifact) => artifact.bytes > 0)),
+    };
+    writeFileSync(`${outputDir}/index.json`, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (!result.complete) process.exitCode = 2;
+} finally {
+    await Promise.all(sessions.map(stopSession));
+}
+
+async function collect(session) {
+    const profiles = mode === 'cpu'
+        ? [{ name: 'cpu', path: `/debug/pprof/profile?seconds=${cpuSeconds}` }]
+        : [
+            { name: 'allocs', path: '/debug/pprof/allocs?debug=0' },
+            { name: 'heap', path: '/debug/pprof/heap?debug=0' },
+            { name: 'goroutine', path: '/debug/pprof/goroutine?debug=0' },
+            { name: 'block', path: '/debug/pprof/block?debug=0' },
+            { name: 'mutex', path: '/debug/pprof/mutex?debug=0' },
+        ];
+    const artifacts = [];
+    for (const profile of profiles) {
+        const body = await get(session.port, profile.path, mode === 'cpu' ? (cpuSeconds + 15) * 1_000 : 15_000);
+        const file = `${session.hostLabel}-${profile.name}.pb.gz`;
+        writeFileSync(`${outputDir}/${file}`, body);
+        artifacts.push({
+            profile: profile.name,
+            file,
+            bytes: body.length,
+            sha256: createHash('sha256').update(body).digest('hex'),
+        });
+    }
+    return {
+        hostLabel: session.hostLabel,
+        instanceId: session.instanceId,
+        artifacts,
+    };
+}
+
+async function waitForHealth(session) {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+        if (session.child.exitCode !== null) {
+            throw new Error(`SSM session exited for ${session.instanceId}: ${Buffer.concat(session.errorOutput).toString('utf8')}`);
+        }
+        try {
+            const body = await get(session.port, '/health', 1_000);
+            if (body.toString('utf8') === 'ok\n') return;
+        } catch {
+            // The Session Manager plugin needs a short startup interval.
+        }
+        await sleep(250);
+    }
+    throw new Error(`SSM port forwarding did not become ready for ${session.instanceId}`);
+}
+
+function get(port, path, timeoutMilliseconds) {
+    return new Promise((resolve, reject) => {
+        const request = http.get({ host: '127.0.0.1', port, path, timeout: timeoutMilliseconds }, (response) => {
+            const chunks = [];
+            response.on('data', (chunk) => chunks.push(chunk));
+            response.on('end', () => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`GET ${path} returned ${response.statusCode}`));
+                    return;
+                }
+                resolve(Buffer.concat(chunks));
+            });
+        });
+        request.on('timeout', () => request.destroy(new Error(`GET ${path} timed out`)));
+        request.on('error', reject);
+    });
+}
+
+function availablePort() {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.unref();
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            server.close(() => resolve(address.port));
+        });
+    });
+}
+
+async function stopSession(session) {
+    const sessionLog = Buffer.concat([...session.output, ...session.errorOutput]);
+    const sessionId = sessionLog.toString('utf8').match(/Starting session with SessionId:\s*([a-zA-Z0-9_-]+)/)?.[1];
+    if (sessionId) {
+        try {
+            execFileSync('aws', ['ssm', 'terminate-session', '--region', REGION, '--session-id', sessionId, '--no-cli-pager'], {
+                stdio: 'ignore',
+            });
+        } catch {
+            // A plugin disconnect may have already closed the exact session.
+        }
+    }
+    if (session.child.exitCode === null) {
+        session.child.kill('SIGTERM');
+        await Promise.race([
+            new Promise((resolve) => session.child.once('exit', resolve)),
+            sleep(2_000).then(() => {
+                if (session.child.exitCode === null) session.child.kill('SIGKILL');
+            }),
+        ]);
+    }
+    writeFileSync(`${outputDir}/${session.hostLabel}-ssm-session.log`, sessionLog);
+    session.child.stdout.destroy();
+    session.child.stderr.destroy();
+    session.child.unref();
+}
+
+function awsJson(args) {
+    return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], {
+        encoding: 'utf8',
+        maxBuffer: 8 * 1024 * 1024,
+    }));
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+    return value;
+}
+
+function integerOption(name, defaultValue) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? Number(process.argv[index + 1]) : defaultValue;
+    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
+    return value;
+}
+
+function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

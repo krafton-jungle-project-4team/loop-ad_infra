@@ -1,0 +1,169 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
+
+const runDir = requiredOption('--run-dir');
+const status = requiredOption('--status');
+const nextAction = optionValue('--next-action') ?? 'Review this run before selecting the next single hypothesis.';
+const errorSummary = optionValue('--error-summary');
+if (!['passed', 'failed', 'aborted', 'inconclusive', 'blocked'].includes(status)) throw new Error('invalid final run status');
+
+const runPath = join(runDir, 'run.json');
+const run = readOptionalJson(runPath) ?? {};
+const preflight = readOptionalJson(join(runDir, 'preflight-before-deploy.json'));
+const image = readOptionalJson(join(runDir, 'image.json'));
+const deployed = readOptionalJson(join(runDir, 'deployed-state.json'));
+const metrics = readOptionalJson(join(runDir, 'metrics-summary.json')) ??
+    readOptionalJson(join(runDir, 'comparison-summary.json'));
+const cleanup = readOptionalJson(join(runDir, 'cleanup-verification.json'));
+const costUpper = readOptionalJson(join(runDir, 'cost-upper-bound.json'));
+const costRealtime = readOptionalJson(join(runDir, 'cost-realtime.json'));
+const costExplorer = readOptionalJson(join(runDir, 'cost-explorer.json'));
+const sharedStreamRetained = cleanup?.retainSharedStream === true;
+
+const finalRun = {
+    ...run,
+    runId: run.runId ?? basename(runDir),
+    status,
+    finishedAt: new Date().toISOString(),
+    collectorSha: image?.collectorSha ?? run.collectorSha ?? null,
+    imageTag: image?.imageTag ?? run.imageTag ?? null,
+    imageDigest: image?.imageDigest ?? run.imageDigest ?? null,
+    infraSha: run.infraSha ?? gitSha(),
+    quota: preflight?.standardOnDemandQuota ?? run.quota ?? null,
+    result: metrics ?? null,
+    cost: {
+        preRunUpperBound: costUpper ?? null,
+        realtimeEstimate: costRealtime ?? null,
+        costExplorer: costExplorer ?? null,
+    },
+    cleanup: cleanup ?? { passed: false, reason: 'cleanup evidence missing' },
+    errorSummary: errorSummary ?? null,
+    nextAction,
+};
+writeFileSync(runPath, `${JSON.stringify(finalRun, null, 2)}\n`, 'utf8');
+
+writeFileSync(join(runDir, 'infra.md'), `# ${finalRun.runId} infrastructure
+
+- Region: \`ap-northeast-2\`
+- Comparison session: \`${finalRun.sessionId ?? 'not recorded'}\`
+- Candidate: \`${finalRun.candidate ?? 'not recorded'}\`
+- Run stack: \`LoopAdPerfPhase1KinesisStack\`
+- Shared stream stack: \`LoopAdPerfPhase1KinesisStreamStack\`
+- Collector: ${finalRun.collectorCount ?? 'unknown'} x \`c6i.xlarge\`
+- Load generator: 1 x \`c6in.large\`
+- Kinesis: provisioned, 80 shards, 24-hour retention, AWS managed encryption; ${sharedStreamRetained ? 'retained for the next consecutive run' : 'removed at final session cleanup'}
+- Collector SHA: \`${finalRun.collectorSha ?? 'not prepared'}\`
+- Image tag: \`${finalRun.imageTag ?? 'not prepared'}\`
+- Task image digest: \`${finalRun.imageDigest ?? 'not prepared'}\`
+- Infra SHA: \`${finalRun.infraSha}\`
+- Applied Standard quota: ${preflight?.standardOnDemandQuota?.appliedVcpus ?? 'not collected'} vCPU
+- Existing Standard usage before deploy: ${preflight?.standardOnDemandQuota?.existingRunningOrPendingVcpus ?? 'not collected'} vCPU
+- Live max safe collector count: ${preflight?.standardOnDemandQuota?.maxSafeCollectorCount ?? 'not collected'}
+- Deployment ready: ${deployed?.ready ?? false}
+
+Account identifiers and unrelated account-wide inventory are intentionally omitted.
+`, 'utf8');
+
+writeFileSync(join(runDir, 'commands.md'), `# ${finalRun.runId} command record
+
+Commands were executed by the checked-in Phase 1 helpers with explicit region and exact stack name.
+
+\`\`\`text
+node performance-tests/phase1-kinesis/preflight.mjs --phase before-deploy --session-id ${finalRun.sessionId ?? '<session>'} --candidate ${finalRun.candidate ?? '<candidate>'} ...
+node performance-tests/phase1-kinesis/lookup-prices.mjs ...
+node performance-tests/phase1-kinesis/calculate-cost.mjs ...
+performance-tests/phase1-kinesis/prepare-collector-image.sh
+npx cdk ... deploy LoopAdPerfPhase1KinesisStreamStack --require-approval never  # first run only
+npx cdk -c environment=perf-phase1-kinesis -c phase1SessionId=${finalRun.sessionId ?? '<session>'} -c phase1Candidate=${finalRun.candidate ?? '<candidate>'} -c phase1CollectorCount=${finalRun.collectorCount ?? '<count>'} -c phase1CollectorSha=<collector-sha> -c phase1CollectorImageDigest=<image-digest> -c phase1RunId=${finalRun.runId} diff LoopAdPerfPhase1KinesisStack --no-change-set
+npx cdk -c phase1KinesisMaxConnections=${finalRun.kinesisMaxConnections ?? '<connections>'} ... deploy LoopAdPerfPhase1KinesisStack --require-approval never
+npx cdk ... deploy LoopAdPerfPhase1KinesisStack --require-approval never
+node performance-tests/phase1-kinesis/verify-deployment.mjs ...
+node performance-tests/phase1-kinesis/invoke-oha.mjs ...
+node performance-tests/phase1-kinesis/collect-debug-vars.mjs ...
+node performance-tests/phase1-kinesis/collect-metrics.mjs ...
+node performance-tests/phase1-kinesis/collect-logs.mjs ...
+node performance-tests/phase1-kinesis/preflight.mjs --phase before-destroy ...
+npx cdk ... destroy LoopAdPerfPhase1KinesisStack --force
+node performance-tests/phase1-kinesis/verify-cleanup.mjs ...${sharedStreamRetained ? ' --retain-shared-stream' : ''}
+\`\`\`
+
+Raw account IDs, login tokens and registry passwords are not recorded.
+`, 'utf8');
+
+writeFileSync(join(runDir, 'report.md'), `# ${finalRun.runId} result
+
+## Hypothesis
+
+${finalRun.hypothesis ?? 'Hypothesis was not recorded.'}
+
+## Result
+
+- Verdict: **${status}**
+- Target: ${finalRun.targetRps ?? 'unknown'} RPS for ${finalRun.durationSeconds ?? 'unknown'} seconds
+- Actual: ${metrics?.actualRps ?? 'not measured'} RPS
+- HTTP 202: ${metrics?.requests?.http202 ?? 'not measured'}
+- HTTP 429: ${metrics?.requests?.http429 ?? 'not measured'}
+- p95: ${metrics?.latencyMs?.p95 ?? 'not measured'} ms
+- p99: ${metrics?.latencyMs?.p99 ?? 'not measured'} ms
+- Kinesis throttling: ${metrics?.kinesis?.writeProvisionedThroughputExceeded ?? 'not measured'}
+- Run-scoped cleanup passed: ${cleanup?.passed ?? false}
+- Shared Kinesis retained: ${sharedStreamRetained}
+
+${errorSummary ? `Failure detail: ${errorSummary}\n` : ''}
+## Decision
+
+${nextAction}
+`, 'utf8');
+
+writeFileSync(join(runDir, 'cost.md'), `# ${finalRun.runId} cost
+
+- Pre-run conservative upper bound: $${format(costUpper?.runUpperBoundUsd)}
+- Pre-run projected cumulative upper bound: $${format(costUpper?.projectedCumulativeUpperBoundUsd)}
+- Realtime modeled cost after measured wall time: $${format(costRealtime?.runUpperBoundUsd)}
+- Cost Explorer response state: ${costExplorer?.availability ?? 'not queried'}
+- Hard comparison limit: $20.00
+
+The upper-bound model includes EC2, ${costUpper?.inputs?.kinesisShardHoursUpperBound ?? 'recorded'} Kinesis shard-hours, payload units, ALB/LCU,
+gp3, public IPv4, detailed metrics, logs, metric API, ECR storage and one Cost Explorer call.
+`, 'utf8');
+
+const files = listFiles(runDir).filter((path) => !path.endsWith('/artifacts.md') && !path.endsWith('artifacts.md'));
+writeFileSync(join(runDir, 'artifacts.md'), `# ${finalRun.runId} artifacts
+
+${files.map((path) => `- \`${relative(runDir, path)}\` (${statSync(path).size} bytes)`).join('\n')}
+`, 'utf8');
+
+process.stdout.write(`${JSON.stringify({ runId: finalRun.runId, status, cleanupPassed: cleanup?.passed ?? false }, null, 2)}\n`);
+
+function listFiles(directory) {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory() ? listFiles(path) : [path];
+    }).sort();
+}
+
+function readOptionalJson(path) {
+    return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
+}
+
+function gitSha() {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+}
+
+function format(value) {
+    return typeof value === 'number' ? value.toFixed(6) : 'not available';
+}
+
+function requiredOption(name) {
+    const value = optionValue(name);
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function optionValue(name) {
+    const index = process.argv.indexOf(name);
+    return index >= 0 ? process.argv[index + 1] : undefined;
+}

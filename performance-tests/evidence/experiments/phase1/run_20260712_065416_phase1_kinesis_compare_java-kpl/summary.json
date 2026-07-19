@@ -1,0 +1,731 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_065416_phase1_kinesis_compare_java-kpl",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-12T06:54:16",
+  "purpose": "not_recorded",
+  "hypothesis": "Java KPL 1.x with aggregation disabled and collection enabled preserves the event contract and reduces Kinesis API calls at the fixed common 1,000 RPS load on one c6i.xlarge collector.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "correctnessPassed",
+      "value": true,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "cleanupPassed",
+      "value": true,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.appliedVcpus",
+      "value": 80,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.goalOwnedRunningOrPendingVcpus",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.ignoredNonStandardInstanceCount",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.loadGeneratorVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.safetyReserveVcpus",
+      "value": 2,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.collectorVcpusPerHost",
+      "value": 4,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.availableCollectorVcpus",
+      "value": 72,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "quota.maxSafeCollectorCount",
+      "value": 17,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 60,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitionCount",
+      "value": 10,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.actualRps",
+      "value": 999.6401127485158,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.acceptedRps",
+      "value": 999.9833333333333,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.status202",
+      "value": 59999,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.status429",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.latencyMs.p50",
+      "value": 21.184317,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.latencyMs.p95",
+      "value": 27.55804,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].http.latencyMs.p99",
+      "value": 51.853253,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].producer.recordsPerCall",
+      "value": 6.022182073672589,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].producer.callsPerAcceptedEvent",
+      "value": 0.16605276754612577,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].runtime.jvmGcCountDelta",
+      "value": 193,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].runtime.kplChildCpuNanoseconds",
+      "value": 23220000000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].kinesis.incomingRecords",
+      "value": 42628,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].alb.requests",
+      "value": 42621,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[0].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[0].sample_count",
+      "value": 1881,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[1].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[1].sample_count",
+      "value": 1881,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[2].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[2].sample_count",
+      "value": 1866,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[3].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[3].sample_count",
+      "value": 1866,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[4].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[4].sample_count",
+      "value": 1923,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[5].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[5].sample_count",
+      "value": 1923,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[6].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[6].sample_count",
+      "value": 1888,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[7].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[7].sample_count",
+      "value": 1942,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[8].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[8].sample_count",
+      "value": 1880,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[9].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[9].sample_count",
+      "value": 149997,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[10].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[10].sample_count",
+      "value": 1850,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[11].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[11].sample_count",
+      "value": 1868,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[12].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[12].sample_count",
+      "value": 1955,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[13].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[13].sample_count",
+      "value": 149997,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[14].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[14].sample_count",
+      "value": 1913,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[15].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[15].sample_count",
+      "value": 1838,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "result.repetitions[0].rawKplMetrics[16].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitionCount",
+      "value": 10,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].targetRps",
+      "value": 1000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.actualRps",
+      "value": 999.6401127485158,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.acceptedRps",
+      "value": 999.9833333333333,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status202",
+      "value": 59999,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status429",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p50",
+      "value": 21.184317,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p95",
+      "value": 27.55804,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p99",
+      "value": 51.853253,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].producer.recordsPerCall",
+      "value": 6.022182073672589,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].producer.callsPerAcceptedEvent",
+      "value": 0.16605276754612577,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].runtime.jvmGcCountDelta",
+      "value": 193,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].runtime.kplChildCpuNanoseconds",
+      "value": 23220000000,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].kinesis.incomingRecords",
+      "value": 42628,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].alb.requests",
+      "value": 42621,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[0].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[0].sample_count",
+      "value": 1881,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[1].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[1].sample_count",
+      "value": 1881,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[2].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[2].sample_count",
+      "value": 1866,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[3].duration_seconds",
+      "value": 303,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[3].sample_count",
+      "value": 1866,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[4].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[4].sample_count",
+      "value": 1923,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[5].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[5].sample_count",
+      "value": 1923,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[6].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[6].sample_count",
+      "value": 1888,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[7].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[7].sample_count",
+      "value": 1942,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[8].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[8].sample_count",
+      "value": 1880,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[9].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[9].sample_count",
+      "value": 149997,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].rawKplMetrics[10].duration_seconds",
+      "value": 304,
+      "source": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_065416_phase1_kinesis_compare_java-kpl"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/artifacts.md",
+      "bytes": 21509,
+      "sha256": "0f2db03955b0a9840a690f0f5cfe04b90729a08cb646ab6eeaa0bea458930abb"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/cleanup-verification.json",
+      "bytes": 1188,
+      "sha256": "9e27a3f08aa9a58aeac002c5fe29c1820d693a1bf291c1076874533defe6a9ef"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/commands.md",
+      "bytes": 1708,
+      "sha256": "694b4d1ee873798a36ec5737f63861507e67f3cd1ab97250a4bfdc1b05204758"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/correctness-summary.json",
+      "bytes": 996,
+      "sha256": "63c36d97c666ff7a9103e07eb8e9e303e037e161970a4dc933adafcba189e586"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/cost-explorer.json",
+      "bytes": 487,
+      "sha256": "1087d3e1b373631819509c580db13173de7c26e8083aaa560f94cc1cddbca24c"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/cost-realtime.json",
+      "bytes": 1596,
+      "sha256": "6b9e94a01e37026d8d69e391f2aa7703af9c2413d453635396b478ec8c3096e5"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/cost-upper-bound.json",
+      "bytes": 1600,
+      "sha256": "3532f1634217874919f19d7dbc8d088d9cbf20bf7be7765cd8f6ff158c094de7"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/cost.md",
+      "bytes": 487,
+      "sha256": "a4503f172704f0e454e954d48e8c489309a6f9ba2b015c26260407c14d3c1849"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/infra.md",
+      "bytes": 976,
+      "sha256": "b828831fa71087d82f6b19a1abe3fa46320e7e56ff04fcc1d245e3066d8131d6"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/metrics-summary.json",
+      "bytes": 1247220,
+      "sha256": "149a0964118904cd6026238a8b2da80890e491c7a9f80582448735d02fe3d5fa"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/report.md",
+      "bytes": 712,
+      "sha256": "2827915c75d3837a90ba94857678d3f3ead4dd13357e34ed0437660f351f2f81"
+    },
+    {
+      "path": "run_20260712_065416_phase1_kinesis_compare_java-kpl/run.json",
+      "bytes": 1346276,
+      "sha256": "4fe77548cfd0212aeaea7792ce8005c15b650aa959604f0d101db3849159207f"
+    }
+  ]
+}

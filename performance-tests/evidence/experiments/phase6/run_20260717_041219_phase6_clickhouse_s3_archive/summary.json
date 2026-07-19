@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_041219_phase6_clickhouse_s3_archive",
+  "phase": "phase6",
+  "category": "experiment",
+  "executedAt": "2026-07-17T04:12:19",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "aws-ec2",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "costStopUsd",
+      "value": "12",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "cleanupReserveUsd",
+      "value": "3",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "hardCapUsd",
+      "value": "15",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "startingGitStatusSha256",
+      "value": "019c455cfd7d18a0e5782b64446bbf2dc0fddf77cde07cc55a3442869dd45b8f",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "cleanupPassed",
+      "value": true,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed-before-worker-start",
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "sampleCount",
+      "value": 81,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "cpuP95Pct",
+      "value": 1.120797,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "cpuMaxPct",
+      "value": 2.67746,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "memoryP95Pct",
+      "value": 2.640453,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "memoryMaxPct",
+      "value": 2.696258,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "clickHouseMemoryLimitBytes",
+      "value": 5368709120,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "clickHouseRestartCount",
+      "value": 0,
+      "source": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "failed-before-archive",
+  "costStatus": "passed",
+  "cleanupStatus": "passed",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_041219_phase6_clickhouse_s3_archive"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/cleanup-verification.json",
+      "bytes": 1676,
+      "sha256": "cf5a3ddccdab04f2bd96256fb1abf814ae7f5787a0722a19b848f6640e14384c"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/commands.md",
+      "bytes": 1683,
+      "sha256": "6174bfcd84c73bbd32858b70522bb6e2f070539662b8c3ae517d8246d1fc484f"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/correctness-summary.json",
+      "bytes": 735,
+      "sha256": "752e46228d8bbbd536bde51ea11c3625e3ffa1bbd980adccdb580127dbcf4fd0"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/cost-upper-bound.json",
+      "bytes": 919,
+      "sha256": "c7d38a2ebee65e4460bc433c478d9413f2588409ffb1c8f3283bd3105d2542b0"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/infra.md",
+      "bytes": 2012,
+      "sha256": "117252883b95248f7520bdf5bcd2a1cd1d8021f34620c1980e8c1d64bc5955c1"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/metrics-summary.json",
+      "bytes": 554,
+      "sha256": "1a8e5cc468e2e92127790a3161f7d13252dab9e696c4b3ac4ba4e55ca53815e9"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/report.md",
+      "bytes": 1560,
+      "sha256": "c42d3838399f883a73e26f8df4dedc5b7487c95f9e839134c36c837f8ac790d2"
+    },
+    {
+      "path": "run_20260717_041219_phase6_clickhouse_s3_archive/run.json",
+      "bytes": 1708,
+      "sha256": "7702b68bc41f5c8fdd9471c4575ba9318383a38b135215789ddf6047e2c88162"
+    }
+  ]
+}

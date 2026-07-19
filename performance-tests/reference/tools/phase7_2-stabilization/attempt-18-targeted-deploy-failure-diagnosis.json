@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 18,
+  "attemptType": "aws-targeted-diagnostic",
+  "promotionEligible": false,
+  "runId": "run_20260719_071857_phase7_archive_diagnostic",
+  "sessionId": "phase7-archive-diagnostic-20260719T071857Z",
+  "diagnosedAt": "2026-07-19T07:42:44Z",
+  "firstFailingGate": "runtime-deploy",
+  "deploymentAttempts": 1,
+  "rawRunnerError": "cdk deploy LoopAdPerfPhase7ArchiveDiagnosticStack exited with status 1",
+  "rawAwsEvidence": {
+    "instanceId": "i-064156c58ac20f37d",
+    "instanceType": "r7g.2xlarge",
+    "amiId": "ami-000b332282fe987aa",
+    "launchTime": "2026-07-19T07:26:02Z",
+    "terminationTime": "2026-07-19T07:29:46Z",
+    "consoleOutputRetrievedAt": "2026-07-19T07:34:39Z",
+    "consoleExcerpt": [
+      "Cloud-init v. 22.2.2 running 'modules:final' at Sun, 19 Jul 2026 07:26:13 +0000.",
+      "cloud-init[2843]: Job for ecs.service canceled.",
+      "cloud-init[2843]: 2026-07-19 07:29:46,979 - cc_scripts_user.py[WARNING]: Failed to run module scripts-user.",
+      "cloud-init[2843]: Cloud-init v. 22.2.2 finished at Sun, 19 Jul 2026 07:29:47 +0000. Up 219.60 seconds."
+    ],
+    "ecsClusterFinalStatus": "INACTIVE",
+    "registeredContainerInstancesCount": 0,
+    "ecsTaskStartCount": 0,
+    "sanitizedCloudTrailTimeline": [
+      {
+        "eventId": "6cf374dd-0cfa-4a54-8420-3cdedb7cf70b",
+        "eventName": "CreateChangeSet",
+        "eventTime": "2026-07-19T07:23:07Z"
+      },
+      {
+        "eventId": "f871e50d-a1bc-423e-b3df-7207fc62ae9e",
+        "eventName": "ExecuteChangeSet",
+        "eventTime": "2026-07-19T07:23:18Z"
+      },
+      {
+        "eventId": "04619763-a4fa-4375-b44b-0160541b6909",
+        "eventName": "RunInstances",
+        "eventTime": "2026-07-19T07:26:03Z"
+      },
+      {
+        "eventId": "15383e97-2d5b-4889-8d34-1c91de7deb74",
+        "eventName": "TerminateInstances",
+        "eventTime": "2026-07-19T07:29:46Z"
+      },
+      {
+        "eventId": "ec7768be-d141-4dc1-830a-9769cf492a1e",
+        "eventName": "DeleteStack",
+        "eventTime": "2026-07-19T07:32:56Z"
+      }
+    ],
+    "cloudTrailPersistencePolicy": "Persist only allowlisted event IDs, names and timestamps. Do not persist raw CloudTrailEvent response payloads because STS events can contain temporary workload credential material."
+  },
+  "diagnosis": "The targeted-only EC2 user data called blocking `systemctl restart ecs` from cloud-init modules:final. That command never returned before CloudFormation rollback terminated the instance about 224 seconds after launch; the console then recorded `Job for ecs.service canceled` and scripts-user failure. Because the ECS agent never registered, the ClickHouse ECS service could not place a task and the one permitted runtime deploy rolled back.",
+  "confidence": "high",
+  "scope": {
+    "productionStrictStackAffected": false,
+    "reason": "The strict Phase 7 stack does not call `systemctl restart ecs` from cloud-init and already gates ECS services on ASG and exact capacity-provider registration readiness signals.",
+    "archiveFiveGiBFixEvaluated": false,
+    "seedAttemptsStarted": 0,
+    "archiveAttemptsStarted": 0,
+    "verifyAttemptsStarted": 0,
+    "sourceDropExecuted": false
+  },
+  "smallestFix": "Remove the blocking ECS restart from the targeted user data. Reuse the strict stack's two-stage readiness sequence: signal ASG host readiness only after the local ECS metadata endpoint is live, then signal a wait condition only after DescribeContainerInstances reports agentConnected=true, status=ACTIVE and the exact run-owned capacityProviderName. Make the targeted ClickHouse ECS service depend on that wait condition.",
+  "requiredRegression": [
+    "targeted user data does not contain `systemctl restart ecs`",
+    "targeted ASG has a 10-minute ResourceSignal CreationPolicy",
+    "targeted stack has one WaitCondition and one WaitConditionHandle",
+    "targeted service DependsOn the exact ASG, capacity-provider association and registration WaitCondition",
+    "targeted user data polls local ECS metadata and exact DescribeContainerInstances registration",
+    "decoded LaunchTemplate UserData remains at or below 15360 bytes"
+  ],
+  "evidence": {
+    "runtimeFailurePath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/failure.json",
+    "runtimeFailureSha256": "6a89c1202d57a896e9fc91d0360a9c48ec1814c3772fedcc2dc10da32178abf9",
+    "runtimeReportPath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/report.json",
+    "runtimeReportSha256": "9363c0497a5b433783555f3e64b4df62eb249e389923d3265a52102ef9f43836",
+    "initialCleanupPath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/cleanup-verification.json",
+    "initialCleanupSha256": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c",
+    "initialPostCleanupInventoryPath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-inventory-20260719T074000Z.json",
+    "initialPostCleanupInventorySha256": "9bc36deabb77489f7993a21bbf382d7995cc042ada3af075c2b2dd65a5d9e72e",
+    "finalCleanupPath": "performance-tests/run_20260719_071857_phase7_2_aws_targeted_diagnostic/post-cleanup-terminal-attempt-3.json",
+    "finalCleanupSha256": "9d37492ad60e68588b2e540f9db7047ab163818f8e31d3cb72e8a4f9761da8c9"
+  }
+}

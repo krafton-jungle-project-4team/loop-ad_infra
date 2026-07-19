@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260716_010529_haproxy_auto",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-16T01:05:29",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260716_010529_haproxy_auto"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260716_010529_haproxy_auto/cost-explorer-after-score.json",
+      "bytes": 1036,
+      "sha256": "7f55cac1f1ac50c101a2d6ab0c05c865813d820c57dc4915631bd56f3716d0e2"
+    },
+    {
+      "path": "run_20260716_010529_haproxy_auto/cost-gate-before-auto-update.json",
+      "bytes": 2483,
+      "sha256": "349c361cb33737f9e33df5948969df40bdb24c22b9fa803bef895ac216dbc37b"
+    }
+  ]
+}

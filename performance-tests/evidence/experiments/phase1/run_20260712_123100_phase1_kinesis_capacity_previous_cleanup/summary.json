@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup",
+  "phase": "phase1",
+  "category": "cleanup",
+  "executedAt": "2026-07-12T12:31:00",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup/cleanup-verification.json",
+      "bytes": 1136,
+      "sha256": "73e0121b2994160511e7fa17b9ce0a4cb539e235768ef9942c8d4bc8a3c94bfb"
+    },
+    {
+      "path": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup/report.md",
+      "bytes": 1381,
+      "sha256": "7d16e5f8a9d46a0a35be36b94db88ae0024f88194858b4da0c6f0cbbeb60099a"
+    }
+  ]
+}

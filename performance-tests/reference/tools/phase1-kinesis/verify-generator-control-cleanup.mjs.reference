@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+loadDotenv({ path: '.env', quiet: true });
+const REGION = 'ap-northeast-2';
+const sessionId = requiredOption('--session-id');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid session');
+const identity = aws(['sts', 'get-caller-identity']);
+if (identity.Account !== process.env.CDK_DEFAULT_ACCOUNT || process.env.LOOP_AD_REGION !== REGION) throw new Error('identity mismatch');
+const activeInstances = aws(['ec2', 'describe-instances', '--region', REGION, '--filters', `Name=tag:SessionId,Values=${sessionId}`,
+    'Name=instance-state-name,Values=pending,running,stopping,stopped,shutting-down', '--query', 'Reservations[].Instances[].InstanceId']);
+const checks = {
+    stackAbsent: !maybe(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', 'LoopAdPerfPhase1KinesisGeneratorControlStack'], ['does not exist']),
+    asgAbsent: aws(['autoscaling', 'describe-auto-scaling-groups', '--region', REGION, '--auto-scaling-group-names', 'perf-phase1-generator-control']).AutoScalingGroups.length === 0,
+    instancesAbsent: activeInstances.length === 0,
+    albAbsent: !maybe(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-generator-control'], ['LoadBalancerNotFound']),
+    vpcAbsent: aws(['ec2', 'describe-vpcs', '--region', REGION, '--filters', 'Name=tag:Name,Values=perf-phase1-generator-control-vpc']).Vpcs.length === 0,
+    roleAbsent: !maybe(['iam', 'get-role', '--role-name', 'loop-ad-phase1-generator-control'], ['NoSuchEntity']),
+    launchTemplatesAbsent: aws(['ec2', 'describe-launch-templates', '--region', REGION, '--filters', 'Name=tag:SessionId,Values=' + sessionId]).LaunchTemplates.length === 0,
+};
+const result = { verifiedAt: new Date().toISOString(), sessionId, activeInstances, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' })); }
+function maybe(args, patterns) { const result = spawnSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' }); if (result.status === 0) return JSON.parse(result.stdout); const text = `${result.stdout}\n${result.stderr}`; if (patterns.some((pattern) => text.includes(pattern))) return undefined; throw new Error(result.stderr); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} required`); return value; }

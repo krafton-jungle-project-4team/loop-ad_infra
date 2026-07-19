@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 15,
+  "runId": "run_20260718_225218_phase7_integration",
+  "sessionId": "phase7-integration-20260718T225218Z",
+  "generatedAt": "2026-07-19T00:51:04Z",
+  "evidenceCommit": "ea27e50c7ad4625c668185bca399ca61dd657f40",
+  "fixCommit": "6ab37d964d8af9c0794e11df023ec095d5a04eae",
+  "localHandoffEvidenceCommit": "23d8a694c0fa6e22a8aae2ddfe39eb5266f6809a",
+  "failure": {
+    "firstFailingGate": "warmup-strict-acceptance",
+    "firstFailure": "Warmup retained nonzero HTTP 429 and transport errors, so strict acceptance failed; aggregate throughput remained above the diagnostic continuation floor.",
+    "terminalHardStopGate": "score_archive",
+    "rawAwsError": "ClickHouse HTTP 500, code 241 MEMORY_LIMIT_EXCEEDED while the single archive task read part-00000.parquet during the score overlap.",
+    "diagnosis": "Attempt 15 constrained the ClickHouse container to 5120 MiB and max_server_memory_usage to 5261334937 bytes while the archive query alone allowed 4831838208 bytes. Live RSS reached about 4.90 GiB and a further 5.04 MiB allocation failed, leaving no safe overlap headroom.",
+    "sourceDropExecuted": false
+  },
+  "fix": {
+    "change": "Increase only the Phase 7 ClickHouse container memory to 8192 MiB and server memory to 7516192768 bytes while preserving the 4831838208-byte archive query limit.",
+    "serverMinusArchiveQueryBytes": 2684354560,
+    "containerMinusServerBytes": 1073741824,
+    "instanceTypeChanged": false,
+    "ebsChanged": false,
+    "cpuChanged": false,
+    "hourlyPriceModelChanged": false,
+    "phase6MemoryContractChanged": false
+  },
+  "tests": {
+    "focusedJest": {
+      "tests": 15,
+      "passed": 15
+    },
+    "focusedPython": {
+      "tests": 15,
+      "passed": 15
+    },
+    "phase7Jest": {
+      "tests": 15,
+      "passed": 15
+    },
+    "phase7Node": {
+      "tests": 27,
+      "passed": 27
+    },
+    "phase7Python": {
+      "tests": 140,
+      "passed": 140
+    },
+    "typescriptBuild": "passed",
+    "dockerComposeConfig": "passed"
+  },
+  "synth": {
+    "exactContext": true,
+    "awsRequests": 0,
+    "templateSha256": "cbee5ad6e09d45d24cedd754400988bfb9fd6a4dfe25b5c1fbc44d4e7e7a088b",
+    "decodedUserDataRegressionPassed": true,
+    "decodedUserDataBytes": {
+      "collector": 7705,
+      "haproxy": 9424,
+      "loadGenerator": 15224,
+      "clickhouse": 8427,
+      "consumer": 7679
+    },
+    "loadGeneratorMarginLimitBytes": 15360,
+    "ec2DecodedLimitBytes": 16384,
+    "templateValidatorPassed": true,
+    "taskDefinitionsChecked": 5,
+    "schemaGuardRetries": 10,
+    "clickHouseMemoryContractPassed": true
+  },
+  "cfnLint": {
+    "version": "1.53.0",
+    "rawExitCode": 6,
+    "acceptedE1022": 8,
+    "acceptedW3005": 3,
+    "unexpectedFindings": 0,
+    "passed": true
+  },
+  "freshPhase71": {
+    "environmentFailure": {
+      "path": "performance-tests/run_20260719_003924_phase7_1_local_integration/local-handoff.json",
+      "sha256": "894329ea8d4aeada39b915525c2532f3c9d55b96ceb0ede2a0e81fdbbae8afa2",
+      "verdict": "failed",
+      "awsReady": false,
+      "reason": "Filesystem sandbox denied sibling collector Git worktree creation before local integration or owned Docker resources started."
+    },
+    "successfulHandoff": {
+      "path": "performance-tests/run_20260719_003944_phase7_1_local_integration/local-handoff.json",
+      "sha256": "7d3a4b38fc3c4e94f25e42534468a57adcd3f5f848557c794f7ecf3f3c4966a0",
+      "implementationTreeSha256": "29d564649da7a3a683c3ebf69bb6147a249783804497de44000825349b428530",
+      "verdict": "passed",
+      "awsReady": true,
+      "realAwsRequests": 0,
+      "cleanupStatus": "passed",
+      "ownedContainers": 0,
+      "ownedNetworks": 0,
+      "ownedVolumes": 0
+    }
+  },
+  "budgetGate": {
+    "activeEpochAccruedUpperBoundUsd": "28.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "66.870718",
+    "hardCapUsd": "60.000000",
+    "passed": false
+  },
+  "evidence": {
+    "commands": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-15-fix-validation/commands.md",
+      "sha256": "bd82ab4497a667b88718dd499170fb7c0e7e00d74acb596266e69cea2ce91ec4"
+    },
+    "synth": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-15-fix-validation/synth-summary.json",
+      "sha256": "556abb2827fe935845f5c69d28005d2d79d442533c8d74f1cf10153752888750"
+    },
+    "templateValidator": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-15-fix-validation/template-validator.json",
+      "sha256": "a9c5fd38fb73377ccb7bec30ff43e7e186bd803c12cb963d37cd5a96d2c5b0c1"
+    },
+    "cfnLint": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-15-fix-validation/cfn-lint-summary.json",
+      "sha256": "38f1980fb97d3b683c6c3146d2374cbba3d8119547a9c135cb5bbc2762a6514c"
+    }
+  },
+  "status": "passed",
+  "freshPhase71HandoffSatisfied": true,
+  "newAwsWorkAuthorized": false,
+  "newAwsWorkBlocker": "The reset-epoch cost gate is 28.000000 + 33.870718 + 5.000000 = 66.870718 USD, above the 60.000000 USD hard cap.",
+  "phase5": "skipped"
+}

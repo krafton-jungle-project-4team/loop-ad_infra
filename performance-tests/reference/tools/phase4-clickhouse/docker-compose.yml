@@ -1,0 +1,55 @@
+name: loopad-phase4-local
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3.13.31
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    ports:
+      - "127.0.0.1:18123:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ../../assets/clickhouse/phase4-schema.sql:/docker-entrypoint-initdb.d/phase4-schema.sql:ro
+      - ../../assets/clickhouse/phase4-async-insert-log.xml:/etc/clickhouse-server/config.d/phase4-async-insert-log.xml:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 10s
+    networks:
+      - isolated
+
+  localstack:
+    # 2026 images require a cloud license for Kinesis. This pre-sunset community
+    # release is pinned and only reachable on the isolated Docker network/loopback.
+    image: localstack/localstack:3.8.1
+    environment:
+      AWS_DEFAULT_REGION: ap-northeast-2
+      DEBUG: "0"
+      EAGER_SERVICE_LOADING: "1"
+      # The bundled Kinesis process otherwise uses a 2 GiB V8 heap and OOMs
+      # while retaining the required 50,000-record preloaded fixture.
+      NODE_OPTIONS: --max-old-space-size=4096
+      SERVICES: kinesis,s3
+    ports:
+      - "127.0.0.1:14566:4566"
+    tmpfs:
+      - /var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4566/_localstack/health | grep -q '\"kinesis\"'"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 10s
+    networks:
+      - isolated
+
+networks:
+  isolated:
+    # Docker Desktop does not publish loopback ports from an internal network.
+    # AWS access is instead blocked and counted by local_integration.py before-send hooks.
+    driver: bridge
+
+volumes:
+  clickhouse-data:

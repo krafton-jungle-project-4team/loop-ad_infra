@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./oha12k-start-gate.mjs', import.meta.url).pathname;
+const session = 'phase1-capacity-oha12k-20260712T130000Z';
+
+test('allows a bounded topology attempt below all time and cost stops', () => {
+    const fixture = files(80, 4, 10);
+    const output = JSON.parse(execFileSync('node', args(fixture, 'topology', 600), { encoding: 'utf8' }));
+    assert.equal(output.passed, true);
+    assert.equal(output.cost.modeledAccruedUsd, 4);
+});
+
+test('uses cumulative accrued cost and blocks the 18/20 dollar thresholds', () => {
+    const fixture = files(80, 17, 20, 18);
+    const result = spawnSync('node', args(fixture, 'stage', 300), { encoding: 'utf8' });
+    const output = JSON.parse(result.stdout);
+    assert.equal(result.status, 2);
+    assert.equal(output.checks.accruedBelowNewRunStop, false);
+    assert.equal(output.checks.projectedBelowHardLimit, false);
+});
+
+test('blocks work that cannot finish by cleanup and preserves cleanup access', () => {
+    const late = spawnSync('node', args(files(99, 4, 10), 'topology', 700), { encoding: 'utf8' });
+    assert.equal(JSON.parse(late.stdout).checks.projectedFinishBeforeCleanup, false);
+    const cleanup = JSON.parse(execFileSync('node', cleanupArgs(files(115, 4, 10)), { encoding: 'utf8' }));
+    assert.equal(cleanup.passed, true);
+    assert.equal(cleanup.stream.cleanupRequired, true);
+});
+
+function files(ageMinutes, accrued, projected, cumulativeAccrued) {
+    const dir = mkdtempSync(join(tmpdir(), 'loopad-oha12k-gate-'));
+    const now = new Date('2026-07-12T14:00:00.000Z');
+    const stream = join(dir, 'stream.json');
+    const accruedPath = join(dir, 'accrued.json');
+    const projectedPath = join(dir, 'projected.json');
+    writeFileSync(stream, JSON.stringify({ summary: { StreamCreationTimestamp: new Date(now.getTime() - ageMinutes * 60_000).toISOString(),
+        StreamStatus: 'ACTIVE', OpenShardCount: 80, RetentionPeriodHours: 24 }, tags: Object.entries({
+        Project: 'loop-ad', Environment: 'perf-phase1-kinesis', ResourceScope: 'shared-test-session',
+        ComparisonSessionId: session, SessionId: session, RunId: session, Phase: 'phase1-capacity-oha12k',
+        ManagedBy: 'codex', Owner: 'loop-ad', }).map(([Key, Value]) => ({ Key, Value })) }));
+    writeFileSync(accruedPath, JSON.stringify({ runUpperBoundUsd: accrued,
+        ...(cumulativeAccrued === undefined ? {} : { projectedCumulativeUpperBoundUsd: cumulativeAccrued }) }));
+    writeFileSync(projectedPath, JSON.stringify({ projectedCumulativeUpperBoundUsd: projected }));
+    return { stream, accruedPath, projectedPath, now: now.toISOString() };
+}
+function args(fixture, action, estimate) { return [script, '--session-id', session, '--candidate', 'go-batch', '--action', action,
+    '--estimated-work-seconds', `${estimate}`, '--stream-fixture', fixture.stream, '--accrued-cost', fixture.accruedPath,
+    '--projected-cost', fixture.projectedPath, '--now', fixture.now]; }
+function cleanupArgs(fixture) { return [script, '--session-id', session, '--candidate', 'go-batch', '--action', 'cleanup',
+    '--stream-fixture', fixture.stream, '--now', fixture.now]; }

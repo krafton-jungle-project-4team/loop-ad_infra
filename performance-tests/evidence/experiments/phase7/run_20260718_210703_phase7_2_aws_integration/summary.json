@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260718_210703_phase7_2_aws_integration",
+  "phase": "phase7",
+  "category": "experiment",
+  "executedAt": "2026-07-18T21:07:03",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "finalized",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "costModelSha256",
+      "value": "491366398a4745628763a2b9c4f470e1a946580c0c7093b6c77d6e330ebc46e5",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "finalEvaluation.verdict",
+      "value": "failed",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[0].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[1].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[2].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[3].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[4].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[5].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[6].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "stageAttempts[7].status",
+      "value": "finished",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "status",
+      "value": "finalized",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260718_210703_phase7_2_aws_integration/run.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "failed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260718-210703"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260718_210703_phase7_2_aws_integration"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/cleanup-verification.json",
+      "bytes": 899,
+      "sha256": "de85426e06aecaf7fb9bc91b049027aa1fce783c864f1d6ec71afa98a94357f9"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/commands.md",
+      "bytes": 1609,
+      "sha256": "c715756d56e193c6484bc81dfbf0f0c51336b7e8bfdbf778ac34fe323f3b63bb"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/correctness-summary.json",
+      "bytes": 2462,
+      "sha256": "a40f1f0702e50ced264d28700306e25d23c0867d018d20e349c89b27867127ce"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/cost-status.json",
+      "bytes": 563,
+      "sha256": "931701a60262bd91183c62fd81ae6063e1b6d62df22d9fb98ec0f9f3114ca948"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/infra.md",
+      "bytes": 1282,
+      "sha256": "4044585cca67dc26704e4491d985d1efcce5ac8345566e9ffd97f0b6805dd77e"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/report.md",
+      "bytes": 2003,
+      "sha256": "cd669a67d8a23b44ef8cb7d09295f09d59697cf94a80256fb68c35a383a6c4f5"
+    },
+    {
+      "path": "run_20260718_210703_phase7_2_aws_integration/run.json",
+      "bytes": 4857,
+      "sha256": "aacf8864e3807e4258de02d737e57321baabe4b2085e2dc3830e1271ed408d67"
+    }
+  ]
+}

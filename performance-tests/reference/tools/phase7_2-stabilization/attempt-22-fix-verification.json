@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "recordType": "focused-fix-verification",
+  "attemptOrdinal": 22,
+  "sourceRunId": "run_20260719_162701_phase7_integration",
+  "sourceSessionId": "phase7-integration-20260719T162701Z",
+  "verifiedAt": "2026-07-19T16:35:40Z",
+  "status": "passed",
+  "summary": "Validate the existing local collector Git working tree and pinned collector commit before the image paid-start marker or any run-owned AWS resource creation; clarify that --collector-repository is not an ECR name.",
+  "fixCommit": "54858fe5c03801f489ba8a521abf0069594a6983",
+  "fixGitTree": "f56b695bf93d34088c3825d33ad478f6ddf707cd",
+  "failure": {
+    "firstFailingGate": "image-preparation",
+    "diagnosisPath": "performance-tests/phase7_2-stabilization/attempt-22-image-preparation-diagnosis.json",
+    "sourceDropExecuted": false
+  },
+  "collectorSource": {
+    "localRepository": "../loop-ad_event_collector",
+    "pinnedCommit": "497315137251af82d0d203ce34702d5543553942",
+    "pinnedCommitPresent": true,
+    "validatedBeforePaidBoundary": true,
+    "cliHelpDistinguishesLocalGitFromEcr": true
+  },
+  "focusedTests": {
+    "python": {
+      "suites": [
+        "test_aws_tooling.py",
+        "test_full_stack_scoped_archive.py"
+      ],
+      "passed": 42,
+      "failed": 0
+    }
+  },
+  "cleanup": {
+    "attemptFinalInventory": {
+      "path": "performance-tests/run_20260719_162701_phase7_2_deployment_readiness/image-manifest-failure-cleanup-verification.json",
+      "sha256": "46cc13e4ce86a9aa2c3a55aa3af466410198c1d10a33535fde38938c59893dbe",
+      "serviceClassCount": 35,
+      "allZero": true
+    },
+    "globalInventory": {
+      "path": "performance-tests/run_20260719_162701_phase7_2_deployment_readiness/post-cleanup-global-inventory.json",
+      "sha256": "384769363d01b3ab9db88ceb425ba66855961c1f7c539deff38ab7ce2bcb86b3",
+      "allZero": true
+    }
+  },
+  "nextCommandContract": {
+    "collectorRepositoryArgument": "../loop-ad_event_collector",
+    "freshRunIdRequired": true,
+    "freshSessionIdRequired": true,
+    "runtimeDeployAttemptsBeforeFailure": 0
+  }
+}

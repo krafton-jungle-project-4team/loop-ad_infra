@@ -1,0 +1,18 @@
+{
+  "account": "742711170910",
+  "appliedToStack": {
+    "actions": ["secretsmanager:GetSecretValue"],
+    "resourceScope": "generated Phase 4 secret ARN"
+  },
+  "generated": {
+    "actions": ["secretsmanager:GetSecretValue", "kms:Decrypt"],
+    "kmsViaService": "secretsmanager.ap-northeast-2.amazonaws.com",
+    "source": "/Users/sijun-yang/Documents/GitHub/krafton-jungle-project-4team/loop-ad_infra/src/phase4-clickhouse-handler/index.ts"
+  },
+  "region": "ap-northeast-2",
+  "review": "kms:Decrypt is intentionally omitted because the CDK secret uses the AWS managed aws/secretsmanager key; AWS documents it as required only for a customer-managed key.",
+  "schemaVersion": 1,
+  "serviceHints": ["secretsmanager"],
+  "tool": "iam-policy-autopilot 0.2.3",
+  "uploadedOrAppliedByTool": false
+}

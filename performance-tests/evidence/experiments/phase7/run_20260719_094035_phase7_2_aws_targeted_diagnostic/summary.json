@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260719_094035_phase7_2_aws_targeted_diagnostic",
+  "phase": "phase7",
+  "category": "diagnostic",
+  "executedAt": "2026-07-19T09:40:35",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "aborted",
+  "rawStatus": "aborted-before-price-query-preflight-and-paid-boundary",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "recordType",
+      "value": "pre-attempt-identity-aborted",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "budgetEpoch.activeEpochPriorUpperBoundUsd",
+      "value": "0.950000",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "budgetEpoch.hardCapUsd",
+      "value": "60.000000",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "budgetEpoch.newPaidWorkStopUsd",
+      "value": "55.000000",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "budgetEpoch.cleanupReserveUsd",
+      "value": "5.000000",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "status",
+      "value": "aborted-before-price-query-preflight-and-paid-boundary",
+      "source": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260719-094035"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260719_094035_phase7_2_aws_targeted_diagnostic"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/commands.md",
+      "bytes": 1764,
+      "sha256": "5144dafb33f3380cfcd5b6a129a564dc1ba481d0ff73dc18b2347b67c15e12ea"
+    },
+    {
+      "path": "run_20260719_094035_phase7_2_aws_targeted_diagnostic/run.json",
+      "bytes": 2215,
+      "sha256": "133606e5fd28cdea9a2f19b1982aff0395337a61c7031aa40dd880d24b7921c2"
+    }
+  ]
+}

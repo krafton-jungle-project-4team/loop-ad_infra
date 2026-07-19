@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+test('certificate importer keeps private key in a run-scoped secret and emits only public metadata', () => {
+    const source = readFileSync(new URL('./import-protocol-certificate.mjs', import.meta.url), 'utf8');
+    assert.match(source, /mkdtempSync/);
+    assert.match(source, /rmSync\(directory, \{ recursive: true, force: true \}\)/);
+	assert.match(source, /secretsmanager.*create-secret/);
+	assert.match(source, /privateKeyPersistedInRunArtifacts: false/);
+	assert.match(source, /--public-ca-output/);
+	assert.match(source, /publicCASha256/);
+	assert.doesNotMatch(source, /readFileSync\(privateKeyPath\)/);
+	assert.doesNotMatch(source, /process\.stdout\.write\([^\n]*privateKey/);
+});

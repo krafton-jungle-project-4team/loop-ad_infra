@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-07-14T13:40:27Z",
+  "sources": [
+    {
+      "name": "dpbench/dpbench",
+      "url": "https://github.com/dpbench/dpbench",
+      "commit": "622d9d47febbffda191c51403b63a15ce254e838",
+      "patternUsed": "Explicit protocol/path comparison and raw benchmark evidence organization",
+      "notUsed": "No third-party benchmark result was treated as LoopAd capacity evidence"
+    },
+    {
+      "name": "aws-samples/ecs-pipeline-inject-envoy-sidecar",
+      "url": "https://github.com/aws-samples/ecs-pipeline-inject-envoy-sidecar",
+      "commit": "e9d5f17d077687a2bc280a20f26779a593ed4eb1",
+      "patternUsed": "ECS proxy isolation and service-discovery reference",
+      "notUsed": "Envoy sidecar injection was not adopted; T3 uses dedicated HAProxy hosts"
+    },
+    {
+      "name": "aws-solutions/distributed-load-testing-on-aws",
+      "url": "https://github.com/aws-solutions/distributed-load-testing-on-aws",
+      "commit": "74b9df4d09565a76ab95887f35a4b4dd6b81923a",
+      "patternUsed": "Distributed generator orchestration and immutable run evidence reference",
+      "notUsed": "The solution stack and its load driver were not deployed"
+    }
+  ],
+  "documentation": [
+    {
+      "name": "AWS Cloud Map ECS service discovery",
+      "url": "https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-discovery.html",
+      "patternUsed": "SRV discovery for bridge-network collector tasks"
+    },
+    {
+      "name": "HAProxy Prometheus metrics",
+      "url": "https://www.haproxy.com/documentation/haproxy-configuration-tutorials/alerts-and-monitoring/prometheus/",
+      "patternUsed": "Raw per-second frontend/backend/server telemetry"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const ACCOUNT = process.env.CDK_DEFAULT_ACCOUNT;
+const sessionId = requiredOption('--session-id');
+const runId = requiredOption('--run-id');
+const candidate = requiredOption('--candidate');
+const expectedDigest = requiredOption('--image-digest');
+const output = requiredOption('--output');
+if (!/^phase1-kinesis-alb-warmup-[0-9]{8}T[0-9]{6}Z$/.test(sessionId) || !/^run_[0-9]{8}_[0-9]{6}_[a-z0-9_-]+$/.test(runId)) throw new Error('invalid session or run ID');
+const stack = aws(['cloudformation', 'describe-stacks', '--region', REGION, '--stack-name', 'LoopAdPerfPhase1KinesisAlbWarmupStack']).Stacks[0];
+const outputs = Object.fromEntries(stack.Outputs.map((item) => [item.OutputKey, item.OutputValue]));
+const alb = aws(['elbv2', 'describe-load-balancers', '--region', REGION, '--names', 'perf-phase1-loop-ad-alb']).LoadBalancers[0];
+const attributes = Object.fromEntries(aws(['elbv2', 'describe-load-balancer-attributes', '--region', REGION, '--load-balancer-arn', alb.LoadBalancerArn]).Attributes.map((item) => [item.Key, item.Value]));
+const bucket = outputs.Phase1AlbAccessLogBucketName;
+const prefix = outputs.Phase1AlbAccessLogPrefix;
+const testKey = outputs.Phase1AlbAccessLogTestObjectKey;
+const encryption = aws(['s3api', 'get-bucket-encryption', '--region', REGION, '--bucket', bucket]);
+const publicAccess = aws(['s3api', 'get-public-access-block', '--region', REGION, '--bucket', bucket]).PublicAccessBlockConfiguration;
+const versioning = aws(['s3api', 'get-bucket-versioning', '--region', REGION, '--bucket', bucket]);
+const policy = JSON.parse(aws(['s3api', 'get-bucket-policy', '--region', REGION, '--bucket', bucket]).Policy);
+const testObject = aws(['s3api', 'head-object', '--region', REGION, '--bucket', bucket, '--key', testKey]);
+const taskStatePath = `${output}.task-state.json`;
+execFileSync(process.execPath, [new URL('./collect-capacity-task-state.mjs', import.meta.url).pathname, '--image-digest', expectedDigest, '--output', taskStatePath], { stdio: 'inherit' });
+const taskState = JSON.parse(readFileSync(taskStatePath, 'utf8'));
+const delivery = policy.Statement.find((statement) => statement.Sid === 'AllowSessionAlbAccessLogDelivery');
+const expectedResource = `arn:aws:s3:::${bucket}/${sessionId}/${runId}/AWSLogs/${ACCOUNT}/*`;
+const checks = {
+    stackComplete: stack.StackStatus === 'CREATE_COMPLETE' || stack.StackStatus === 'UPDATE_COMPLETE',
+    exactOutputs: outputs.Phase1ExperimentMode === 'alb-warmup' && outputs.Phase1RunId === runId && outputs.Phase1ComparisonSessionId === sessionId && outputs.Phase1Candidate === candidate && outputs.Phase1CollectorCount === '4' && outputs.Phase1LoadGeneratorCount === '2' && outputs.Phase1CollectorImageTag.startsWith(`${runId}-${candidate}-`),
+    loggingEnabled: attributes['access_logs.s3.enabled'] === 'true' && attributes['access_logs.s3.bucket'] === bucket && attributes['access_logs.s3.prefix'] === `${sessionId}/${runId}`,
+    testObjectDelivered: testObject.ContentLength >= 0,
+    sseS3: encryption.ServerSideEncryptionConfiguration.Rules.some((rule) => rule.ApplyServerSideEncryptionByDefault?.SSEAlgorithm === 'AES256'),
+    versioningDisabled: !versioning.Status,
+    publicAccessBlocked: Object.values(publicAccess).every((value) => value === true),
+    leastPrivilegeDelivery: delivery?.Effect === 'Allow' && delivery?.Action === 's3:PutObject' && delivery?.Principal?.Service === 'logdelivery.elasticloadbalancing.amazonaws.com' && delivery?.Resource === expectedResource && delivery?.Condition?.StringEquals?.['aws:SourceAccount'] === ACCOUNT && delivery?.Condition?.ArnLike?.['aws:SourceArn'] === `arn:aws:elasticloadbalancing:${REGION}:${ACCOUNT}:loadbalancer/*`,
+    taskTopologyPassed: taskState.topology?.passed === true,
+};
+const result = { verifiedAt: new Date().toISOString(), sessionId, runId, candidate, stackStatus: stack.StackStatus, outputs, alb: { arn: alb.LoadBalancerArn, dns: alb.DNSName, attributes },
+    accessLog: { bucket, prefix, testKey, testObject, encryption, publicAccess, versioning, deliveryStatement: delivery }, taskStatePath, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8'); process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); if (!result.passed) process.exitCode = 2;
+function aws(args) { const output = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim(); return output ? JSON.parse(output) : {}; }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

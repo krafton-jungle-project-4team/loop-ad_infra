@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateAlignedFinalAckAccounting } from './aligned-final-ack-accounting.mjs';
+
+const counter = (successes, overrides = {}) => ({
+    enqueued: successes, api_calls: Math.ceil(successes / 40), record_attempts: successes, successes,
+    failures: 0, retries: 0, partial_failures: 0, timeouts: 0, queue_full: 0,
+    queue_depth: 0, sender_queue_depth: 0, outstanding_records: 0, api_calls_in_flight: 0,
+    ...overrides,
+});
+const evidence = ({ startOffsetMs = -2_000, endOffsetMs = 15_000, successes = 2_500_000 } = {}) =>
+    Array.from({ length: 6 }, (_, index) => ({
+        collector: `collector-${String(index + 1).padStart(2, '0')}`,
+        boundaries: [
+            { kind: 'start', timestampUtc: new Date(1_000_000 + startOffsetMs).toISOString(), counters: counter(index * 10_000_000) },
+            { kind: 'end', timestampUtc: new Date(1_000_000 + 300_000 + endOffsetMs).toISOString(), counters: counter(index * 10_000_000 + successes) },
+        ],
+    }));
+
+test('aligned client and Kinesis boundaries pass final-ACK accounting', () => {
+    const result = evaluateAlignedFinalAckAccounting({ evidence: evidence(), measurementStartEpoch: 1_000,
+        measurementDurationSeconds: 300, clientHttp202: 14_999_500, clientTransportErrors: 10_000 });
+    assert.equal(result.measurementAligned, true);
+    assert.equal(result.kinesisSuccesses, 15_000_000);
+    assert.equal(result.finalAckCountMatch, true);
+    assert.equal(result.queueDrained, true);
+    assert.equal(result.classification, 'pass');
+});
+
+test('boundary skew is an instrumentation failure and not a performance failure', () => {
+    const result = evaluateAlignedFinalAckAccounting({ evidence: evidence({ startOffsetMs: 500 }), measurementStartEpoch: 1_000,
+        measurementDurationSeconds: 300, clientHttp202: 14_999_500, clientTransportErrors: 10_000 });
+    assert.equal(result.measurementAligned, false);
+    assert.equal(result.classification, 'instrumentation-failure');
+    assert.equal(result.passed, false);
+});
+
+test('aligned but out-of-range ACK count is a performance failure', () => {
+    const result = evaluateAlignedFinalAckAccounting({ evidence: evidence({ successes: 2_400_000 }), measurementStartEpoch: 1_000,
+        measurementDurationSeconds: 300, clientHttp202: 14_999_500, clientTransportErrors: 10_000 });
+    assert.equal(result.measurementAligned, true);
+    assert.equal(result.finalAckCountMatch, false);
+    assert.equal(result.classification, 'performance-failure');
+});
+
+test('missing collector boundary evidence fails closed as instrumentation failure', () => {
+    const missing = evidence();
+    missing[5] = { collector: 'collector-06', boundaries: [], readError: 'missing' };
+    const result = evaluateAlignedFinalAckAccounting({ evidence: missing, measurementStartEpoch: 1_000,
+        measurementDurationSeconds: 300, clientHttp202: 14_999_500, clientTransportErrors: 10_000 });
+    assert.equal(result.measurementAligned, false);
+    assert.equal(result.classification, 'instrumentation-failure');
+});

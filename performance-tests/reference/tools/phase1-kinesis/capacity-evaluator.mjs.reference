@@ -1,0 +1,192 @@
+export function evaluateCapacityInterval(input) {
+    const { candidate, kind, targetRps, durationSeconds, oha, beforeHosts, afterHosts, cloudwatch, taskBefore, taskAfter, logs } = input;
+    if (!['probe', 'measurement'].includes(kind)) throw new Error('kind must be probe or measurement');
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+    if (beforeHosts.length !== 4 || afterHosts.length !== 4) throw new Error('capacity interval requires four before and after snapshots');
+    const hosts = beforeHosts.map((before, index) => producerDelta(candidate, before, afterHosts[index], index));
+    const totals = sumHostFields(hosts);
+    const attempted = oha.attemptedRequests;
+    const target5xx = metric(cloudwatch, 'alb_target_5xx_sum', 'sum');
+    const elb5xx = metric(cloudwatch, 'alb_elb_5xx_sum', 'sum');
+    const incomingRecords = requiredMetric(cloudwatch, 'kinesis_incoming_records_sum', 'sum');
+    const writeThrottle = metric(cloudwatch, 'kinesis_write_throttle_sum', 'sum');
+    const shards = shardEvidence(cloudwatch);
+    const target5xxRatio = ratio(target5xx, attempted);
+    const acceptedDistribution = hosts.map((host) => host.successes);
+    const acceptedMean = acceptedDistribution.reduce((sum, value) => sum + value, 0) / acceptedDistribution.length;
+    const taskBalanced = acceptedMean > 0 && acceptedDistribution.every((value) => Math.abs(value - acceptedMean) / acceptedMean <= 0.10);
+    const logCategories = logs?.categories ?? {};
+    const noBadLogs = ['oomOrKilled', 'panicOrFatal'].every((name) => (logCategories[name] ?? 0) === 0);
+    const stoppedBefore = new Set((taskBefore?.stoppedTasks ?? []).map((task) => task.taskArn));
+    const newStoppedTaskArns = (taskAfter?.stoppedTasks ?? []).map((task) => task.taskArn)
+        .filter((taskArn) => !stoppedBefore.has(taskArn));
+    const commonChecks = {
+        exactFourTaskStateBefore: taskBefore?.passed === true,
+        exactFourTaskStateAfter: taskAfter?.passed === true,
+        noRestartOomPanicFatal: noBadLogs && (taskAfter?.badStoppedTaskArns?.length ?? 0) === 0 && newStoppedTaskArns.length === 0,
+        kinesisWriteThrottleZero: writeThrottle === 0 && shards.totalWriteThrottle === 0,
+        producerRecovered: hosts.every((host) => host.recovered),
+        ackHistogramMatchesFinalSuccess: hosts.every((host) => host.ackCount === host.successes),
+    };
+    const checks = kind === 'probe' ? {
+        ...commonChecks,
+        target5xxAtMostOnePercent: target5xxRatio <= 0.01,
+    } : {
+        ...commonChecks,
+        achievedAtLeastNinetyNinePercent: oha.actualRps / targetRps >= 0.99,
+        http202AtLeastNinetyNinePointNinePercent: ratio(oha.http202, attempted) >= 0.999,
+        http429Zero: oha.http429 === 0,
+        transportErrorsAtMostPointOnePercent: ratio(oha.transportErrors, attempted) <= 0.001,
+        target5xxAtMostPointOnePercent: target5xxRatio <= 0.001,
+        elb5xxZero: elb5xx === 0,
+        httpP95AtMost100ms: oha.latencyMs.p95 <= 100,
+        httpP99AtMost500ms: oha.latencyMs.p99 <= 500,
+        http202MatchesIncomingRecords: relativeDifference(oha.http202, incomingRecords) <= 0.001,
+        finalProducerFailureZero: totals.failures === 0,
+        producerTimeoutZero: totals.timeouts === 0,
+        exactlyFourTasksDuringMeasurement: taskBefore?.passed === true && taskAfter?.passed === true,
+        acceptedEventsBalancedWithinTenPercent: taskBalanced,
+    };
+    return {
+        evaluatedAt: new Date().toISOString(), candidate, kind, targetRps, durationSeconds,
+        http: {
+            targetRps, actualRps: oha.actualRps, attempted, status202: oha.http202,
+            status429: oha.http429, status5xx: oha.http5xx,
+            transportErrors: oha.transportErrors, latencyMs: oha.latencyMs,
+        },
+        kinesis: { incomingRecords, writeThrottle, shards },
+        alb: { target5xx, elb5xx, target5xxRatio },
+        producer: { hosts, totals, acceptedDistribution, acceptedMean, ackLatencyUpperBoundMs: aggregateAckUpperBound(hosts) },
+        newStoppedTaskArns,
+        checks, passed: Object.values(checks).every(Boolean),
+    };
+}
+
+function producerDelta(candidate, before, after, index) {
+    if (candidate === 'go-sync') {
+        const b = before.kinesis;
+        const a = after.kinesis;
+        return finishHost(index, {
+            successes: delta(a.put_record_successes_total, b.put_record_successes_total),
+            failures: delta(a.put_record_failures_total, b.put_record_failures_total),
+            timeouts: 0, retries: delta(a.put_record_retries_total, b.put_record_retries_total),
+            partialFailures: 0,
+            ackCount: delta(a.put_record_latency.count, b.put_record_latency.count),
+            ackBuckets: bucketDelta(b.put_record_latency.cumulative_buckets, a.put_record_latency.cumulative_buckets),
+            recovered: after.admission.current_in_flight === 0,
+        });
+    }
+    if (candidate === 'go-batch') {
+        const b = before.kinesis.put_records;
+        const a = after.kinesis.put_records;
+        return finishHost(index, {
+            successes: delta(a.successes, b.successes), failures: delta(a.failures, b.failures),
+            timeouts: delta(a.timeouts, b.timeouts), retries: delta(a.retries, b.retries),
+            partialFailures: delta(a.partial_failures, b.partial_failures),
+            ackCount: delta(a.final_ack_latency.count, b.final_ack_latency.count),
+            ackBuckets: bucketDelta(b.final_ack_latency.cumulative_buckets, a.final_ack_latency.cumulative_buckets),
+            recovered: a.queue_depth === 0 && a.sender_queue_depth === 0 && a.outstanding_records === 0 &&
+                a.api_calls_in_flight === 0 && a.oldest_outstanding_age_nanoseconds === 0,
+        });
+    }
+    return finishHost(index, {
+        successes: delta(after.kpl.successes, before.kpl.successes),
+        failures: delta(after.kpl.failures, before.kpl.failures),
+        timeouts: delta(after.kpl.timeouts, before.kpl.timeouts), retries: 0, partialFailures: 0,
+        ackCount: delta(after.ack_latency.count, before.ack_latency.count),
+        ackBuckets: bucketDelta(before.ack_latency.buckets, after.ack_latency.buckets),
+        recovered: after.kpl.outstandingRecords === 0 && after.kpl.outstandingBytes === 0 &&
+            after.kpl.healthy === true && after.native.live_children === 1 &&
+            delta(after.native.restart_count, before.native.restart_count) === 0,
+    });
+}
+
+function finishHost(index, value) {
+    return { host: `collector-${(index + 1).toString().padStart(2, '0')}`, ...value };
+}
+
+function sumHostFields(hosts) {
+    return ['successes', 'failures', 'timeouts', 'retries', 'partialFailures', 'ackCount']
+        .reduce((result, field) => ({ ...result, [field]: hosts.reduce((sum, host) => sum + host[field], 0) }), {});
+}
+
+function aggregateAckUpperBound(hosts) {
+    const buckets = {};
+    for (const host of hosts) for (const [key, value] of Object.entries(host.ackBuckets)) buckets[key] = (buckets[key] ?? 0) + value;
+    return {
+        p50: histogramQuantileUpperBoundMs(buckets, 0.50),
+        p95: histogramQuantileUpperBoundMs(buckets, 0.95),
+        p99: histogramQuantileUpperBoundMs(buckets, 0.99),
+    };
+}
+
+function histogramQuantileUpperBoundMs(buckets, quantile) {
+    const count = buckets.le_inf ?? 0;
+    if (count === 0) return null;
+    const target = count * quantile;
+    const entries = Object.entries(buckets).filter(([key]) => key !== 'le_inf')
+        .map(([key, value]) => ({ milliseconds: bucketMilliseconds(key), value }))
+        .filter((entry) => Number.isFinite(entry.milliseconds)).sort((a, b) => a.milliseconds - b.milliseconds);
+    return entries.find((entry) => entry.value >= target)?.milliseconds ?? null;
+}
+
+function bucketMilliseconds(key) {
+    const ms = /^le_([0-9]+)ms$/.exec(key);
+    if (ms) return Number(ms[1]);
+    const ns = /^le_([0-9]+)ns$/.exec(key);
+    if (ns) return Number(ns[1]) / 1_000_000;
+    return NaN;
+}
+
+function bucketDelta(before, after) {
+    return Object.fromEntries(Object.keys(after).map((key) => [key, delta(after[key], before[key] ?? 0)]));
+}
+
+function metric(summary, id, field) {
+    const value = summary?.metrics?.[id]?.[field];
+    if (!Number.isFinite(value)) throw new Error(`missing CloudWatch metric ${id}.${field}`);
+    return value;
+}
+
+function delta(after, before) {
+    const value = after - before;
+    if (!Number.isFinite(value) || value < 0) throw new Error('counter decreased or is not numeric');
+    return value;
+}
+
+function ratio(numerator, denominator) {
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return Infinity;
+    return numerator / denominator;
+}
+
+function relativeDifference(left, right) {
+    return Math.abs(left - right) / Math.max(left, 1);
+}
+
+function shardEvidence(summary) {
+    const shards = Array.from({ length: 80 }, (_, index) => {
+        const prefix = `shard_${index.toString().padStart(3, '0')}`;
+        return {
+            shardId: `shardId-${index.toString().padStart(12, '0')}`,
+            incomingRecords: requiredMetric(summary, `${prefix}_incoming_records_sum`, 'sum'),
+            incomingBytes: requiredMetric(summary, `${prefix}_incoming_bytes_sum`, 'sum'),
+            writeThrottle: metric(summary, `${prefix}_write_throttle_sum`, 'sum'),
+        };
+    });
+    const records = shards.map((shard) => shard.incomingRecords);
+    const mean = records.reduce((sum, value) => sum + value, 0) / records.length;
+    return {
+        shardCount: shards.length,
+        totalWriteThrottle: shards.reduce((sum, shard) => sum + shard.writeThrottle, 0),
+        incomingRecords: {
+            min: Math.min(...records), max: Math.max(...records), mean,
+            maxDeviationRatio: mean > 0 ? Math.max(...records.map((value) => Math.abs(value - mean) / mean)) : null,
+        },
+        shards,
+    };
+}
+
+function requiredMetric(summary, id, field) {
+    if ((summary?.metrics?.[id]?.sampleCount ?? 0) < 1) throw new Error(`missing CloudWatch samples for ${id}`);
+    return metric(summary, id, field);
+}

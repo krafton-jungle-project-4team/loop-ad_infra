@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 5,
+  "runId": "run_20260718_061644_phase7_integration",
+  "sessionId": "phase7-integration-20260718T061644Z",
+  "reconciledAt": "2026-07-18T07:30:36Z",
+  "paidRuntime": {
+    "deployStartedAt": "2026-07-18T06:34:15.594279Z",
+    "cloudFormationFirstFailureAt": "2026-07-18T06:46:38.517Z",
+    "runnerDeployFinishedAt": "2026-07-18T06:54:15.558180Z",
+    "runtimeAndImageStacksDeletedBy": "2026-07-18T07:18:33.190979Z",
+    "authoritativeCleanupZeroAt": "2026-07-18T07:27:05.334Z",
+    "paidStartToAuthoritativeZeroSeconds": "3169.739721"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-5-cost-explorer-20260718.json",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "The current-day result is estimated and delayed; zero is not treated as a zero-cost attempt."
+  },
+  "modeledFailurePath": {
+    "billableResourceDurationCeilingSeconds": 3600,
+    "components": [
+      {"name": "EC2 fixed fleet", "costUsd": "3.369200", "note": "All 19 planned instances receive a conservative full instance-hour."},
+      {"name": "Kinesis provisioned shards", "costUsd": "2.220000", "note": "All 120 shards receive a full shard-hour."},
+      {"name": "three Network Load Balancers", "costUsd": "0.067500", "note": "Each partial load-balancer hour is charged as one full hour."},
+      {"name": "idle NLB capacity allowance", "costUsd": "0.018000"},
+      {"name": "single NAT gateway", "costUsd": "0.059000"},
+      {"name": "NAT processed data allowance", "costUsd": "0.005900"},
+      {"name": "public IPv4 address", "costUsd": "0.005000"},
+      {"name": "gp3 capacity and ClickHouse extra throughput", "costUsd": "0.153353", "note": "All planned roots and provisioned throughput receive a conservative full-hour ceiling."},
+      {"name": "Secrets Manager storage", "costUsd": "0.013151"},
+      {"name": "ECR image storage", "costUsd": "0.009863"},
+      {"name": "DynamoDB storage and control requests", "costUsd": "0.010825"},
+      {"name": "S3 storage allowance", "costUsd": "0.004932"},
+      {"name": "CloudWatch log ingestion allowance", "costUsd": "0.007600"},
+      {"name": "CloudWatch custom metrics", "costUsd": "0.246575"},
+      {"name": "Cost Explorer query", "costUsd": "0.010000"},
+      {"name": "evidence and transfer reserve", "costUsd": "0.500000"},
+      {"name": "delayed metering and rollback reserve", "costUsd": "0.500000"}
+    ],
+    "upperBoundUsd": "7.200899"
+  },
+  "roundingPolicy": "Charge 8.000000 USD to the campaign ledger, rounding the 7.200899 USD failure-path upper bound upward while retaining delayed-billing margin.",
+  "campaignChargedUpperBoundUsd": "8.000000",
+  "campaignAfterAttempt": {
+    "chargedUpperBoundUsd": "27.000000",
+    "remainingBeforeHardCapUsd": "33.000000",
+    "remainingOperationalBeforeReserveUsd": "28.000000"
+  },
+  "nextFullAttemptGate": {
+    "nextAttemptOperationalUpperBoundUsd": "33.855718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "65.855718",
+    "hardCapUsd": "60.000000",
+    "passed": false,
+    "authorization": "No new paid AWS work is authorized because the next complete attempt plus cleanup reserve exceeds the operator-authorized hard cap."
+  },
+  "sourceEvidence": {
+    "cleanupVerification": {"path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/cleanup-recovery-inventory.json", "sha256": "2077527e342d7bf8ba364a238682e64ce93c7a405da13a477d46c9175636d11a"},
+    "costModel": {"path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/inputs/cost-model.json", "sha256": "42ef2c0be8efbba8e2144509a5516988f669fbd4377159060905b036527990e1"},
+    "deployLog": {"path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/evidence/control/deploy.attempt-1.stderr.log", "sha256": "317e95c22cb3dae23c62127bfbc9421956c34846256c3a7a3c4827898443ae8f"},
+    "diagnosis": {"path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/evidence/diagnosis/haproxy-nofile-reproduction.json", "sha256": "c67a0e94bcf10bec8024b70413f05c61651f85a33912d1a3ff801fbf470abbf4"},
+    "imageManifest": {"path": "performance-tests/run_20260718_061644_phase7_2_deployment_readiness/image-manifest.json", "sha256": "075d4fe0c1f3ae0f36902420e717de2c36282fc4f714e1a928b1eb216d7ef987"},
+    "prices": {"path": "performance-tests/run_20260718_061644_phase7_2_deployment_readiness/prices-final.json", "sha256": "921debea85a6c6314a54091d15bb0ce8515886d9570b41548755218794cc568b"},
+    "run": {"path": "performance-tests/run_20260718_061644_phase7_2_aws_integration/run.json", "sha256": "db0a28b1567e397107650da38187fc0641fe189af4f4eb262c09b407c636f99d"}
+  }
+}

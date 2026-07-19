@@ -1,0 +1,322 @@
+#!/usr/bin/env node
+
+import { createReadStream, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { createGunzip } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+import { parseAlbAccessLogLine } from './alb-access-log.mjs';
+
+const scriptPath = fileURLToPath(import.meta.url);
+
+export async function analyzePrehandlerConnectionWave({ stageDir, rawAlbDir, offeredRps = 10_000 }) {
+    const stage = json(join(stageDir, 'stage-summary.json'));
+    const startMs = Date.parse(stage.startedAt);
+    const endMs = Date.parse(stage.endedAt);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new Error('stage summary has an invalid measurement window');
+
+    const seconds = new Map();
+    const groups = { albNode: new Map(), client: new Map(), target: new Map(), receivedBytes: new Map() };
+    const connectionOrdinals = new Map();
+    const ordinalGroups = { first: [], twoToFive: [], sixToTen: [], afterTen: [] };
+    const bytes = [];
+    const targetTimes = [];
+    let recordCount = 0;
+    let parseErrors = 0;
+
+    const files = readdirSync(rawAlbDir).filter((name) => name.endsWith('.log.gz')).sort();
+    for (const file of files) {
+        const albNode = sourceNode(file) ?? 'unknown';
+        const lines = createInterface({ input: createReadStream(join(rawAlbDir, file)).pipe(createGunzip()), crlfDelay: Infinity });
+        let lineNumber = 0;
+        for await (const line of lines) {
+            lineNumber += 1;
+            if (!line.trim()) continue;
+            let record;
+            try {
+                record = parseAlbAccessLogLine(line, { source: file, line: lineNumber });
+            } catch {
+                parseErrors += 1;
+                continue;
+            }
+            const createdMs = Date.parse(record.requestCreationTime ?? record.responseTime);
+            if (!Number.isFinite(createdMs) || createdMs < startMs || createdMs >= endMs) continue;
+            recordCount += 1;
+            const second = Math.floor((createdMs - startMs) / 1_000);
+            const bin = get(seconds, second, () => ({ count: 0, request: [], target: [], response: [], slow150ms: 0 }));
+            bin.count += 1;
+            addDuration(bin.request, record.requestProcessingTime);
+            addDuration(bin.target, record.targetProcessingTime);
+            addDuration(bin.response, record.responseProcessingTime);
+            if ((record.targetProcessingTime ?? -1) >= 0.150) bin.slow150ms += 1;
+
+            const client = endpointHost(record.client);
+            const target = endpointHost(record.target);
+            addGroup(groups.albNode, albNode, record.targetProcessingTime);
+            addGroup(groups.client, client, record.targetProcessingTime);
+            addGroup(groups.target, target, record.targetProcessingTime);
+            addGroup(groups.receivedBytes, String(record.receivedBytes), record.targetProcessingTime);
+
+            if (record.receivedBytes !== null && record.targetProcessingTime !== null && record.targetProcessingTime >= 0) {
+                bytes.push(record.receivedBytes);
+                targetTimes.push(record.targetProcessingTime);
+            }
+            const key = record.connectionTraceId && record.connectionTraceId !== '-' ? record.connectionTraceId : record.client;
+            const ordinal = (connectionOrdinals.get(key) ?? 0) + 1;
+            connectionOrdinals.set(key, ordinal);
+            if (record.targetProcessingTime !== null && record.targetProcessingTime >= 0) {
+                const ordinalKey = ordinal === 1 ? 'first' : ordinal <= 5 ? 'twoToFive' : ordinal <= 10 ? 'sixToTen' : 'afterTen';
+                ordinalGroups[ordinalKey].push(record.targetProcessingTime);
+            }
+        }
+    }
+
+    const perSecond = [...seconds.entries()].toSorted(([a], [b]) => a - b).map(([second, bin]) => ({
+        second,
+        startUtc: new Date(startMs + second * 1_000).toISOString(),
+        requestCount: bin.count,
+        arrivalRatio: bin.count / offeredRps,
+        requestProcessingMs: percentiles(bin.request, 1_000),
+        targetProcessingMs: percentiles(bin.target, 1_000),
+        responseProcessingMs: percentiles(bin.response, 1_000),
+        targetAtLeast150ms: bin.slow150ms,
+    }));
+    const collectors = readCollectorProcesses(stageDir, startMs, endMs);
+	const backendLifecycle = await readBackendLifecycle(stageDir, startMs, endMs);
+	const connectionStart = backendLifecycle.measured ? backendLifecycle.waveStartMs : collectors.map((collector) => collector.connectionIncreaseStartMs).filter(Number.isFinite).sort((a, b) => a - b)[0] ?? null;
+    const latencyBin = perSecond.find((bin) => bin.second >= 5 && bin.targetProcessingMs.p95 >= 50);
+    const latencyStart = latencyBin ? startMs + latencyBin.second * 1_000 : null;
+    const waveStart = connectionStart;
+    const recoveryBin = perSecond.find((bin, index, all) => bin.second >= (latencyBin?.second ?? Infinity) &&
+        bin.targetProcessingMs.p95 < 50 && bin.arrivalRatio >= 0.95 &&
+        all[index + 1]?.targetProcessingMs.p95 < 50 && all[index + 1]?.arrivalRatio >= 0.95);
+    const arrivalDeficit = perSecond.reduce((sum, bin) => sum + Math.max(0, offeredRps - bin.requestCount), 0);
+    const catchupBurst = Math.max(0, ...perSecond.map((bin) => bin.requestCount - offeredRps));
+	const synchronizedTargets = backendLifecycle.measured ? backendLifecycle.synchronizedTargets : collectors.length > 1 && Math.max(...collectors.map((item) => item.maxFdIncrease)) - Math.min(...collectors.map((item) => item.maxFdIncrease)) <= 100;
+    const delayedConnectionFanoutWave = waveStart !== null && waveStart >= startMs + 5_000 &&
+        collectors.every((collector) => collector.maxFdIncrease >= 1_000) && synchronizedTargets &&
+        latencyStart !== null && waveStart <= latencyStart;
+
+    return {
+        schemaVersion: 1,
+        analyzedAt: new Date().toISOString(),
+        input: { stageDir, rawAlbDir, stageStartUtc: stage.startedAt, stageEndUtc: stage.endedAt, offeredRps, rawFiles: files },
+        evidence: evidenceCompleteness({ directTarget: stage.directTarget === true, recordCount, parseErrors }),
+        delayedConnectionFanoutWave,
+        waveStartMonotonic: waveStart === null ? null : (waveStart - startMs) / 1_000,
+        latencyStartMonotonic: latencyStart === null ? null : (latencyStart - startMs) / 1_000,
+        connectionLeadMs: waveStart === null || latencyStart === null ? null : latencyStart - waveStart,
+        recoveryMonotonic: recoveryBin ? recoveryBin.second : null,
+		newConnectionRate: backendLifecycle.measured ? backendLifecycle.newConnectionRate : { measured: false, estimatedFromFd: true, collectors: collectors.map((item) => ({ collector: item.collector, peakFdGrowthPerSecond: item.peakFdGrowthPerSecond })) },
+		closeRate: backendLifecycle.measured ? backendLifecycle.closeRate : { measured: false, value: null },
+		connectionStabilized: backendLifecycle.measured ? backendLifecycle.connectionStabilized : collectors.every((item) => item.endingFd >= item.peakFd - 10),
+        arrivalDeficit,
+        catchupBurst,
+        frontendConnectionReuse: summarizeFrontendReuse(connectionOrdinals),
+		backendConnectionIdentityMeasured: backendLifecycle.measured,
+		churnSupported: backendLifecycle.measured ? backendLifecycle.churnSupported : false,
+		churnReason: backendLifecycle.measured ? backendLifecycle.churnReason : 'The baseline contains FD growth but no backend connection identity or repeated close/reopen measurement.',
+		backendLifecycle,
+        collectors,
+        synchronizedTargets,
+        perSecond,
+        processingByDimension: Object.fromEntries(Object.entries(groups).map(([name, map]) => [name, summarizeGroups(map)])),
+        receivedBytesTargetProcessingPearson: pearson(bytes, targetTimes),
+        frontendRequestOrdinal: Object.fromEntries(Object.entries(ordinalGroups).map(([name, values]) => [name, { count: values.length, ...percentiles(values, 1_000), atLeast150ms: values.filter((value) => value >= 0.150).length }])),
+    };
+}
+
+export function evidenceCompleteness({ directTarget, recordCount, parseErrors }) {
+    return {
+        recordCount,
+        parseErrors,
+        albRecordsExpected: !directTarget,
+        evidenceGap: parseErrors > 0 || (!directTarget && recordCount === 0),
+    };
+}
+
+async function readBackendLifecycle(stageDir, startMs, endMs) {
+	const root = join(stageDir, 'collector-telemetry');
+	const directories = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^collector-[0-9]{2}$/.test(entry.name));
+	const measured = directories.length > 0 && directories.every((entry) => {
+		try { return readdirSync(join(root, entry.name)).includes('connection-lifecycle.ndjson.gz'); } catch { return false; }
+	});
+	if (!measured) return { measured: false, waveStartMs: null, bins250ms: [] };
+	const collectors = [];
+	for (const entry of directories) {
+		const path = join(root, entry.name, 'connection-lifecycle.ndjson.gz');
+		const lines = createInterface({ input: createReadStream(path).pipe(createGunzip()), crlfDelay: Infinity });
+		const bins = new Map();
+		const requests = new Map();
+		let accepted = 0;
+		let closed = 0;
+		for await (const line of lines) {
+			if (!line.trim()) continue;
+			const event = JSON.parse(line);
+			const timestampMs = Number(event.timestamp_unix_nanoseconds) / 1_000_000;
+			if (!Number.isFinite(timestampMs) || timestampMs < startMs - 30_000 || timestampMs > endMs + 30_000) continue;
+			const bin = Math.floor((timestampMs - startMs) / 250);
+			const aggregate = get(bins, bin, () => ({ accepted: 0, closed: 0, handlerEntries: 0 }));
+			if (event.event === 'accept') { aggregate.accepted += 1; accepted += 1; }
+			if (event.event === 'state' && ['closed', 'hijacked'].includes(event.state)) { aggregate.closed += 1; closed += 1; }
+			if (event.event === 'handler_entry') aggregate.handlerEntries += 1;
+			if (event.request_ordinal) requests.set(event.connection_id, Math.max(requests.get(event.connection_id) ?? 0, event.request_ordinal));
+		}
+		const ordered = [...bins.entries()].toSorted(([a], [b]) => a - b).map(([bin, value]) => ({ bin, monotonicSeconds: bin / 4, ...value }));
+		let waveStartBin = null;
+		for (const item of ordered.filter((item) => item.bin >= 20)) {
+			const acceptedFiveSeconds = ordered.filter((candidate) => candidate.bin >= item.bin && candidate.bin < item.bin + 20).reduce((sum, candidate) => sum + candidate.accepted, 0);
+			if (acceptedFiveSeconds >= 1_000) { waveStartBin = item.bin; break; }
+		}
+		const measurementEndBin = Math.ceil((endMs - startMs) / 250);
+		const teardownExclusionBins = 8;
+		const steadyMeasurementEndBin = Math.max(20, measurementEndBin - teardownExclusionBins);
+		const throughMeasurement = ordered.filter((item) => item.bin < steadyMeasurementEndBin);
+		const afterInitial = ordered.filter((item) => item.bin >= 20 && item.bin < steadyMeasurementEndBin);
+		const acceptedByMeasurementEnd = throughMeasurement.reduce((sum, item) => sum + item.accepted, 0);
+		const closedByMeasurementEnd = throughMeasurement.reduce((sum, item) => sum + item.closed, 0);
+		const acceptedAfterInitial = afterInitial.reduce((sum, item) => sum + item.accepted, 0);
+		const closedAfterInitial = afterInitial.reduce((sum, item) => sum + item.closed, 0);
+		const reconnectSeconds = new Set(afterInitial.filter((item) => item.accepted > 0).map((item) => Math.floor(item.bin / 4)))
+			.intersection(new Set(afterInitial.filter((item) => item.closed > 0).map((item) => Math.floor(item.bin / 4)))).size;
+		collectors.push({ collector: entry.name, accepted, closed,
+			teardownExclusionSeconds: teardownExclusionBins / 4,
+			acceptedByMeasurementEnd, closedByMeasurementEnd, openAtMeasurementEnd: acceptedByMeasurementEnd - closedByMeasurementEnd,
+			acceptedAfterInitial, closedAfterInitial, reconnectSeconds,
+			endingOpen: acceptedByMeasurementEnd - closedByMeasurementEnd, endingOpenAfterCollection: accepted - closed,
+			waveStartBin, bins250ms: ordered,
+			peakAcceptedPerSecond: Math.max(0, ...ordered.map((item) => ordered.filter((candidate) => candidate.bin >= item.bin && candidate.bin < item.bin + 4).reduce((sum, candidate) => sum + candidate.accepted, 0))),
+			peakClosedPerSecond: Math.max(0, ...ordered.map((item) => ordered.filter((candidate) => candidate.bin >= item.bin && candidate.bin < item.bin + 4).reduce((sum, candidate) => sum + candidate.closed, 0))),
+			requestsPerConnection: percentiles([...requests.values()], 1),
+		});
+	}
+	const waveBins = collectors.map((item) => item.waveStartBin).filter(Number.isInteger);
+	const synchronizedTargets = waveBins.length === collectors.length && Math.max(...waveBins) - Math.min(...waveBins) <= 4;
+	const churn = classifyBackendChurn(collectors);
+	return {
+		measured: true,
+		waveStartMs: waveBins.length === 0 ? null : startMs + Math.min(...waveBins) * 250,
+		synchronizedTargets,
+		newConnectionRate: { measured: true, collectors: collectors.map((item) => ({ collector: item.collector, acceptedTotal: item.accepted, peakPerSecond: item.peakAcceptedPerSecond })) },
+		closeRate: { measured: true, collectors: collectors.map((item) => ({ collector: item.collector, closedTotal: item.closed, peakPerSecond: item.peakClosedPerSecond })) },
+		connectionStabilized: collectors.every((item) => item.openAtMeasurementEnd >= item.acceptedByMeasurementEnd * 0.8),
+		churnSupported: churn.supported,
+		churnReason: churn.reason,
+		collectors,
+		bins250ms: collectors.map((item) => ({ collector: item.collector, bins: item.bins250ms })),
+	};
+}
+
+export function classifyBackendChurn(collectors) {
+	const supported = collectors.length > 0 && collectors.every((item) => item.acceptedAfterInitial >= 100 &&
+		item.closedAfterInitial >= 100 && item.closedAfterInitial / item.acceptedAfterInitial >= 0.5 &&
+		item.closedAfterInitial >= item.openAtMeasurementEnd * 0.2 && item.reconnectSeconds >= 2);
+	return {
+		supported,
+		reason: supported
+			? 'Backend identities repeatedly close and reopen in multiple post-initial measurement intervals.'
+			: 'Initial establishment and stage-end teardown are excluded; repeated post-initial close/reopen is not supported.',
+	};
+}
+
+function readCollectorProcesses(stageDir, startMs, endMs) {
+    const root = join(stageDir, 'collector-telemetry');
+    return readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^collector-[0-9]{2}$/.test(entry.name)).map((entry) => {
+        const lines = readFileSync(join(root, entry.name, 'process.tsv'), 'utf8').trim().split('\n');
+        const header = lines.shift()?.split('\t') ?? [];
+        const timeIndex = header.indexOf('timestamp_utc');
+        const fdIndex = header.indexOf('open_fds');
+        const cpuIndex = header.indexOf('cpu_percent');
+        const samples = lines.map((line) => line.split('\t')).map((fields) => ({
+            timestampMs: Date.parse(fields[timeIndex]),
+            openFd: Number(fields[fdIndex]),
+            cpuPercent: Number(fields[cpuIndex]?.replace('%', '')),
+        })).filter((sample) => Number.isFinite(sample.timestampMs) && Number.isFinite(sample.openFd) && sample.timestampMs >= startMs && sample.timestampMs <= endMs + 15_000);
+        const baseline = Math.min(...samples.filter((sample) => sample.timestampMs <= startMs + 5_000).map((sample) => sample.openFd));
+        const peakFd = Math.max(...samples.map((sample) => sample.openFd));
+        const first = samples.find((sample) => sample.timestampMs >= startMs + 5_000 && sample.openFd - baseline >= 100);
+        let peakRate = 0;
+        for (let index = 1; index < samples.length; index += 1) {
+            const elapsedSeconds = (samples[index].timestampMs - samples[index - 1].timestampMs) / 1_000;
+            if (elapsedSeconds > 0) peakRate = Math.max(peakRate, (samples[index].openFd - samples[index - 1].openFd) / elapsedSeconds);
+        }
+        return {
+            collector: entry.name,
+            sampleCount: samples.length,
+            baselineFd: baseline,
+            peakFd,
+            endingFd: samples.at(-1)?.openFd ?? null,
+            maxFdIncrease: peakFd - baseline,
+            connectionIncreaseStartUtc: first ? new Date(first.timestampMs).toISOString() : null,
+            connectionIncreaseStartMonotonic: first ? (first.timestampMs - startMs) / 1_000 : null,
+            connectionIncreaseStartMs: first?.timestampMs ?? null,
+            peakFdGrowthPerSecond: peakRate,
+            peakCpuPercent: Math.max(0, ...samples.map((sample) => sample.cpuPercent).filter(Number.isFinite)),
+        };
+    }).toSorted((a, b) => a.collector.localeCompare(b.collector));
+}
+
+function summarizeFrontendReuse(ordinals) {
+    const counts = [...ordinals.values()].toSorted((a, b) => a - b);
+    return {
+        uniqueConnections: counts.length,
+        requestCount: counts.reduce((sum, value) => sum + value, 0),
+        minRequestsPerConnection: counts[0] ?? null,
+        medianRequestsPerConnection: quantile(counts, 0.5),
+        p95RequestsPerConnection: quantile(counts, 0.95),
+        maxRequestsPerConnection: counts.at(-1) ?? null,
+        reuseSupported: counts.length > 0 && quantile(counts, 0.5) > 1,
+    };
+}
+
+function summarizeGroups(map) {
+    return [...map.entries()].map(([key, values]) => ({ key, count: values.length, ...percentiles(values, 1_000), atLeast150ms: values.filter((value) => value >= 0.150).length }))
+        .toSorted((a, b) => a.key.localeCompare(b.key));
+}
+
+function percentiles(values, multiplier = 1) {
+    const sorted = values.filter((value) => Number.isFinite(value) && value >= 0).toSorted((a, b) => a - b);
+    return { p50: quantile(sorted, 0.5) * multiplier, p90: quantile(sorted, 0.9) * multiplier, p95: quantile(sorted, 0.95) * multiplier, p99: quantile(sorted, 0.99) * multiplier };
+}
+
+function quantile(sorted, fraction) {
+    if (sorted.length === 0) return 0;
+    return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
+}
+
+function pearson(xs, ys) {
+    if (xs.length !== ys.length || xs.length < 2) return null;
+    const meanX = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+    const meanY = ys.reduce((sum, value) => sum + value, 0) / ys.length;
+    let numerator = 0;
+    let denominatorX = 0;
+    let denominatorY = 0;
+    for (let index = 0; index < xs.length; index += 1) {
+        const dx = xs[index] - meanX;
+        const dy = ys[index] - meanY;
+        numerator += dx * dy;
+        denominatorX += dx * dx;
+        denominatorY += dy * dy;
+    }
+    return denominatorX === 0 || denominatorY === 0 ? null : numerator / Math.sqrt(denominatorX * denominatorY);
+}
+
+function addDuration(values, value) { if (Number.isFinite(value) && value >= 0) values.push(value); }
+function addGroup(map, key, value) { if (!key || !Number.isFinite(value) || value < 0) return; get(map, key, () => []).push(value); }
+function get(map, key, factory) { if (!map.has(key)) map.set(key, factory()); return map.get(key); }
+function endpointHost(value) { if (!value || value === '-') return 'unknown'; const index = value.lastIndexOf(':'); return index > 0 ? value.slice(0, index) : value; }
+function sourceNode(value) { return /_([0-9]+(?:\.[0-9]+){3})_[^/]+\.log\.gz$/.exec(value)?.[1] ?? null; }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+
+if (process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === scriptPath) {
+    const stageDir = requiredOption('--stage-dir');
+    const rawAlbDir = requiredOption('--raw-alb-dir');
+    const output = requiredOption('--output');
+    const offeredRps = Number(optionValue('--offered-rps') ?? 10_000);
+    if (!Number.isInteger(offeredRps) || offeredRps < 1) throw new Error('--offered-rps must be positive');
+    const result = await analyzePrehandlerConnectionWave({ stageDir, rawAlbDir, offeredRps });
+    writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify({ output, recordCount: result.evidence.recordCount, delayedConnectionFanoutWave: result.delayedConnectionFanoutWave, waveStartMonotonic: result.waveStartMonotonic, latencyStartMonotonic: result.latencyStartMonotonic, connectionLeadMs: result.connectionLeadMs }, null, 2)}\n`);
+}

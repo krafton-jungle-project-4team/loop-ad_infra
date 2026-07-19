@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+    evaluateDiagnosisStage,
+    evaluateHypotheses,
+    selectBaselineNodes,
+    tcpAlbStagePlan,
+    validateGeneratorPlacement,
+} from './tcp-alb-diagnosis-contract.mjs';
+
+const instances = [
+    { instanceId: 'i-a1', instanceType: 'c6in.large', availabilityZone: 'ap-northeast-2a', subnetId: 'subnet-a1', privateIp: '10.0.0.10', eniId: 'eni-a1' },
+    { instanceId: 'i-a2', instanceType: 'c6in.large', availabilityZone: 'ap-northeast-2a', subnetId: 'subnet-a1', privateIp: '10.0.0.11', eniId: 'eni-a2' },
+    { instanceId: 'i-c1', instanceType: 'c6in.large', availabilityZone: 'ap-northeast-2c', subnetId: 'subnet-c1', privateIp: '10.0.1.10', eniId: 'eni-c1' },
+    { instanceId: 'i-c2', instanceType: 'c6in.large', availabilityZone: 'ap-northeast-2c', subnetId: 'subnet-c1', privateIp: '10.0.1.11', eniId: 'eni-c2' },
+];
+
+test('baseline and split plans preserve 30k RPS and 12000 connections', () => {
+    const baseline = tcpAlbStagePlan('A1');
+    const control = tcpAlbStagePlan('A2');
+    const split = tcpAlbStagePlan('A3');
+    assert.deepEqual([baseline.nodeCount, baseline.processesPerNode], [2, 2]);
+    assert.deepEqual([control.targetPath, control.durationSeconds], ['/__generator_control', 120]);
+    assert.deepEqual([split.nodeCount, split.processesPerNode], [4, 1]);
+    for (const plan of [baseline, control, split]) {
+        assert.equal(plan.totalOfferedRps, 30_000);
+        assert.equal(plan.totalConnections, 12_000);
+    }
+});
+
+test('placement gate requires exactly two c6in.large generators in each required AZ', () => {
+    assert.equal(validateGeneratorPlacement(instances).passed, true);
+    assert.equal(validateGeneratorPlacement(instances.slice(0, 3)).passed, false);
+    assert.equal(validateGeneratorPlacement(instances.map((item, index) =>
+        index === 0 ? { ...item, instanceType: 'c6i.large' } : item)).passed, false);
+    assert.deepEqual(selectBaselineNodes(instances).map((item) => item.instanceId), ['i-a1', 'i-c1']);
+    const doubled = [...instances, ...instances.map((item) => ({
+        ...item,
+        instanceId: `${item.instanceId}8`,
+        privateIp: `${item.privateIp}8`,
+        eniId: `${item.eniId}8`,
+    }))];
+    assert.equal(validateGeneratorPlacement(doubled, 8).passed, true);
+});
+
+test('stage evaluator fails closed on aggregate, node, transport, or safety failure', () => {
+    const aggregate = {
+        offeredRps: 30_000, actualRps: 29_900, completedRequests: 3_588_000,
+        attemptedRequests: 3_588_010, transportErrors: 10,
+        nodes: [
+            { nodeId: 'node-01', offeredRps: 15_000, actualRps: 14_960, attemptedRequests: 1_794_000, transportErrors: 5 },
+            { nodeId: 'node-02', offeredRps: 15_000, actualRps: 14_940, attemptedRequests: 1_794_010, transportErrors: 5 },
+        ],
+    };
+    assert.equal(evaluateDiagnosisStage({ aggregate }).result, 'success');
+    assert.equal(evaluateDiagnosisStage({ aggregate, safety: { kinesisThrottle: true } }).result, 'failure');
+    assert.equal(evaluateDiagnosisStage({ aggregate: { ...aggregate, actualRps: 20_000 } }).result, 'failure');
+});
+
+test('hypothesis truth table isolates target latency, instance, source AZ, and ramp', () => {
+    assert.deepEqual(Object.values(evaluateHypotheses({})).map((item) => item.verdict), Array(4).fill('inconclusive'));
+    assert.equal(evaluateHypotheses({ A1: { result: 'failure' }, A2: { result: 'success' } }).H1.verdict, 'supported');
+    assert.equal(evaluateHypotheses({ A1: { result: 'failure' }, A2: { result: 'failure' } }).H1.verdict, 'not-supported');
+    assert.equal(evaluateHypotheses({ A1: { result: 'failure' }, A2: { result: 'failure' }, A3: { result: 'failure' }, A3_CONTROL: { result: 'success' } }).H1.verdict, 'supported');
+    assert.equal(evaluateHypotheses({ replacement: { failedInstanceRepeated: true, replacementResult: 'success' } }).H2.verdict, 'supported');
+    assert.equal(evaluateHypotheses({ matrix: { source2aFailsBothDestinations: true } }).H3.verdict, 'supported');
+    assert.equal(evaluateHypotheses({ ramp: { suddenResult: 'failure', staggerResult: 'success', rejectedConnections: 0 } }).H4.verdict, 'supported');
+});

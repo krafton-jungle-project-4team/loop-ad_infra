@@ -1,0 +1,5 @@
+<clickhouse>
+  <!-- 4.90 GiB tracked server ceiling inside the 5 GiB container cap. -->
+  <max_server_memory_usage>5261334937</max_server_memory_usage>
+  <max_server_memory_usage_to_ram_ratio>0.98</max_server_memory_usage_to_ram_ratio>
+</clickhouse>

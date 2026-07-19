@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-19T01:54:16.920Z",
+  "region": "ap-northeast-2",
+  "expected": {
+    "account": "742711170910",
+    "arn": "arn:aws:iam::742711170910:root"
+  },
+  "awsCli": {
+    "account": "742711170910",
+    "arn": "arn:aws:iam::742711170910:root",
+    "region": "ap-northeast-2",
+    "passed": true
+  },
+  "lockedBoto3": {
+    "account": "742711170910",
+    "arn": "arn:aws:iam::742711170910:root",
+    "region": "ap-northeast-2",
+    "passed": true
+  },
+  "attempt15LiveInventory": {
+    "path": "performance-tests/phase7_2-stabilization/resume-inventory-attempt15-20260719T015345Z.json",
+    "sha256": "02b2b1bb014bd963ae5381a8537a7920bda0bdf70e602fb7e3ebcda2bae6d46c",
+    "serviceClassCount": 35,
+    "allServiceClassCountsZero": true,
+    "resourceGroupsTaggingApi": {
+      "filter": {
+        "RunId": "run_20260718_225218_phase7_integration"
+      },
+      "residualCount": 0,
+      "residualArns": []
+    }
+  },
+  "staticCredentialsPrintedOrPersisted": false,
+  "passed": true
+}

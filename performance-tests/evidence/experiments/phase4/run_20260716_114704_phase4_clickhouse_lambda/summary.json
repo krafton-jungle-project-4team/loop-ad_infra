@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260716_114704_phase4_clickhouse_lambda",
+  "phase": "phase4",
+  "category": "experiment",
+  "executedAt": "2026-07-16T11:47:04",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "abortReason.observed.accountLimit",
+      "value": 10,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.account",
+      "value": "742711170910",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "aborted",
+  "rawStatus": "aborted",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "aborted",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "abortReason.observed.accountLimit",
+      "value": 10,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.account",
+      "value": "742711170910",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.targetRecordsPerSecond",
+      "value": 50000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "contract.expectedFullLoadRecords",
+      "value": 15000000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.jestTests.status",
+      "value": "passed",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.jestTests.passed",
+      "value": 20,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.phase4PythonTests.status",
+      "value": "passed",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.phase4PythonTests.passed",
+      "value": 20,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.qualifiedProducerTests.status",
+      "value": "passed",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "verification.qualifiedProducerTests.passed",
+      "value": 14,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.smokeRecordsSent",
+      "value": 0,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.fullLoadRecordsSent",
+      "value": 0,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.attributablePaidResourceCostUsd",
+      "value": "0.00",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "awsExecution.controlPlaneRequestCostUsd",
+      "value": "not measured",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.operationalMaximumUsd",
+      "value": "11.769042",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.cleanupReserveUsd",
+      "value": "3.000000",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.maximumIncludingCleanupUsd",
+      "value": "14.769042",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.hardCapUsd",
+      "value": "15.000000",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "costGate.newLoadStopThresholdUsd",
+      "value": "12.000000",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/run.json"
+    },
+    {
+      "name": "local.status",
+      "value": "passed",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "local.eventsPhysical",
+      "value": 50000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "local.eventsUnique",
+      "value": 50000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "local.eventsFinal",
+      "value": 50000,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "local.flushes.flushCount",
+      "value": 7,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "local.flushes.flushRateDeviation",
+      "value": -1.287245,
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "aws.status",
+      "value": "not run",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    },
+    {
+      "name": "aws.eventSourceMapping",
+      "value": "not measured",
+      "source": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "unknown",
+  "costStatus": "unknown",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260716_114704_phase4_clickhouse_lambda"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/artifacts.md",
+      "bytes": 880,
+      "sha256": "df7a92a055b7c20296fe4565bd8e32d76ed1dd85daa3b9e04be2c4423664498a"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/cleanup-verification.json",
+      "bytes": 1188,
+      "sha256": "0597e4e1c66328d484856ad783d8931a93a09464505c37a7fdc5299d6da66944"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/commands.md",
+      "bytes": 4609,
+      "sha256": "09eb718142eb2371187c272d49ff60157783d30d2f4853ae089d63fda4427502"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/correctness-summary.json",
+      "bytes": 779,
+      "sha256": "f343ae28b51aaacb8ec6c4ca374eea121a8ede8321eb688cc3676019f7df314d"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/cost-upper-bound.json",
+      "bytes": 4566,
+      "sha256": "2160aefc560cb6a20861cf59c89623daf7cae53d22008085a9e50ce3a4561537"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/infra.md",
+      "bytes": 1507,
+      "sha256": "af57338a6c67ec75f5d5f244d7d54c8ed67a846875fc08913808532a05a08d96"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/metrics-summary.json",
+      "bytes": 1561,
+      "sha256": "6b8a291cb1abea9943fcdad8101afae63329d2da2ec82e9597cd819499dffedf"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/report.md",
+      "bytes": 2698,
+      "sha256": "ecaeb7f8d0679f153fc0ba2092fcafdbc2c01033cdf7481c53ffe14003c1ad8b"
+    },
+    {
+      "path": "run_20260716_114704_phase4_clickhouse_lambda/run.json",
+      "bytes": 3396,
+      "sha256": "6f878a7d35b3513a1ce058194c4de182c5dc7229ac08bcf88791564de3c497a1"
+    }
+  ]
+}

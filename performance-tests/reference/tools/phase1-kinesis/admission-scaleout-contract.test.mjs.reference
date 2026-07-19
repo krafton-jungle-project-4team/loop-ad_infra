@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { admissionScaleoutStagePlan, evaluateAdmissionScaleout, evaluateAdmissionStage } from './admission-scaleout-contract.mjs';
+
+function aggregate(rps, offered = rps, errors = 0) {
+    return { actualRps: rps, attemptedRequests: 1_000_000, transportErrors: errors,
+        nodes: Array.from({ length: 4 }, (_, index) => ({ nodeId: `node-0${index + 1}`, actualRps: rps / 4,
+            offeredRps: offered / 4, attemptedRequests: 250_000, transportErrors: errors / 4 })) };
+}
+function metrics(healthy = 4) { return { admissionUtilizationPeak: 0.7, targetResponseP95Ms: 100, cpuPeakPercent: 60,
+    memoryPeakPercent: 60, kinesisThrottleCount: 0, producerFailureCount: 0, producerTimeoutCount: 0,
+    alb460Increasing: false, synSentIncreasing: false, enaAllowanceDelta: 0, healthyTargetCount: healthy,
+    oomFatalRestartCount: 0, admissionSustained90: false, cpuSustained80: false, memorySustained80: false }; }
+function recovery() { return { passed: true, queueDepth: 0, outstandingRecords: 0, apiInFlight: 0, unrecovered: false }; }
+
+test('freezes the exact four-node two-process 12k-connection ramp topology', () => {
+    for (const name of ['B10', 'B20', 'B30', 'B40', 'B50']) {
+        const plan = admissionScaleoutStagePlan(name);
+        assert.equal(plan.nodeCount, 4); assert.equal(plan.processesPerNode, 2); assert.equal(plan.totalConnections, 12_000);
+        assert.equal(plan.nodes.reduce((sum, node) => sum + node.offeredRps, 0), plan.targetRps);
+    }
+    assert.equal(admissionScaleoutStagePlan('B50_CONTROL').durationSeconds, 30);
+});
+
+test('passes an acceptance-complete stage and fails safety paths closed', () => {
+    assert.equal(evaluateAdmissionStage({ stageName: 'A30', aggregate: aggregate(30_000), metrics: metrics(4), recovery: recovery() }).result, 'success');
+    const unsafe = evaluateAdmissionStage({ stageName: 'B50', aggregate: aggregate(47_000, 50_000, 20_000),
+        metrics: { ...metrics(8), kinesisThrottleCount: 1 }, recovery: recovery() });
+    assert.equal(unsafe.result, 'failure'); assert.equal(unsafe.immediateStop, true);
+    assert.equal(evaluateAdmissionStage({ stageName: 'B50', aggregate: aggregate(50_000), metrics: metrics(4), recovery: recovery() }).checks.targetsHealthy, false);
+});
+
+test('requires fixed 50k qualification and reports effects without inventing a bottleneck', () => {
+    const actual = (rps, healthy) => ({ aggregate: aggregate(rps), metrics: metrics(healthy), recovery: recovery() });
+    const result = evaluateAdmissionScaleout({ stages: { A30: actual(30_000, 4), A40: actual(40_000, 4),
+        B30: actual(30_000, 8), B50_CONTROL: { aggregate: aggregate(50_000) }, B50: actual(50_000, 8) } });
+    assert.equal(result.conclusions.profileA30Resolved, true);
+    assert.equal(result.conclusions.profileB50Accepted, true);
+    assert.equal(result.conclusions.bottleneck, 'none-observed-through-50k');
+    const unqualified = evaluateAdmissionScaleout({ stages: { B50_CONTROL: { aggregate: aggregate(49_000, 50_000, 2_000) }, B50: actual(50_000, 8) } });
+    assert.equal(unqualified.conclusions.profileB50Accepted, false);
+    assert.equal(unqualified.conclusions.bottleneck, 'generator');
+    const stoppedAtA30 = evaluateAdmissionScaleout({ stages: { A30: actual(21_240, 4) },
+        bottleneckEvidence: { albPath: true } });
+    assert.equal(stoppedAtA30.conclusions.generator50Qualified, false);
+    assert.equal(stoppedAtA30.conclusions.profileB50Accepted, false);
+    assert.equal(stoppedAtA30.conclusions.bottleneck, 'alb-path');
+});

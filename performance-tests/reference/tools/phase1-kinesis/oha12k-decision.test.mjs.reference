@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { evaluateOha12kInterval } from './oha12k-decision.mjs';
+
+test('checked interval decision combines raw capacity evidence with generator classification', () => {
+    const fixturePath = new URL('../run_20260712_102207_phase1_kinesis_capacity_scout_go_batch/stages/30k/probe/evaluation-input.json', import.meta.url);
+    const input = JSON.parse(readFileSync(fixturePath, 'utf8'));
+    const completed = input.oha.completedRequests;
+    input.aggregate = {
+        passed: true,
+        targetRps: 30_000,
+        actualRps: 30_000,
+        durationSeconds: 15,
+        attemptedRequests: completed,
+        completedRequests: completed,
+        transportErrors: 0,
+        http202: completed,
+        http429: 0,
+        firstByteMs: { worstNode: { p95: 80, p99: 200 } },
+        latencyMs: { p50: 80, p95: 80, p99: 200 },
+        enaAllowanceDelta: { bw_out_allowance_exceeded: 0, pps_allowance_exceeded: 0 },
+        nodes: [{ nodeId: 'node-01', configuredConnections: 12_000, commandMatchesPlan: true,
+            processObservation: { maxOhaCpuPercent: 100 }, socketTelemetry: { oha_open_fds: 12_100, conntrack_count: 12_000 },
+            limits: { ulimitNofile: 1_048_576, conntrack: { max: 262_144 }, ephemeralPortRange: { low: 1_024, high: 65_535 } } }],
+    };
+    const result = evaluateOha12kInterval(input);
+    assert.equal(result.classification.generator.result, 'capable');
+    assert.equal(result.capacityDecision.producer.totals.ackCount, result.capacityDecision.producer.totals.successes);
+    assert.equal(result.alb.requestCount, completed);
+});

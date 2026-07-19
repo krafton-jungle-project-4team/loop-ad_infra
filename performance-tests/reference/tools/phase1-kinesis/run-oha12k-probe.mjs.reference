@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { evaluateOha12kInterval } from './oha12k-decision.mjs';
+import { oha12kNodePlan } from './oha12k-contract.mjs';
+
+const scripts = dirname(fileURLToPath(import.meta.url));
+const runDir = requiredOption('--run-dir');
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const nodeCount = requiredInteger('--node-count');
+const processesPerNode = integerOption('--processes-per-node', 1);
+const experimentMode = optionValue('--experiment-mode') ?? 'capacity-oha12k';
+const sessionManifest = optionValue('--session-manifest');
+const controlQualificationPath = optionValue('--control-qualification');
+const loadGeneratorIds = requiredOption('--load-generator-ids').split(',').filter(Boolean);
+const targetBaseUrl = requiredOption('--target-base-url');
+const imageDigest = requiredOption('--image-digest');
+const targetRps = requiredInteger('--target-rps');
+const accruedCost = requiredOption('--accrued-cost');
+const projectedCost = requiredOption('--projected-cost');
+const action = optionValue('--action') ?? 'stage';
+const resumeAfterLoad = process.argv.includes('--resume-after-load');
+const plan = oha12kNodePlan({ nodeCount, processesPerNode, targetRps, experimentMode });
+
+const validSession = experimentMode === 'generator-diagnosis'
+    ? /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+    : experimentMode === 'capacity-oha12k' && /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId);
+if (!validSession) throw new Error('invalid session ID');
+if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) throw new Error('invalid run ID');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) throw new Error('invalid image digest');
+if (loadGeneratorIds.length !== nodeCount) throw new Error('load generator IDs must match topology');
+if (!['topology', 'stage'].includes(action)) throw new Error('action must be topology or stage');
+
+mkdirSync(runDir, { recursive: true });
+const correctness = json(join(runDir, 'correctness-summary.json'));
+if (correctness.passed !== true || correctness.fourTaskReplacementPassed !== true) throw new Error('actual-Kinesis correctness must pass before oha12k probe');
+const shardMetrics = json(join(runDir, 'shard-metrics.json'));
+if (shardMetrics.passed !== true || shardMetrics.sessionId !== sessionId) throw new Error('owned shard metrics must be enabled before oha12k probe');
+const controlQualification = experimentMode === 'generator-diagnosis' ? json(requiredValue(controlQualificationPath, '--control-qualification')) : null;
+if (controlQualification && !(controlQualification.passed === true &&
+    controlQualification.selectedTopology?.nodeCount === nodeCount &&
+    controlQualification.selectedTopology?.processesPerNode === processesPerNode &&
+    controlQualification.stages?.['30k']?.passed === true && controlQualification.stages?.['50k']?.passed === true)) {
+    throw new Error('selected topology is not qualified for both fast-control stages');
+}
+const intervalDir = join(runDir, 'stages', `${targetRps / 1_000}k`, 'probe');
+mkdirSync(intervalDir, { recursive: true });
+const recordPath = join(runDir, 'oha12k-run-record.json');
+const record = resumeAfterLoad ? json(recordPath) : { startedAt: new Date().toISOString(), experimentMode, sessionId, runId,
+    candidate, nodeCount, processesPerNode, targetRps, totalConnections: plan.totalConnections, commands: [], status: 'running' };
+if (resumeAfterLoad) {
+    record.resumedAfterLoadAt = new Date().toISOString();
+    record.status = 'running';
+}
+writeRecord();
+if (!resumeAfterLoad && experimentMode === 'generator-diagnosis') {
+    runNode('generator-diagnosis-start-gate.mjs', ['--session-id', sessionId,
+        '--session', requiredValue(sessionManifest, '--session-manifest'), '--action', action,
+        '--estimated-work-seconds', action === 'topology' ? '600' : '300', '--accrued-cost', accruedCost,
+        '--projected-cost', projectedCost, '--output', join(intervalDir, 'start-gate.json')]);
+} else if (!resumeAfterLoad) {
+    runNode('oha12k-start-gate.mjs', ['--session-id', sessionId, '--candidate', candidate, '--action', action,
+        '--estimated-work-seconds', action === 'topology' ? '600' : '300', '--accrued-cost', accruedCost,
+        '--projected-cost', projectedCost, '--output', join(intervalDir, 'start-gate.json')]);
+}
+if (!resumeAfterLoad) {
+    runNode('collect-capacity-task-state.mjs', ['--image-digest', imageDigest, '--output', join(intervalDir, 'task-state-before.json')]);
+    runNode('collect-debug-vars.mjs', ['--expected-count', '4', '--candidate', candidate, '--label', 'oha12k-pre',
+        '--output-dir', join(intervalDir, 'debug-vars', 'before')]);
+    runNode('collect-runtime-state.mjs', ['--expected-count', '4', '--candidate', candidate, '--label', 'oha12k-pre',
+        '--output-dir', join(intervalDir, 'runtime', 'before')]);
+    const startEpoch = Math.ceil((Date.now() / 1_000 + 30) / 60) * 60;
+    runNode('run-oha12k-load.mjs', ['--instance-ids', loadGeneratorIds.join(','), '--target-base-url', targetBaseUrl,
+        '--run-id', runId, '--rps', `${targetRps}`, '--duration-seconds', '15', '--node-count', `${nodeCount}`,
+        '--processes-per-node', `${processesPerNode}`, '--experiment-mode', experimentMode,
+        '--start-epoch', `${startEpoch}`, '--output-dir', join(intervalDir, 'load')]);
+    execFileSync('sleep', ['15']);
+    runNode('collect-debug-vars.mjs', ['--expected-count', '4', '--candidate', candidate, '--label', 'oha12k-post',
+        '--output-dir', join(intervalDir, 'debug-vars', 'after')]);
+    runNode('collect-runtime-state.mjs', ['--expected-count', '4', '--candidate', candidate, '--label', 'oha12k-post',
+        '--output-dir', join(intervalDir, 'runtime', 'after')]);
+    runNode('collect-capacity-task-state.mjs', ['--image-digest', imageDigest, '--output', join(intervalDir, 'task-state-after.json')]);
+    execFileSync('sleep', ['90']);
+}
+const aggregate = json(join(intervalDir, 'load', 'oha12k-summary.json'));
+const metricArgs = ['--expected-collector-count', '4', '--include-shards', '--start-time', earliestStart(aggregate.nodes),
+    '--expected-load-generator-count', `${nodeCount}`, '--end-time', latestEnd(aggregate.nodes),
+    '--output-dir', join(intervalDir, 'metrics')];
+runNode('collect-metrics.mjs', metricArgs);
+if (!requiredMetricsReady(json(join(intervalDir, 'metrics', 'cloudwatch-summary.json')))) {
+    execFileSync('sleep', ['60']);
+    runNode('collect-metrics.mjs', metricArgs);
+}
+const cloudwatch = json(join(intervalDir, 'metrics', 'cloudwatch-summary.json'));
+if (!requiredMetricsReady(cloudwatch)) throw new Error('required CloudWatch samples did not arrive');
+runNode('collect-logs.mjs', ['--start-time', earliestStart(aggregate.nodes), '--end-time', latestEnd(aggregate.nodes),
+    '--output-dir', join(intervalDir, 'logs')]);
+const input = {
+    candidate, aggregate,
+    ...(controlQualification ? { controlQualification } : {}),
+    beforeHosts: snapshots(join(intervalDir, 'debug-vars', 'before')),
+    afterHosts: snapshots(join(intervalDir, 'debug-vars', 'after')),
+    cloudwatch,
+    taskBefore: json(join(intervalDir, 'task-state-before.json')),
+    taskAfter: json(join(intervalDir, 'task-state-after.json')),
+    logs: json(join(intervalDir, 'logs', 'collector-error-logs.json')),
+};
+writeJson(join(intervalDir, 'evaluation-input.json'), input);
+const decision = evaluateOha12kInterval(input);
+if (controlQualification) decision.generatorSeparation = {
+    controlQualified: true,
+    selectedTopology: controlQualification.selectedTopology,
+    fastControlStage: targetRps === 30_000 ? controlQualification.stages['30k'] : controlQualification.stages['50k'],
+    candidateObservedGeneratorResult: decision.classification.generator.result,
+    interpretation: 'Topology capability is established by the independent fast-control target; candidate delivery shortfall is evaluated on the AWS target path.',
+};
+writeJson(join(intervalDir, 'decision.json'), decision);
+record.finishedAt = new Date().toISOString();
+record.status = decision.classification.target.result === 'unsafe' ? 'unsafe' : 'completed';
+record.decision = 'stages/' + `${targetRps / 1_000}k/probe/decision.json`;
+writeRecord();
+process.stdout.write(`${JSON.stringify(decision, null, 2)}\n`);
+
+function earliestStart(nodes) { return nodes.map((node) => node.startedAt).sort()[0]; }
+function latestEnd(nodes) { return nodes.map((node) => node.endedAt).sort().at(-1); }
+function requiredMetricsReady(summary) { return ['kinesis_incoming_records_sum', 'alb_requests_sum',
+    ...Array.from({ length: 80 }, (_, index) => `shard_${index.toString().padStart(3, '0')}_incoming_records_sum`)]
+    .every((id) => (summary.metrics?.[id]?.sampleCount ?? 0) > 0); }
+function snapshots(directory) { return readdirSync(directory).filter((name) => /^collector-[0-9]{2}\.json$/.test(name)).sort().map((name) => json(join(directory, name))); }
+function runNode(script, args) { record.commands.push({ at: new Date().toISOString(), script, args }); writeRecord(); execFileSync(process.execPath, [join(scripts, script), ...args], { stdio: 'inherit' }); }
+function writeRecord() { writeJson(recordPath, record); }
+function json(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function writeJson(path, value) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
+function requiredInteger(name) { const value = Number(requiredOption(name)); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function integerOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`); return value; }
+function requiredValue(value, name) { if (!value) throw new Error(`${name} is required`); return value; }

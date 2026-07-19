@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 8,
+  "runId": "run_20260718_124510_phase7_integration",
+  "sessionId": "phase7-integration-20260718T124510Z",
+  "reconciledAt": "2026-07-18T13:45:38Z",
+  "paidRuntime": {
+    "deployStartedAt": "2026-07-18T13:11:33.961041Z",
+    "deployFinishedAt": "2026-07-18T13:24:36.377926Z",
+    "verifyFailedAt": "2026-07-18T13:25:12.833725Z",
+    "cleanupFinishedAt": "2026-07-18T13:39:05.217891Z",
+    "authoritativeCleanupZeroAt": "2026-07-18T13:39:21.128Z",
+    "paidStartToAuthoritativeZeroSeconds": "1667.166959"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-8-cost-explorer-20260718.json",
+    "evidenceSha256": "8e278950cdbe7fb95f8cee8cc97319b3f2fe0f2eb8fefcdc932a263de829982b",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "The current-day result is estimated and delayed; zero is not treated as a zero-cost attempt."
+  },
+  "priceEvidence": {
+    "path": "performance-tests/phase7_2-stabilization/attempt-8-cost-reconciliation-prices.json",
+    "sha256": "36bdb3d8fa10e9f4f7979638237113003320485b8559bf3a53cffecc3901d9c1",
+    "asOf": "2026-07-18T13:42:27.596Z",
+    "region": "ap-northeast-2",
+    "publicIpv4HourUsd": "0.0050000000"
+  },
+  "modeledFailurePath": {
+    "billableResourceDurationCeilingSeconds": 1800,
+    "actualDurationBelowCeiling": true,
+    "components": [
+      {
+        "name": "EC2 fixed fleet",
+        "rawCostUsd": "1.6846",
+        "costUsd": "1.684600",
+        "formula": "(6*.192 + 2*.2562 + 8*.1281 + 2*.0816 + 1*.5168)*.5"
+      },
+      {
+        "name": "Kinesis provisioned shards",
+        "rawCostUsd": "2.2200",
+        "costUsd": "2.220000",
+        "formula": "120*1*.0185"
+      },
+      {
+        "name": "three Network Load Balancers",
+        "rawCostUsd": "0.0675",
+        "costUsd": "0.067500",
+        "formula": "3*1*.0225"
+      },
+      {
+        "name": "idle NLB capacity allowance",
+        "rawCostUsd": "0.018",
+        "costUsd": "0.018000",
+        "formula": "3*1*.006"
+      },
+      {
+        "name": "single NAT gateway",
+        "rawCostUsd": "0.059",
+        "costUsd": "0.059000",
+        "formula": "1*.059"
+      },
+      {
+        "name": "NAT processed data allowance",
+        "rawCostUsd": "0.0059",
+        "costUsd": "0.005900",
+        "formula": ".1*.059"
+      },
+      {
+        "name": "NAT gateway public IPv4 address",
+        "rawCostUsd": "0.005",
+        "costUsd": "0.005000",
+        "formula": "1*.005"
+      },
+      {
+        "name": "gp3 capacity and ClickHouse extra throughput",
+        "rawCostUsd": "0.07667671232876712328767123287",
+        "costUsd": "0.076677",
+        "formula": "1040*(.5/730)*.0912 + (375/1024)*(.5/730)*46.6944"
+      },
+      {
+        "name": "Secrets Manager storage",
+        "rawCostUsd": "0.01315068493150684931506849315",
+        "costUsd": "0.013151",
+        "formula": "(24/730)*.4"
+      },
+      {
+        "name": "ECR image storage",
+        "rawCostUsd": "0.009863013698630136986301369864",
+        "costUsd": "0.009863",
+        "formula": "3*(24/730)*.1"
+      },
+      {
+        "name": "DynamoDB storage and control requests",
+        "rawCostUsd": "0.01082541095890410958904109589",
+        "costUsd": "0.010825",
+        "formula": ".3*(24/730)*.27075 + 10000*.0000001355 + 10000*.00000068"
+      },
+      {
+        "name": "S3 storage allowance",
+        "rawCostUsd": "0.004931506849315068493150684932",
+        "costUsd": "0.004932",
+        "formula": "6*(24/730)*.025"
+      },
+      {
+        "name": "CloudWatch log ingestion allowance",
+        "rawCostUsd": "0.0076",
+        "costUsd": "0.007600",
+        "formula": ".01*.76"
+      },
+      {
+        "name": "CloudWatch custom metrics",
+        "rawCostUsd": "0.2465753424657534246575342466",
+        "costUsd": "0.246575",
+        "formula": "600*(1/730)*.3"
+      },
+      {
+        "name": "Cost Explorer query",
+        "rawCostUsd": "0.01",
+        "costUsd": "0.010000",
+        "formula": ".01"
+      },
+      {
+        "name": "evidence and transfer reserve",
+        "rawCostUsd": "0.5",
+        "costUsd": "0.500000",
+        "formula": ".5"
+      },
+      {
+        "name": "delayed metering and rollback reserve",
+        "rawCostUsd": "0.5",
+        "costUsd": "0.500000",
+        "formula": ".5"
+      }
+    ],
+    "rawTotalUsd": "5.439622671232876712328767124",
+    "upperBoundUsd": "5.439623",
+    "roundingNote": "The actual paid interval is below 30 minutes. Per-second resources use a 30-minute ceiling; hourly/minimum resources use one full hour; storage retains a full-day allowance. The total is rounded once to six decimals."
+  },
+  "roundingPolicy": "Charge 6.000000 USD to the closed pre-reset epoch, rounding the 5.439623 USD failure-path upper bound upward while retaining delayed-billing margin.",
+  "chargedUpperBoundUsd": "6.000000",
+  "budgetBeforeOperatorReset": {
+    "epochId": "phase7-2-reset-20260718-after-attempt-5",
+    "activeEpochAccruedUpperBoundUsd": "26.000000",
+    "lifetimeChargedUpperBoundUsd": "53.000000"
+  },
+  "operatorBudgetReset": {
+    "effectiveAfterAttemptOrdinal": 8,
+    "effectiveAtAuthoritativeCleanupZero": "2026-07-18T13:39:21.128Z",
+    "priorAttemptsExcludedFromProspectiveAdmission": true,
+    "priorAttemptRecordsAndLifetimeCostsPreserved": true,
+    "newEpochId": "phase7-2-reset-20260718-after-attempt-8",
+    "newEpochAccruedUpperBoundUsd": "0.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000"
+  },
+  "nextFullAttemptGate": {
+    "priorActiveEpochAccruedUpperBoundUsd": "0.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "38.870718",
+    "newWorkStopUsd": "55.000000",
+    "hardCapUsd": "60.000000",
+    "remainingMarginUsd": "21.129282",
+    "passed": true,
+    "authorization": "One fresh full attempt may proceed only after the parser fix, complete local verification, fresh handoff, identities, images, prices and absent/prepared ownership preflights pass."
+  },
+  "sourceEvidence": {
+    "cleanupVerification": {
+      "path": "performance-tests/run_20260718_124510_phase7_2_aws_integration/cleanup-verification.json",
+      "sha256": "2b18a8c1defb84be45e502a4ec409f90756ab7d54f65cb4268a20a05edf2429a"
+    },
+    "verifyLog": {
+      "path": "performance-tests/run_20260718_124510_phase7_2_aws_integration/evidence/control/verify.attempt-1.stderr.log",
+      "sha256": "3da710ad4095430f995c3b85b3b0701b43845cadb3fc87272916a0762b181ce7"
+    },
+    "diagnosis": {
+      "path": "performance-tests/run_20260718_124510_phase7_2_aws_integration/evidence/diagnosis/prometheus-nonfinite-sample-parser.json",
+      "sha256": "ee53d07234800dce391e6134a0855a87a3cc328c2d0b3fd12bf4865ec237518d"
+    }
+  }
+}

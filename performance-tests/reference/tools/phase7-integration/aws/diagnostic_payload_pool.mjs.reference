@@ -1,0 +1,167 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PHASE7_DIAGNOSTIC_IDENTITY_MODE } from './phase7_diagnostic_contract.mjs';
+
+export const DIAGNOSTIC_POOL_ROWS = 480;
+export const DIAGNOSTIC_SHARDS = 120;
+export const DIAGNOSTIC_TARGET_RPS = 50_000;
+export const DIAGNOSTIC_TRANSFER_LIMIT_BYTES = 20 * 1_024;
+
+const HASH_SPACE = 1n << 128n;
+const PROFILES = Object.freeze([
+    { name: 'compact', targetBytes: 1_092 },
+    { name: 'standard', targetBytes: 1_413 },
+    { name: 'expanded', targetBytes: 1_518 },
+]);
+
+export function buildDiagnosticPayloadPool({ runId, stage, eventDate }) {
+    if (!/^run_[0-9]{8}_[0-9]{6}_phase7_integration$/.test(runId)) throw new Error('invalid Phase 7 run ID');
+    if (!['warmup', 'score'].includes(stage)) throw new Error('stage must be warmup or score');
+    if (!/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(eventDate) || Number.isNaN(Date.parse(`${eventDate}T00:00:00Z`))) {
+        throw new Error('eventDate must be an ISO calendar date');
+    }
+
+    const targets = Array(DIAGNOSTIC_SHARDS).fill(DIAGNOSTIC_POOL_ROWS / DIAGNOSTIC_SHARDS);
+    const byShard = Array.from({ length: DIAGNOSTIC_SHARDS }, () => []);
+    const compactRun = runId.slice('run_'.length).replaceAll('_', '-');
+    const prefix = `phase7-${compactRun}-${stage}-`;
+    let candidate = 0;
+    let accepted = 0;
+    while (accepted < DIAGNOSTIC_POOL_ROWS) {
+        candidate += 1;
+        if (candidate > DIAGNOSTIC_POOL_ROWS * 30) throw new Error('unable to balance the diagnostic pool');
+        const eventId = `${prefix}${candidate.toString().padStart(8, '0')}`;
+        const shardIndex = shardIndexFor(eventId);
+        if (byShard[shardIndex].length >= targets[shardIndex]) continue;
+        const profile = PROFILES[(shardIndex + byShard[shardIndex].length) % PROFILES.length];
+        const body = createBody({ candidate, eventDate, eventId, profile, stage });
+        byShard[shardIndex].push({ body, eventId, profile: profile.name, shardIndex });
+        accepted += 1;
+    }
+
+    const rows = [];
+    for (let slot = 0; slot < 4; slot += 1) {
+        for (const shardRows of byShard) rows.push(shardRows[slot]);
+    }
+    if (rows.some((row) => !row) || new Set(rows.map((row) => row.eventId)).size !== DIAGNOSTIC_POOL_ROWS) {
+        throw new Error('diagnostic pool is incomplete or contains duplicate fixture IDs');
+    }
+    const output = `${rows.map((row) => row.body).join('\n')}\n`;
+    const compressedBase64Bytes = Buffer.byteLength(gzipSync(output, { level: 9 }).toString('base64'));
+    if (compressedBase64Bytes > DIAGNOSTIC_TRANSFER_LIMIT_BYTES) {
+        throw new Error(`diagnostic pool exceeds the verified SSM transfer limit: ${compressedBase64Bytes}`);
+    }
+    const shardBodyBytes = byShard.map((rowsForShard) => rowsForShard.reduce(
+        (sum, row) => sum + Buffer.byteLength(row.body) + Buffer.byteLength(row.eventId), 0,
+    ));
+    const maxExpectedBytesPerSecond = Math.max(...shardBodyBytes) * DIAGNOSTIC_TARGET_RPS / DIAGNOSTIC_POOL_ROWS;
+    const sha256 = createHash('sha256').update(output).digest('hex');
+    const manifest = {
+        schemaVersion: 1,
+        workload: 'phase7-throughput-diagnostic',
+        identityMode: PHASE7_DIAGNOSTIC_IDENTITY_MODE,
+        runId,
+        stage,
+        eventDate,
+        eventIdPrefix: prefix,
+        rows: DIAGNOSTIC_POOL_ROWS,
+        uniqueFixtureEventIds: DIAGNOSTIC_POOL_ROWS,
+        sha256,
+        runtimeSelection: 'oha -Z random sampling with replacement',
+        globalRequestEventIdUniquenessGuaranteed: false,
+        acceptanceBasis: [
+            'HTTP 202 responses after collector Kinesis final ACK',
+            'Kinesis accepted records',
+            'KCL successful input records',
+            'ClickHouse asynchronous insert rows',
+        ],
+        warmupScoreIdentitySeparated: true,
+        compressedBase64Bytes,
+        profiles: Object.fromEntries(PROFILES.map((profile) => [
+            profile.name,
+            rows.filter((row) => row.profile === profile.name).length,
+        ])),
+        kinesisPartitioning: {
+            algorithm: 'MD5 partition key mapped over 2^128',
+            shardCount: DIAGNOSTIC_SHARDS,
+            rowsPerShard: { min: Math.min(...byShard.map((value) => value.length)), max: Math.max(...byShard.map((value) => value.length)) },
+            expectedRecordsPerSecondPerShard: DIAGNOSTIC_TARGET_RPS / DIAGNOSTIC_SHARDS,
+            maxExpectedBytesPerSecond,
+            belowRecordLimit: DIAGNOSTIC_TARGET_RPS / DIAGNOSTIC_SHARDS < 1_000,
+            belowByteLimit: maxExpectedBytesPerSecond < 1_048_576,
+        },
+    };
+    return { output, manifest };
+}
+
+function shardIndexFor(partitionKey) {
+    const digest = createHash('md5').update(partitionKey, 'utf8').digest('hex');
+    return Number(BigInt(`0x${digest}`) * BigInt(DIAGNOSTIC_SHARDS) / HASH_SPACE);
+}
+
+function createBody({ candidate, eventDate, eventId, profile, stage }) {
+    const eventTime = new Date(Date.parse(`${eventDate}T00:00:00Z`) + (candidate % 86_400) * 1_000).toISOString();
+    const profileFields = profile.name === 'compact'
+        ? { placement: 'recommendation_card' }
+        : profile.name === 'standard'
+            ? { placement: 'recommendation_card', content_id: `hotel_${candidate % 4096}`, campaign_id: `campaign_${candidate % 128}` }
+            : { placement: 'recommendation_card', content_id: `hotel_${candidate % 4096}`, campaign_id: `campaign_${candidate % 128}`, element: 'hotel_recommendation_carousel_card', page: '/hotel/recommendations' };
+    const properties = {
+        sdk: { name: 'loop-ad_event_sdk', version: 'phase7-diagnostic' },
+        perf: { profile: profile.name, pool: 'phase7-480-balanced', stage },
+        locale: 'ko-KR',
+        device_type: candidate % 2 === 0 ? 'desktop' : 'mobile',
+        recommendation_context: '',
+        ...profileFields,
+    };
+    const envelope = {
+        project_id: 'phase7-diagnostic',
+        write_key: 'perf_public_write_key',
+        schema_version: 'hotel_rec_promo.v1',
+        event_id: eventId,
+        event_name: 'phase7_throughput_diagnostic',
+        event_time: eventTime,
+        source: 'browser_sdk',
+        user_id: `user_${candidate.toString().padStart(8, '0')}`,
+        session_id: `session_${(candidate % 2048).toString().padStart(8, '0')}`,
+        properties_json: '',
+    };
+    envelope.properties_json = JSON.stringify(properties);
+    const missing = profile.targetBytes - Buffer.byteLength(JSON.stringify(envelope));
+    if (missing < 0) throw new Error(`${profile.name} diagnostic envelope exceeds its body-size target`);
+    properties.recommendation_context = deterministicContext(candidate, missing);
+    envelope.properties_json = JSON.stringify(properties);
+    const body = JSON.stringify(envelope);
+    if (Buffer.byteLength(body) !== profile.targetBytes) throw new Error('diagnostic body-size invariant failed');
+    return body;
+}
+
+function deterministicContext(seed, length) {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return Array.from({ length }, (_, index) => alphabet[(seed + index) % alphabet.length]).join('');
+}
+
+function option(name) {
+    const index = process.argv.indexOf(name);
+    return index < 0 ? undefined : process.argv[index + 1];
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    const runId = option('--run-id');
+    const stage = option('--stage');
+    const eventDate = option('--event-date');
+    const outputPath = option('--output');
+    const manifestPath = option('--manifest');
+    if (![runId, stage, eventDate, outputPath, manifestPath].every(Boolean)) throw new Error('all CLI options are required');
+    const result = buildDiagnosticPayloadPool({ runId, stage, eventDate });
+    mkdirSync(dirname(outputPath), { recursive: true });
+    mkdirSync(dirname(manifestPath), { recursive: true });
+    writeFileSync(outputPath, result.output, 'utf8');
+    writeFileSync(manifestPath, `${JSON.stringify(result.manifest, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(result.manifest, null, 2)}\n`);
+}

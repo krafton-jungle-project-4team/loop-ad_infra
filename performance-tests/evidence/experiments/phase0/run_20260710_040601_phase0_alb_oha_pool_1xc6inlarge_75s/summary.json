@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-10T04:06:01",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "infra.instanceCount",
+      "value": 1,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "load.durationSeconds",
+      "value": 75,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.timeoutCount",
+      "value": 24554,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.albFixedResponseCount",
+      "value": 4276836,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.generatorAlbCountDifferenceRatio",
+      "value": 0.0023387237959931633,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "infra.instanceCount",
+      "value": 1,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "infra.selectedVcpu",
+      "value": 2,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "infra.quotaVcpu",
+      "value": 32,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "infra.reductionFromPriorVcpu",
+      "value": 0.875,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "load.durationSeconds",
+      "value": 75,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "load.waitForOngoingRequestsAfterDeadline",
+      "value": true,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.completedRequests",
+      "value": 4266857,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.attemptedRequests",
+      "value": 4291411,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.timeoutCount",
+      "value": 24554,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.effectiveSuccessRate",
+      "value": 0.9942783387561807,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.requestsPerSecond",
+      "value": 55679.048372907135,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.p50Milliseconds",
+      "value": 34.342084,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.p95Milliseconds",
+      "value": 182.505778,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.p99Milliseconds",
+      "value": 3137.68139,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.albFixedResponseCount",
+      "value": 4276836,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.generatorAlbCountDifferenceRatio",
+      "value": 0.0023387237959931633,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    },
+    {
+      "name": "result.weightedCpuUtilizationPercent",
+      "value": 51.170298627925746,
+      "source": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/artifacts.md",
+      "bytes": 541,
+      "sha256": "e9997746a755f003dba5b3cdb6ae381b6cc77b01b0dbb13ee5e95a2aaaf3e3b5"
+    },
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/commands.md",
+      "bytes": 571,
+      "sha256": "64c6740e04ee7491cb33dc750e3e016cd97897cd5a2e266a4fd1ca7b5f58eac1"
+    },
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/cost.md",
+      "bytes": 321,
+      "sha256": "83d33c192ed2ecd63e0a3de87d019117e8fc1002a8c27e17e145ceaa3895ee81"
+    },
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/infra.md",
+      "bytes": 456,
+      "sha256": "c04ed99019ebeedfb9a68b6df2e120e5af909e96fc4f183ef67f042f5692d3b5"
+    },
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/report.md",
+      "bytes": 1100,
+      "sha256": "a915365dc726061bbe388a9480f063b11bb388330275264012c6243bc1ec2a85"
+    },
+    {
+      "path": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/run.json",
+      "bytes": 1407,
+      "sha256": "55c01fcf5a4289fbdc40b2482f769e89631db0f9733f7fd451096a11dc9a85df"
+    }
+  ]
+}

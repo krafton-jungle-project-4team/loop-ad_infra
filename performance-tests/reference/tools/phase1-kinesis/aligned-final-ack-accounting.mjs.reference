@@ -1,0 +1,108 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
+
+const COUNTER_FIELDS = Object.freeze([
+    'enqueued', 'api_calls', 'record_attempts', 'successes', 'failures', 'retries', 'partial_failures', 'timeouts', 'queue_full',
+]);
+
+export function readCollectorBoundaryEvidence(inputDir, expectedCollectorCount) {
+    return Array.from({ length: expectedCollectorCount }, (_, index) => {
+        const collector = `collector-${String(index + 1).padStart(2, '0')}`;
+        const directory = join(inputDir, collector);
+        const compressed = join(directory, 'measurement-boundaries.ndjson.gz');
+        const plain = join(directory, 'measurement-boundaries.ndjson');
+        try {
+            const content = existsSync(compressed) ? gunzipSync(readFileSync(compressed)).toString('utf8') : readFileSync(plain, 'utf8');
+            const boundaries = content.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+            return { collector, boundaries };
+        } catch (error) {
+            return { collector, boundaries: [], readError: `${error.message ?? error}` };
+        }
+    });
+}
+
+export function evaluateAlignedFinalAckAccounting({
+    evidence,
+    measurementStartEpoch,
+    measurementDurationSeconds,
+    clientHttp202,
+    clientTransportErrors,
+    expectedCollectorCount = 6,
+    maximumStartLeadSeconds = 5,
+    maximumEndLagSeconds = 30,
+}) {
+    const measurementStartMs = measurementStartEpoch * 1_000;
+    const measurementEndMs = (measurementStartEpoch + measurementDurationSeconds) * 1_000;
+    const collectors = evidence.map((item) => evaluateCollector(item, measurementStartMs, measurementEndMs,
+        maximumStartLeadSeconds * 1_000, maximumEndLagSeconds * 1_000));
+    const checks = {
+        exactCollectorSet: collectors.length === expectedCollectorCount && new Set(collectors.map((item) => item.collector)).size === expectedCollectorCount,
+        boundaryPairComplete: collectors.length === expectedCollectorCount && collectors.every((item) => item.checks.boundaryPairComplete),
+        startBoundaryAligned: collectors.length === expectedCollectorCount && collectors.every((item) => item.checks.startBoundaryAligned),
+        endBoundaryAligned: collectors.length === expectedCollectorCount && collectors.every((item) => item.checks.endBoundaryAligned),
+        countersMonotonic: collectors.length === expectedCollectorCount && collectors.every((item) => item.checks.countersMonotonic),
+    };
+    const measurementAligned = Object.values(checks).every(Boolean);
+    const counterDeltas = collectors.map((item) => item.counterDeltas);
+    const kinesisSuccesses = counterDeltas.reduce((sum, item) => sum + number(item.successes), 0);
+    const lowerBound = clientHttp202;
+    const upperBound = clientHttp202 + clientTransportErrors;
+    const finalAckCountMatch = measurementAligned && kinesisSuccesses >= lowerBound && kinesisSuccesses <= upperBound;
+    const queueDrained = measurementAligned && collectors.every((item) => item.queueDrained);
+    return {
+        classification: !measurementAligned ? 'instrumentation-failure' : finalAckCountMatch ? 'pass' : 'performance-failure',
+        measurementAligned,
+        measurementWindow: {
+            start: new Date(measurementStartMs).toISOString(),
+            end: new Date(measurementEndMs).toISOString(),
+            durationSeconds: measurementDurationSeconds,
+            maximumStartLeadSeconds,
+            maximumEndLagSeconds,
+        },
+        clientHttp202,
+        clientTransportErrors,
+        kinesisSuccesses,
+        lowerBound,
+        upperBound,
+        ambiguityCount: kinesisSuccesses - clientHttp202,
+        finalAckCountMatch,
+        queueDrained,
+        counterDeltas,
+        collectors,
+        checks,
+        passed: measurementAligned && finalAckCountMatch,
+    };
+}
+
+function evaluateCollector(item, measurementStartMs, measurementEndMs, maximumStartLeadMs, maximumEndLagMs) {
+    const starts = item.boundaries.filter((boundary) => boundary.kind === 'start');
+    const ends = item.boundaries.filter((boundary) => boundary.kind === 'end');
+    const start = starts[0];
+    const end = ends[0];
+    const startMs = Date.parse(start?.timestampUtc ?? '');
+    const endMs = Date.parse(end?.timestampUtc ?? '');
+    const startCounters = start?.counters ?? {};
+    const endCounters = end?.counters ?? {};
+    const counterDeltas = Object.fromEntries(COUNTER_FIELDS.map((field) => [field, number(endCounters[field]) - number(startCounters[field])]));
+    const checks = {
+        boundaryPairComplete: !item.readError && starts.length === 1 && ends.length === 1 && Number.isFinite(startMs) && Number.isFinite(endMs),
+        startBoundaryAligned: Number.isFinite(startMs) && startMs <= measurementStartMs && startMs >= measurementStartMs - maximumStartLeadMs,
+        endBoundaryAligned: Number.isFinite(endMs) && endMs >= measurementEndMs && endMs <= measurementEndMs + maximumEndLagMs,
+        countersMonotonic: COUNTER_FIELDS.every((field) => counterDeltas[field] >= 0),
+    };
+    return {
+        collector: item.collector,
+        readError: item.readError ?? null,
+        startTimestamp: Number.isFinite(startMs) ? new Date(startMs).toISOString() : null,
+        endTimestamp: Number.isFinite(endMs) ? new Date(endMs).toISOString() : null,
+        startLeadMilliseconds: Number.isFinite(startMs) ? measurementStartMs - startMs : null,
+        endLagMilliseconds: Number.isFinite(endMs) ? endMs - measurementEndMs : null,
+        counterDeltas,
+        queueDrained: ['queue_depth', 'sender_queue_depth', 'outstanding_records', 'api_calls_in_flight']
+            .every((field) => number(endCounters[field]) === 0),
+        checks,
+    };
+}
+
+function number(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "incidentId": "incident-phase7-20260719-162701",
+  "symptom": "not_recorded",
+  "rootCause": "not_recorded",
+  "fix": "not_recorded",
+  "regressionResult": "run_20260719_162701_phase7_2_deployment_readiness:unknown",
+  "affectedRunIds": [
+    "run_20260719_162701_phase7_2_deployment_readiness"
+  ],
+  "period": {
+    "start": "2026-07-19T16:27:01",
+    "end": "2026-07-19T16:27:01",
+    "timezone": "not_recorded"
+  },
+  "invalidationScope": "unknown",
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceEvidence": [
+      {
+        "path": "run_20260719_162701_phase7_2_deployment_readiness/commands.md",
+        "bytes": 1900,
+        "sha256": "163fa296467f14ad73555500693b9c327910a361ccc4a4a2d1c78eaac845fd6b"
+      },
+      {
+        "path": "run_20260719_162701_phase7_2_deployment_readiness/cost-model.json",
+        "bytes": 13369,
+        "sha256": "2761b66a2be0e868598a9c0b53d90ca191a2c249fd980f18131e33939c6306ed"
+      }
+    ]
+  }
+}

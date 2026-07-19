@@ -1,0 +1,34 @@
+{
+  "attemptOrdinal": 2,
+  "campaignChargedUpperBoundUsd": "1.000000",
+  "costExplorer": {
+    "estimated": true,
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-2-cost-explorer-20260718.json",
+    "observedUnblendedCostUsd": "0.000000",
+    "warning": "The current-day Cost Explorer result is estimated and billing is delayed; zero is not treated as a zero-cost attempt."
+  },
+  "modeledFailurePath": {
+    "components": [
+      {
+        "costUsd": "0.000411",
+        "name": "ECR image storage",
+        "note": "Three 1-GiB images retained for an upper-bound one hour at 0.10 USD per GB-month."
+      },
+      {
+        "costUsd": "0.010000",
+        "name": "Cost Explorer API request allowance"
+      },
+      {
+        "costUsd": "0.500000",
+        "name": "delayed metering and failure-path reserve"
+      }
+    ],
+    "upperBoundUsd": "0.510411"
+  },
+  "paidRuntimeStarted": false,
+  "reconciledAt": "2026-07-18T01:26:01Z",
+  "roundingPolicy": "Charge 1.000000 USD to the campaign ledger, rounding the modeled 0.510411 USD failure-path upper bound upward to preserve a conservative delayed-billing margin.",
+  "runId": "run_20260718_004921_phase7_integration",
+  "schemaVersion": 1,
+  "sessionId": "phase7-integration-20260718T004921Z"
+}

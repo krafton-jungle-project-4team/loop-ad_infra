@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const cluster = requiredOption('--cluster');
+const service = requiredOption('--service');
+const targetGroupArn = requiredOption('--target-group-arn');
+const output = requiredOption('--output');
+if (cluster !== 'perf-phase1-loop-ad-collector-cluster' || service !== 'perf-phase1-loop-ad-collector') throw new Error('unexpected collector identity');
+if (!/^arn:aws:elasticloadbalancing:ap-northeast-2:[0-9]{12}:targetgroup\/perf-p1-protocol-quic\/[0-9a-f]+$/.test(targetGroupArn)) throw new Error('invalid run-scoped QUIC target group ARN');
+
+const taskArns = aws(['ecs', 'list-tasks', '--region', REGION, '--cluster', cluster, '--service-name', service, '--desired-status', 'RUNNING']).taskArns ?? [];
+if (taskArns.length !== 4) throw new Error(`expected four running collector tasks, got ${taskArns.length}`);
+const tasks = aws(['ecs', 'describe-tasks', '--region', REGION, '--cluster', cluster, '--tasks', ...taskArns]).tasks ?? [];
+if (tasks.length !== 4 || tasks.some((task) => task.lastStatus !== 'RUNNING' || !task.containerInstanceArn)) throw new Error('collector tasks are not stable');
+const containerInstanceArns = tasks.map((task) => task.containerInstanceArn);
+const containerInstances = aws(['ecs', 'describe-container-instances', '--region', REGION, '--cluster', cluster, '--container-instances', ...containerInstanceArns]).containerInstances ?? [];
+const ec2ByContainerInstance = new Map(containerInstances.map((item) => [item.containerInstanceArn, item.ec2InstanceId]));
+const targets = tasks.map((task) => {
+    const instanceId = ec2ByContainerInstance.get(task.containerInstanceArn);
+    if (!/^i-[0-9a-f]+$/.test(instanceId ?? '')) throw new Error('task is missing its EC2 instance identity');
+    const quicServerId = `0x${createHash('sha256').update(task.taskArn).digest('hex').slice(0, 16)}`;
+    return { Id: instanceId, Port: 8443, QuicServerId: quicServerId, taskArn: task.taskArn };
+}).sort((left, right) => left.Id.localeCompare(right.Id));
+if (new Set(targets.map((target) => target.Id)).size !== 4 || new Set(targets.map((target) => target.QuicServerId)).size !== 4) throw new Error('QUIC targets and server IDs must be unique');
+
+const before = aws(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', targetGroupArn]).TargetHealthDescriptions ?? [];
+if (before.length > 0) {
+    const oldTargets = before.map((item) => item.Target);
+    aws(['elbv2', 'deregister-targets', '--region', REGION, '--target-group-arn', targetGroupArn, '--targets', JSON.stringify(oldTargets)]);
+}
+const registrationTargets = targets.map(({ taskArn: _taskArn, ...target }) => target);
+aws(['elbv2', 'register-targets', '--region', REGION, '--target-group-arn', targetGroupArn, '--targets', JSON.stringify(registrationTargets)]);
+
+const deadline = Date.now() + 180_000;
+let health = [];
+while (Date.now() < deadline) {
+    health = aws(['elbv2', 'describe-target-health', '--region', REGION, '--target-group-arn', targetGroupArn]).TargetHealthDescriptions ?? [];
+    if (health.length === 4 && health.every((item) => item.TargetHealth?.State === 'healthy')) break;
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+}
+const observed = health.map((item) => ({ target: item.Target, state: item.TargetHealth?.State, reason: item.TargetHealth?.Reason }));
+const checks = {
+    exactlyFourTargets: observed.length === 4,
+    allHealthy: observed.length === 4 && observed.every((item) => item.state === 'healthy'),
+    serverIdsMatch: observed.length === 4 && registrationTargets.every((expected) => observed.some((item) =>
+        item.target?.Id === expected.Id && item.target?.Port === expected.Port && item.target?.QuicServerId === expected.QuicServerId)),
+};
+const result = { registeredAt: new Date().toISOString(), region: REGION, cluster, service, targetGroupArn, targets, before, observed, checks, passed: Object.values(checks).every(Boolean) };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+if (!result.passed) process.exitCode = 2;
+
+function aws(args) {
+    const output = execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
+    return output ? JSON.parse(output) : {};
+}
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} is required`); return value; }

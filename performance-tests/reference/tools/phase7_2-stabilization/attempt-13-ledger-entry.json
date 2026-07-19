@@ -1,0 +1,165 @@
+{
+  "attemptType": "aws-integration",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1,
+      "postFinalReadonlyInventory": 1
+    },
+    "deadline": "2026-07-18T22:47:20.445805Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260718_193035_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "c3360dcd221c679f9ab1d87a1a3ea007a542ad5900bd978f2747e7c84471f150"
+      },
+      {
+        "path": "performance-tests/run_20260718_193035_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "11034a8ee8382dc7934a06cd2df8d7d23e54436a6f9c0946bb1e97eabf634e81"
+      },
+      {
+        "path": "performance-tests/run_20260718_193035_phase7_2_aws_integration/post-final-readonly-inventory.json",
+        "sha256": "fb597218938f7f86ab21d4ca801eed48f1beb9681ae042f1b15a40bcb7d4b5b1"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-18T20:33:51.648051Z",
+    "startToAuthoritativeZeroSeconds": "1591.202246"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "6.000000",
+    "campaignChargedUpperBoundUsd": "6.000000",
+    "chargedUpperBoundUsd": "6.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-13-cost-explorer-20260718.json",
+    "costExplorerEvidenceSha256": "87320b8255a06a7e73ff604ecac73035527ddc01835f230033abcfa9b3a5eca3",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "77.000000",
+    "maximumIncludingCleanupUsd": "44.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "5.449623",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-13-cost-reconciliation.json",
+    "reconciliationSha256": "2326abe425e6edfb470648b5db58e44f8ad80eac1116173f83c3d18b179425bc"
+  },
+  "evidenceCommit": "828ae657255dfc4e2f638794fa020dbc5f7ce32c",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260718_193035_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260718_193035_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260718_192254_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "The successful SSM command returned a multi-line aggregate, but the runner parsed only its final closing brace. The recovered aggregate was 0 HTTP 202 and 1,000 non-202 because every AWS HTTP correctness fixture also contained collector-forbidden producer_sent_at. Direct Kinesis and replacement work never started.",
+    "diagnosisEvidencePath": "performance-tests/run_20260718_193035_phase7_2_aws_integration/evidence/correctness-failure-diagnosis.json",
+    "diagnosisEvidenceSha256": "713a6665beedfdfced808a424910577c7a6a167ed20cf1cb689ccad36875545a",
+    "firstFailingGate": "correctness",
+    "rawAwsError": "SSM Status=Success ResponseCode=0 StandardOutput={http202:0,non202:1000,total:1000}; runner raised json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+    "rawEvidencePath": "performance-tests/run_20260718_193035_phase7_2_aws_integration/evidence/control/correctness.attempt-1.stderr.log.gz",
+    "rawEvidenceSha256": "9fd7b52a85cb6b0995002e4334dda4bc0b7eb2e3d00726b020bc87044b0dff84",
+    "rawUncompressedSha256": "c1488ff397dd436005732b205336963095e0eb5bbf37bd218671b8af7b913d8d",
+    "runnerError": "correctness exited 1 and triggered the immutable hard-stop cleanup path",
+    "ssmReceiptPath": "performance-tests/run_20260718_193035_phase7_2_aws_integration/evidence/correctness-ssm-receipt.json",
+    "ssmReceiptSha256": "680a094782dcb71cf8484b5ac07df35235737a6a2358b926e5f41f87d516d376"
+  },
+  "fix": {
+    "applied": "Parse complete SSM JSON, emit compact bounded-curl aggregate output, persist a non-secret HTTP receipt before validation, and remove producer_sent_at and run_id from the exact collector-facing HTTP fixture.",
+    "fixCommit": "ac1d7372a308f934dfe1dbb7e52400dd452e50b3",
+    "verification": {
+      "build": "passed",
+      "cfnLintAcceptedE1022": 8,
+      "cfnLintAcceptedW3005": 3,
+      "cfnLintUnexpectedFindings": 0,
+      "focusedAwsToolingTests": 14,
+      "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+      "nodeTests": 27,
+      "phase7JestTests": 14,
+      "pythonTests": 140,
+      "status": "passed"
+    },
+    "verificationCommit": "2d015d550255cb1b933cd0073a92bf321c274515",
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-13-fix-verification.json",
+    "verificationSha256": "6e436c8ef69c0578ba447f45b5547dd49b5124349ea3aed154689d00f80ed66b"
+  },
+  "gitCommit": "dcb9a61853ca62ff767eae6796d129fadbd20a5e",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "60030abcc3b190bc9f1d4a2d3324951fc7b2deca6cebbe68ad1f374fa96d09da",
+    "commandSeal": "a9a00ce33cd11b751a7eb5e1db086c719325bc8b8521b1781cc6021487afd708",
+    "commandSet": "d5ac00e324e12afda4d1745c316609e05a189646e1370a8284056f94152ae580",
+    "costModel": "90212dadc713e345e0205e3f67864d54f885cf598fbfb59ac1eb1fd9a09d6b8b",
+    "identityContract": "75c23b03b63778371c04fa1b692ab2c5d9fcde0117dbd92f5f2e38590b5759f2",
+    "imageManifest": "45e53e9694ed693192bcef528813ae4de6e17574d81936d6c5b3f3f7f5384498",
+    "localHandoff": "f86e6f1cd679dfd918e8aea667fbe864391b1aef1f82f3e84e4772cbe6c8c190",
+    "preparedPreflight": "a0f67d01e7bffea286301e1bbc2a7219f043950d9a37341fd48f35fc2d763ff1",
+    "runtimeTemplate": "1bd9f36d548ac5deac4d43f0720ba821fed8ca0cd4fb2eff8ab7cdfee07689cb"
+  },
+  "implementationTreeSha256": "e34c080e1a428aa7ec0a304cafef7ab8b55919f2440ec9329c9afe5eae8b1db3",
+  "ordinal": 13,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-18T22:47:20.445805Z",
+    "elapsedSeconds": "1591.202246",
+    "endedAt": "2026-07-18T20:33:51.648051Z",
+    "hardDeadline": "2026-07-18T23:07:20.445805Z",
+    "startedAt": "2026-07-18T20:07:20.445805Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "fcfd7200026bb660403e42793d5876531b2f7a60fcd0a4d5900cd5f7a3c47c05",
+  "readinessCommit": "e8867da4771180e250104aaae5b29c74ea71222f",
+  "runId": "run_20260718_193035_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "cb2a36190c427b90333d8507350918afef319ab3",
+  "sealedCommandSetSha256": "d5ac00e324e12afda4d1745c316609e05a189646e1370a8284056f94152ae580",
+  "sessionId": "phase7-integration-20260718T193035Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 1,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 0,
+    "seed": 0,
+    "verify": 1,
+    "warmup": 0
+  },
+  "terminalEvidenceHashes": {
+    "cleanupInventory": "c3360dcd221c679f9ab1d87a1a3ea007a542ad5900bd978f2747e7c84471f150",
+    "cleanupVerification": "11034a8ee8382dc7934a06cd2df8d7d23e54436a6f9c0946bb1e97eabf634e81",
+    "commands": "6791ebae4628236259acac4e429c9603b6cb29bd148ce191493110be60d4d9c5",
+    "costReconciliation": "2326abe425e6edfb470648b5db58e44f8ad80eac1116173f83c3d18b179425bc",
+    "diagnosis": "713a6665beedfdfced808a424910577c7a6a167ed20cf1cb689ccad36875545a",
+    "failures": "26808e1ed8cbe3718ddba6ab881e292091edef98ecd892c0ce0711428b76ca10",
+    "finalEvaluation": "c7112baa3975bd6fc3ebc6d82b61cada606c3e86b29551db43e52cc7d87317a9",
+    "finalEvidenceStatus": "79f73830d301b1281ce357d1125f2891dbb24f0f1c5b7619d7bfa87413fa4888",
+    "fixVerification": "6e436c8ef69c0578ba447f45b5547dd49b5124349ea3aed154689d00f80ed66b",
+    "improvementBacklog": "c6fdaf6a96e0b0b96fdeb7c89e3ceeb147650a3234cbc2e813dc5df8087faf05",
+    "infra": "d9af5288c4f277f54ab7be782e26cfb4459f44ab9e68d55da35123dc996a70d4",
+    "postFinalReadonlyInventory": "fb597218938f7f86ab21d4ca801eed48f1beb9681ae042f1b15a40bcb7d4b5b1",
+    "report": "868749c646ed864bffae73e9a1e00a51cdf7f4d7e043e741115ca0c235a50072",
+    "run": "ec22d8e2cc7e500a63e14e345fb3ce14c804d4634a5f804c3d7e86d34026ab8a",
+    "ssmReceipt": "680a094782dcb71cf8484b5ac07df35235737a6a2358b926e5f41f87d516d376"
+  },
+  "verdict": "failed",
+  "entrySha256": "43d78d108367ca16cef3bc1e06dd19612e6e01d2979f57baf22548d0c3847b38"
+}

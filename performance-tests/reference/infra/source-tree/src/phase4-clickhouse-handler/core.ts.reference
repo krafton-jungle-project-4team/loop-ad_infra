@@ -1,0 +1,462 @@
+import type {
+    Context,
+    KinesisStreamBatchResponse,
+    KinesisStreamEvent,
+    KinesisStreamRecord,
+} from 'aws-lambda';
+
+const SUPPORTED_SCHEMA_VERSION = 'hotel_rec_promo.v1';
+const LATE_EVENT_DAYS = 7;
+const ERROR_MESSAGE_MAX_LENGTH = 256;
+export const CLICKHOUSE_REQUEST_TIMEOUT_MS = 20_000;
+
+export const EVENT_COLUMNS = [
+    'project_id',
+    'write_key',
+    'schema_version',
+    'event_id',
+    'event_name',
+    'event_time',
+    'source',
+    'user_id',
+    'session_id',
+    'properties_json',
+    'producer_sent_at',
+    'run_id',
+    'kinesis_shard_id',
+    'kinesis_sequence_number',
+] as const;
+
+export const RAW_EVENT_COLUMNS = [
+    'stream_arn',
+    'shard_id',
+    'sequence_number',
+    'partition_key',
+    'approximate_arrival_at',
+    'raw_payload_base64',
+    'error_code',
+    'error_message',
+    'lambda_received_at',
+    'run_id',
+] as const;
+
+export const ASYNC_INSERT_SETTINGS = {
+    async_insert: '1',
+    wait_for_async_insert: '1',
+    async_insert_max_data_size: '16777216',
+    async_insert_use_adaptive_busy_timeout: '1',
+    async_insert_busy_timeout_min_ms: '50',
+    async_insert_busy_timeout_max_ms: '300',
+    async_insert_deduplicate: '0',
+    input_format_json_read_numbers_as_strings: '1',
+} as const;
+
+export interface EventRow {
+    readonly project_id: string;
+    readonly write_key: string;
+    readonly schema_version: string;
+    readonly event_id: string;
+    readonly event_name: string;
+    readonly event_time: string;
+    readonly source: string;
+    readonly user_id: string | null;
+    readonly session_id: string | null;
+    readonly properties_json: string;
+    readonly producer_sent_at: string | null;
+    readonly run_id: string | null;
+    readonly kinesis_shard_id: string;
+    readonly kinesis_sequence_number: string;
+}
+
+export interface RawEventRow {
+    readonly stream_arn: string;
+    readonly shard_id: string;
+    readonly sequence_number: string;
+    readonly partition_key: string;
+    readonly approximate_arrival_at: string;
+    readonly raw_payload_base64: string;
+    readonly error_code: string;
+    readonly error_message: string;
+    readonly lambda_received_at: string;
+    readonly run_id: string | null;
+}
+
+export interface BatchPlan {
+    readonly eventRows: readonly EventRow[];
+    readonly rawEventRows: readonly RawEventRow[];
+    readonly lateEventCount: number;
+    readonly lowestSequenceNumber: string | undefined;
+}
+
+export type InsertRows = (
+    table: 'events' | 'raw_events',
+    columns: readonly string[],
+    rows: readonly object[],
+    timeoutMs?: number,
+) => Promise<void>;
+
+export interface HandlerDependencies {
+    readonly insertRows: InsertRows;
+    readonly now: () => Date;
+    readonly emitLateEventMetric: (count: number, timestamp: Date) => void;
+    readonly logSummary: (summary: Record<string, unknown>) => void;
+}
+
+export class RecordTransformError extends Error {
+    public constructor(
+        public readonly code: string,
+        message: string,
+    ) {
+        super(message);
+        this.name = 'RecordTransformError';
+    }
+}
+
+export class ClickHouseInsertError extends Error {
+    public constructor(public readonly statusCode?: number) {
+        super('ClickHouse insert failed.');
+        this.name = 'ClickHouseInsertError';
+    }
+}
+
+export function planBatch(records: readonly KinesisStreamRecord[], receivedAt: Date): BatchPlan {
+    const eventRows: EventRow[] = [];
+    const rawEventRows: RawEventRow[] = [];
+    let lateEventCount = 0;
+
+    for (const record of records) {
+        try {
+            const outcome = transformRecord(record, receivedAt);
+            if (outcome === 'late') {
+                lateEventCount += 1;
+            } else {
+                eventRows.push(outcome);
+            }
+        } catch (error) {
+            const transformError = error instanceof RecordTransformError
+                ? error
+                : new RecordTransformError('record_conversion_failed', 'Record conversion failed.');
+            rawEventRows.push(toRawEventRow(record, receivedAt, transformError));
+        }
+    }
+
+    return {
+        eventRows,
+        rawEventRows,
+        lateEventCount,
+        lowestSequenceNumber: lowestSequenceNumber(records),
+    };
+}
+
+export function createHandler(dependencies: HandlerDependencies) {
+    return async function phase4Handler(
+        event: KinesisStreamEvent,
+        context?: Context,
+    ): Promise<KinesisStreamBatchResponse> {
+        const receivedAt = dependencies.now();
+        const plan = planBatch(event.Records, receivedAt);
+
+        try {
+            const inserts: Array<Promise<void>> = [];
+            if (plan.eventRows.length > 0) {
+                inserts.push(dependencies.insertRows(
+                    'events',
+                    EVENT_COLUMNS,
+                    plan.eventRows,
+                ));
+            }
+            if (plan.rawEventRows.length > 0) {
+                inserts.push(dependencies.insertRows(
+                    'raw_events',
+                    RAW_EVENT_COLUMNS,
+                    plan.rawEventRows,
+                ));
+            }
+            await Promise.all(inserts);
+
+            if (plan.lateEventCount > 0) {
+                dependencies.emitLateEventMetric(plan.lateEventCount, receivedAt);
+            }
+            dependencies.logSummary({
+                event: 'phase4_batch_success',
+                awsRequestId: context?.awsRequestId,
+                inputRecords: event.Records.length,
+                eventRows: plan.eventRows.length,
+                rawEventRows: plan.rawEventRows.length,
+                lateEventDropped: plan.lateEventCount,
+            });
+            return { batchItemFailures: [] };
+        } catch (error) {
+            dependencies.logSummary({
+                event: 'phase4_batch_retry',
+                awsRequestId: context?.awsRequestId,
+                inputRecords: event.Records.length,
+                errorCategory: safeErrorCategory(error),
+                statusCode: error instanceof ClickHouseInsertError ? error.statusCode : undefined,
+            });
+            return {
+                batchItemFailures: plan.lowestSequenceNumber
+                    ? [{ itemIdentifier: plan.lowestSequenceNumber }]
+                    : [],
+            };
+        }
+    };
+}
+
+function transformRecord(record: KinesisStreamRecord, receivedAt: Date): EventRow | 'late' {
+    const decoded = decodeBase64Strict(record.kinesis.data);
+    let payload: unknown;
+    try {
+        payload = JSON.parse(decoded.toString('utf8'));
+    } catch {
+        throw new RecordTransformError('invalid_json', 'JSON parsing failed.');
+    }
+    if (!isRecord(payload)) {
+        throw new RecordTransformError('invalid_envelope', 'Payload must be a JSON object.');
+    }
+
+    const schemaVersion = requiredString(payload, 'schema_version');
+    if (schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+        throw new RecordTransformError(
+            'unsupported_schema_version',
+            'The schema version is not supported.',
+        );
+    }
+
+    const eventTime = parseUtcTimestamp(requiredString(payload, 'event_time'), 'invalid_event_time');
+    if (eventTime.getTime() < lateBoundaryEpoch(receivedAt)) {
+        return 'late';
+    }
+
+    const producerSentAt = optionalTimestamp(payload, 'producer_sent_at');
+    const propertiesJson = requiredString(payload, 'properties_json', false);
+
+    return {
+        project_id: requiredString(payload, 'project_id'),
+        write_key: requiredString(payload, 'write_key'),
+        schema_version: schemaVersion,
+        event_id: requiredString(payload, 'event_id'),
+        event_name: requiredString(payload, 'event_name'),
+        event_time: toClickHouseDateTime(eventTime),
+        source: requiredString(payload, 'source'),
+        user_id: optionalString(payload, 'user_id'),
+        session_id: optionalString(payload, 'session_id'),
+        properties_json: propertiesJson,
+        producer_sent_at: producerSentAt ? toClickHouseDateTime(producerSentAt) : null,
+        run_id: optionalString(payload, 'run_id'),
+        kinesis_shard_id: shardId(record),
+        kinesis_sequence_number: requiredSequenceNumber(record),
+    };
+}
+
+function toRawEventRow(
+    record: KinesisStreamRecord,
+    receivedAt: Date,
+    error: RecordTransformError,
+): RawEventRow {
+    return {
+        stream_arn: record.eventSourceARN ?? '',
+        shard_id: shardId(record),
+        sequence_number: requiredSequenceNumber(record),
+        partition_key: record.kinesis.partitionKey ?? '',
+        approximate_arrival_at: approximateArrivalAt(record, receivedAt),
+        raw_payload_base64: record.kinesis.data,
+        error_code: error.code,
+        error_message: error.message.slice(0, ERROR_MESSAGE_MAX_LENGTH),
+        lambda_received_at: toClickHouseDateTime(receivedAt),
+        run_id: extractRunIdWithoutLoggingPayload(record.kinesis.data),
+    };
+}
+
+function decodeBase64Strict(value: string): Buffer {
+    if (
+        value.length === 0 ||
+        value.length % 4 !== 0 ||
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+    ) {
+        throw new RecordTransformError('invalid_base64', 'Base64 decoding failed.');
+    }
+    const bytes = Buffer.from(value, 'base64');
+    if (bytes.toString('base64') !== value) {
+        throw new RecordTransformError('invalid_base64', 'Base64 decoding failed.');
+    }
+    return bytes;
+}
+
+function requiredString(
+    payload: Record<string, unknown>,
+    key: string,
+    requireNonEmpty = true,
+): string {
+    const value = payload[key];
+    if (typeof value !== 'string' || (requireNonEmpty && value.length === 0)) {
+        throw new RecordTransformError('invalid_required_field', `Required field ${key} is invalid.`);
+    }
+    return value;
+}
+
+function optionalString(payload: Record<string, unknown>, key: string): string | null {
+    const value = payload[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') {
+        throw new RecordTransformError('invalid_optional_field', `Optional field ${key} is invalid.`);
+    }
+    return value;
+}
+
+function optionalTimestamp(payload: Record<string, unknown>, key: string): Date | null {
+    const value = payload[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') {
+        throw new RecordTransformError('invalid_producer_sent_at', 'producer_sent_at is invalid.');
+    }
+    return parseUtcTimestamp(value, 'invalid_producer_sent_at');
+}
+
+function parseUtcTimestamp(value: string, errorCode: string): Date {
+    if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+        throw new RecordTransformError(errorCode, 'Timestamp must include a UTC offset.');
+    }
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) {
+        throw new RecordTransformError(errorCode, 'Timestamp parsing failed.');
+    }
+    return parsed;
+}
+
+function lateBoundaryEpoch(now: Date): number {
+    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - LATE_EVENT_DAYS);
+}
+
+function toClickHouseDateTime(value: Date): string {
+    return value.toISOString().replace('T', ' ').replace('Z', '');
+}
+
+function shardId(record: KinesisStreamRecord): string {
+    const [candidate] = record.eventID.split(':', 1);
+    return candidate || 'unknown-shard';
+}
+
+function requiredSequenceNumber(record: KinesisStreamRecord): string {
+    const value = record.kinesis.sequenceNumber;
+    if (!/^\d+$/.test(value)) {
+        throw new RecordTransformError('invalid_sequence_number', 'Sequence number is invalid.');
+    }
+    return value;
+}
+
+function approximateArrivalAt(record: KinesisStreamRecord, fallback: Date): string {
+    const seconds = record.kinesis.approximateArrivalTimestamp;
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+        return toClickHouseDateTime(fallback);
+    }
+    return toClickHouseDateTime(new Date(seconds * 1_000));
+}
+
+function extractRunIdWithoutLoggingPayload(base64Payload: string): string | null {
+    try {
+        const decoded = decodeBase64Strict(base64Payload);
+        const payload: unknown = JSON.parse(decoded.toString('utf8'));
+        return isRecord(payload) && typeof payload.run_id === 'string' ? payload.run_id : null;
+    } catch {
+        return null;
+    }
+}
+
+function lowestSequenceNumber(records: readonly KinesisStreamRecord[]): string | undefined {
+    let lowest: { raw: string; value: bigint } | undefined;
+    for (const record of records) {
+        const raw = record.kinesis.sequenceNumber;
+        if (!/^\d+$/.test(raw)) continue;
+        const value = BigInt(raw);
+        if (!lowest || value < lowest.value) lowest = { raw, value };
+    }
+    return lowest?.raw;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function safeErrorCategory(error: unknown): string {
+    if (error instanceof ClickHouseInsertError) return error.name;
+    if (error instanceof Error && /^[A-Za-z][A-Za-z0-9]*$/.test(error.name)) return error.name;
+    return 'UnknownError';
+}
+
+export interface ClickHouseCredentials {
+    readonly username: string;
+    readonly password: string;
+}
+
+export interface ClickHouseInserterOptions {
+    readonly getBaseUrl: () => string;
+    readonly getDatabase: () => string;
+    readonly loadCredentials: () => Promise<ClickHouseCredentials>;
+    readonly fetchImpl?: typeof fetch;
+    readonly timeoutMs?: number;
+}
+
+export function buildInsertUrl(
+    baseUrl: string,
+    database: string,
+    table: 'events' | 'raw_events',
+    columns: readonly string[],
+): URL {
+    const url = new URL(baseUrl);
+    if (url.protocol !== 'http:' || !isPrivateHostname(url.hostname)) {
+        throw new Error('ClickHouseEndpointMustBePrivateHttp');
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(database)) {
+        throw new Error('ClickHouseDatabaseIdentifierInvalid');
+    }
+    url.searchParams.set(
+        'query',
+        `INSERT INTO ${database}.${table} (${columns.join(', ')}) FORMAT JSONEachRow`,
+    );
+    for (const [key, value] of Object.entries(ASYNC_INSERT_SETTINGS)) {
+        url.searchParams.set(key, value);
+    }
+    return url;
+}
+
+function isPrivateHostname(hostname: string): boolean {
+    if (hostname === '127.0.0.1' || hostname === 'localhost') return true;
+    const octets = hostname.split('.').map(Number);
+    if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+        return false;
+    }
+    const [first, second] = octets as [number, number, number, number];
+    return first === 10 ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168);
+}
+
+export function createClickHouseInserter(options: ClickHouseInserterOptions): InsertRows {
+    return async (table, columns, rows, timeoutMs): Promise<void> => {
+        const credentials = await options.loadCredentials();
+        const url = buildInsertUrl(
+            options.getBaseUrl(),
+            options.getDatabase(),
+            table,
+            columns,
+        );
+        let response: Response;
+        try {
+            response = await (options.fetchImpl ?? fetch)(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-ndjson',
+                    'X-ClickHouse-User': credentials.username,
+                    'X-ClickHouse-Key': credentials.password,
+                },
+                body: `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+                signal: AbortSignal.timeout(timeoutMs ?? options.timeoutMs ?? CLICKHOUSE_REQUEST_TIMEOUT_MS),
+            });
+            await response.arrayBuffer();
+        } catch {
+            throw new ClickHouseInsertError();
+        }
+        if (!response.ok) throw new ClickHouseInsertError(response.status);
+    };
+}

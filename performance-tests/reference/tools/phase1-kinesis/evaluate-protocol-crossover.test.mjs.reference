@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { evaluateProtocolCrossover } from './evaluate-protocol-crossover.mjs';
+
+const stage = (repetition, passed, protocol = 'h2', overrides = {}) => ({
+    repetition, validForDecision: true, connections: 12_000, safetyPassed: passed,
+    aggregate: { configuredConnections: 12_000, actualRps: passed ? 30_000 : 21_000, transportErrorRate: passed ? 0 : .06, latencyMs: { p95: passed ? 100 : 600 } },
+    checks: { referenceDriverContract: true, collectorTelemetryComplete: true, traceBufferClean: true },
+    evaluatorChecks: { evidenceComplete: true, fallbackCount: 0, correctnessPassed: true },
+    connectionContract: { protocol, crossDeviceReuseViolations: 0, maxConcurrentStreamsPerConnection: 1 },
+    evidence: { stageDir: `stages/${protocol}/repetition-${repetition}` }, ...overrides,
+});
+const three = (passed, protocol) => [1, 2, 3].map((repetition) => stage(repetition, passed, protocol));
+const correctness = { passed: true, loss: 0, duplicates: 0, artifact: 'correctness.json' };
+
+test('supports frontend HTTP2 only for an A0-fail A1-pass independent-device boundary', () => {
+    const result = evaluateProtocolCrossover({ A0: three(false, 'h1'), A1: three(true, 'h2'), correctness, cardinalityRiskResolved: true, sourceRiskResolved: true });
+    assert.equal(result.hypotheses.frontendHttp2ProtocolEffect.verdict, 'supported');
+    assert.equal(result.capacity.rps30.verdict, 'supported');
+    assert.match(result.productionRecommendation, /eligible for a canary/);
+    assert.deepEqual(result.paths.A1.logicalDevices, [12_000]);
+});
+
+test('supports backend HTTP2 only for an A1-fail A2-pass boundary', () => {
+    const result = evaluateProtocolCrossover({ A1: three(false, 'h2'), A2: three(true, 'h2'), correctness });
+    assert.equal(result.hypotheses.albBackendHttp1Bottleneck.verdict, 'supported');
+    assert.equal(result.hypotheses.albFrontendOrL7ProxyBottleneck.verdict, 'inconclusive');
+});
+
+test('supports ALB proxy bottleneck only when both ALB H2 paths fail and N2 passes', () => {
+    const result = evaluateProtocolCrossover({ A1: three(false, 'h2'), A2: three(false, 'h2'), N2: three(true, 'h2'), correctness });
+    assert.equal(result.hypotheses.albFrontendOrL7ProxyBottleneck.verdict, 'supported');
+});
+
+test('supports TCP-specific churn only for N2-fail N3-pass', () => {
+    const result = evaluateProtocolCrossover({ N2: three(false, 'h2'), N3: three(true, 'h3'), correctness });
+    assert.equal(result.hypotheses.tcpSpecificHandshakeOrChurn.verdict, 'supported');
+    assert.equal(result.comparisons.N2_N3.actualRpsDelta, 9_000);
+});
+
+test('excludes invalid-driver-contract repetitions and keeps unmeasured hypotheses inconclusive', () => {
+    const invalid = stage(1, true, 'h2', { validForDecision: false, invalidReason: 'invalid-driver-contract' });
+    const result = evaluateProtocolCrossover({ A1: [invalid, ...three(true, 'h2')], correctness });
+    assert.equal(result.paths.A1.validRepetitions, 3);
+    assert.equal(result.paths.A1.excludedRepetitions.length, 1);
+    assert.equal(result.hypotheses.frontendHttp2ProtocolEffect.verdict, 'inconclusive');
+    assert.match(result.productionRecommendation, /^none/);
+});
+
+test('never recommends production without cardinality and source risk resolution', () => {
+    const result = evaluateProtocolCrossover({ A1: three(true, 'h2'), correctness, cardinalityRiskResolved: false, sourceRiskResolved: false });
+    assert.equal(result.capacity.rps30.verdict, 'supported');
+    assert.match(result.productionRecommendation, /^none/);
+    assert.deepEqual(result.unresolvedRisks, ['connection-cardinality risk', 'source-IP concentration risk']);
+});
+
+test('preserves pilot evidence without treating it as three-repetition capacity evidence', () => {
+    const result = evaluateProtocolCrossover({ correctness, pilotFindings: { N3_10k: { safetyPassed: false } }, stoppingCondition: 'transport error > 1%' });
+    assert.deepEqual(result.pilotFindings.N3_10k, { safetyPassed: false });
+    assert.equal(result.stoppingCondition, 'transport error > 1%');
+    assert.equal(result.capacity.rps30.verdict, 'inconclusive');
+});

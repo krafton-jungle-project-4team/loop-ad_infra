@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260712_050212_phase1_kinesis_compare_go-sync",
+  "phase": "phase1",
+  "category": "experiment",
+  "executedAt": "2026-07-12T05:02:12",
+  "purpose": "not_recorded",
+  "hypothesis": "Synchronous Go PutRecord preserves the event contract and sustains the fixed common 1,000 RPS load on one c6i.xlarge collector.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "passed",
+  "rawStatus": "passed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "passed",
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "correctnessPassed",
+      "value": true,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cleanupPassed",
+      "value": true,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.appliedVcpus",
+      "value": 80,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.goalOwnedRunningOrPendingVcpus",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.ignoredNonStandardInstanceCount",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.loadGeneratorVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.safetyReserveVcpus",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.collectorVcpusPerHost",
+      "value": 4,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.availableCollectorVcpus",
+      "value": 72,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "quota.maxSafeCollectorCount",
+      "value": 17,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.collectorCount",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.instanceCount",
+      "value": 2,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.requestsUpperBound",
+      "value": 1000000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.detailedMetricCount",
+      "value": 20,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 50000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.previousUpperBoundUsd",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.runUpperBoundUsd",
+      "value": 3.17180005479452,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.projectedCumulativeUpperBoundUsd",
+      "value": 3.17180005479452,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.hardLimitUsd",
+      "value": 20,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.initialPlanLimitUsd",
+      "value": 16,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.newRunStopUsd",
+      "value": 18,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.costExplorer.relevantAccountCostUsd",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cost.costExplorer.apiChargeIncludedInRealtimeModelUsd",
+      "value": 0.01,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.status",
+      "value": "ACTIVE",
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.openShardCount",
+      "value": 80,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "cleanup.passed",
+      "value": true,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitionCount",
+      "value": 10,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.actualRps",
+      "value": 999.8019068653316,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.acceptedRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status202",
+      "value": 60000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status429",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p50",
+      "value": 10.252264,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p95",
+      "value": 13.837727,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].http.latencyMs.p99",
+      "value": 20.617962,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].producer.recordsPerCall",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].producer.callsPerAcceptedEvent",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].runtime.goGcCount",
+      "value": 1201,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].kinesis.incomingRecords",
+      "value": 40881,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[0].alb.requests",
+      "value": 40882,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.actualRps",
+      "value": 999.8402620742241,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.acceptedRps",
+      "value": 999.9833333333333,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.status202",
+      "value": 59999,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.status429",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.latencyMs.p50",
+      "value": 10.275129,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.latencyMs.p95",
+      "value": 14.984923,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].http.latencyMs.p99",
+      "value": 243.909172,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].producer.recordsPerCall",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].producer.callsPerAcceptedEvent",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].runtime.goGcCount",
+      "value": 1236,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].kinesis.incomingRecords",
+      "value": 46163,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[1].alb.requests",
+      "value": 46170,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.actualRps",
+      "value": 999.8055111578233,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.acceptedRps",
+      "value": 999.9833333333333,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.status202",
+      "value": 59999,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.status429",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.latencyMs.p50",
+      "value": 10.46285,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.latencyMs.p95",
+      "value": 13.829611,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].http.latencyMs.p99",
+      "value": 17.211844,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].producer.recordsPerCall",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].producer.callsPerAcceptedEvent",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].runtime.goGcCount",
+      "value": 1274,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].kinesis.incomingRecords",
+      "value": 18816,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[2].alb.requests",
+      "value": 18816,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.actualRps",
+      "value": 999.8506525579901,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.acceptedRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.status202",
+      "value": 60000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.status429",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.latencyMs.p50",
+      "value": 10.300687,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.latencyMs.p95",
+      "value": 13.666576,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].http.latencyMs.p99",
+      "value": 18.138050999999997,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].producer.recordsPerCall",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].producer.callsPerAcceptedEvent",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].runtime.goGcCount",
+      "value": 1273,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].kinesis.incomingRecords",
+      "value": 18849,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[3].alb.requests",
+      "value": 18854,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].targetRps",
+      "value": 1000,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.actualRps",
+      "value": 999.8283910440482,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.acceptedRps",
+      "value": 999.9833333333333,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.status202",
+      "value": 59999,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.status429",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.status5xx",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.transportErrors",
+      "value": 0,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.latencyMs.p50",
+      "value": 10.241985999999999,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.latencyMs.p95",
+      "value": 13.729315000000001,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].http.latencyMs.p99",
+      "value": 22.487489,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].producer.recordsPerCall",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    },
+    {
+      "name": "repetitions[4].producer.callsPerAcceptedEvent",
+      "value": 1,
+      "source": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260712_050212_phase1_kinesis_compare_go-sync"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/artifacts.md",
+      "bytes": 22637,
+      "sha256": "1c7e066b2c3536d7a5523d54a3d1e5e059f8a579a2e5e5dd1c6e0bf264ef5f70"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/cleanup-verification.json",
+      "bytes": 1098,
+      "sha256": "588f65f7474dd46856519b587dcc0a070e541ee6684e1873031178a1f1433737"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/commands.md",
+      "bytes": 1739,
+      "sha256": "73d2f6ec37e40a377749ee031d44ef24b5c08d558bd3e50615fcaa034bbbee1c"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/correctness-summary.json",
+      "bytes": 995,
+      "sha256": "6170475aa37dc77a123effc692e99e26cab5bd4e8054e41a63c9529cf4d133b4"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/cost-explorer.json",
+      "bytes": 487,
+      "sha256": "42cb75e6fd6480fdcd0f2cd0a76c06e7b5d34eae886bd086a2ef2823a84b5966"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/cost-realtime.json",
+      "bytes": 1581,
+      "sha256": "826d54471ec2dcf8c3cb00ddaa58a797c343687e9cd6bd8d4a71058d221462d7"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/cost.md",
+      "bytes": 502,
+      "sha256": "35ddd0dcc455522e24e22e0e5ad3fa29f2176f2ad9fe9d5f34a2cde2575fc47f"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/infra.md",
+      "bytes": 978,
+      "sha256": "5d0547acd9e25b1df10673327729de3f3a2a574e58f472b33b4ecbe34283df13"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/metrics-summary.json",
+      "bytes": 19260,
+      "sha256": "8ab3f89aa1155b4aa9ffe52db322994c9e3957480949cb8078f297fd7e53465c"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/report.md",
+      "bytes": 601,
+      "sha256": "2d929596605e10f1cbb3eab218b391085b5a352665f335c1bdfaae9006ddfcd8"
+    },
+    {
+      "path": "run_20260712_050212_phase1_kinesis_compare_go-sync/run.json",
+      "bytes": 6080,
+      "sha256": "c77ac3424ccacbf728cd95cd2befc43e2ee67a126c5a3f4029dd526d00fff2c6"
+    }
+  ]
+}

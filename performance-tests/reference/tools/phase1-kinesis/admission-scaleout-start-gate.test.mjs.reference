@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const dir = mkdtempSync(join(tmpdir(), 'admission-gate-'));
+const sessionPath = join(dir, 'session.json');
+const costPath = join(dir, 'cost.json');
+const sessionId = 'phase1-kinesis-admission-scaleout-20260713T073000Z';
+writeFileSync(sessionPath, JSON.stringify({ sessionId, region: 'ap-northeast-2', candidate: 'go-batch', hardLimits: {
+    newWorkDeadlineUtc: '2026-07-13T11:30:00Z', cleanupStartDeadlineUtc: '2026-07-13T11:30:00Z', hardDeadlineUtc: '2026-07-13T12:00:00Z' } }));
+writeFileSync(costPath, JSON.stringify({ projectedCumulativeUpperBoundUsd: 12, budget: { mayStart: true } }));
+const script = new URL('./admission-scaleout-start-gate.mjs', import.meta.url).pathname;
+function run(now, action = 'stage') { return spawnSync(process.execPath, [script, '--session-id', sessionId, '--session', sessionPath,
+    '--action', action, '--cost', costPath, '--now', now, '--estimated-work-seconds', '900'], { encoding: 'utf8' }); }
+test('allows bounded work before cleanup and fails closed at the deadline', () => {
+    assert.equal(run('2026-07-13T11:00:00Z').status, 0);
+    const late = run('2026-07-13T11:30:00Z'); assert.equal(late.status, 2); assert.equal(JSON.parse(late.stdout).checks.beforeNewWorkDeadline, false);
+    assert.equal(run('2026-07-13T12:30:00Z', 'cleanup').status, 0);
+});

@@ -1,0 +1,3092 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "snapshot_20260719T200907Z",
+  "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+  "experimentCount": 224,
+  "counts": {
+    "phase": {
+      "phase0": 21,
+      "phase1": 85,
+      "phase4": 7,
+      "phase6": 5,
+      "phase7": 106
+    },
+    "category": {
+      "cleanup": 4,
+      "correctness": 6,
+      "deployment_readiness": 29,
+      "diagnostic": 21,
+      "experiment": 100,
+      "qualification": 3,
+      "smoke": 3,
+      "validation": 58
+    },
+    "status": {
+      "aborted": 5,
+      "blocked": 5,
+      "failed": 28,
+      "inconclusive": 3,
+      "passed": 15,
+      "unknown": 168
+    }
+  },
+  "experiments": [
+    {
+      "runId": "local_20260710_202701_phase1_ingest_wiring",
+      "phase": "phase1",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/local_20260710_202701_phase1_ingest_wiring/summary.json",
+      "reportPath": "experiments/phase1/local_20260710_202701_phase1_ingest_wiring/report.md",
+      "sourcePaths": [
+        "local_20260710_202701_phase1_ingest_wiring"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "local_20260710_203803_phase1_admission_control",
+      "phase": "phase1",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/local_20260710_203803_phase1_admission_control/summary.json",
+      "reportPath": "experiments/phase1/local_20260710_203803_phase1_admission_control/report.md",
+      "sourcePaths": [
+        "local_20260710_203803_phase1_admission_control"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "local_20260710_204642_phase1_payload_contract",
+      "phase": "phase1",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/local_20260710_204642_phase1_payload_contract/summary.json",
+      "reportPath": "experiments/phase1/local_20260710_204642_phase1_payload_contract/report.md",
+      "sourcePaths": [
+        "local_20260710_204642_phase1_payload_contract"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "local_20260710_210531_phase1_debug_metrics",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/local_20260710_210531_phase1_debug_metrics/summary.json",
+      "reportPath": "experiments/phase1/local_20260710_210531_phase1_debug_metrics/report.md",
+      "sourcePaths": [
+        "local_20260710_210531_phase1_debug_metrics"
+      ],
+      "incidentIds": [
+        "incident-local-20260710-210531-phase1-debug-metrics"
+      ]
+    },
+    {
+      "runId": "run_20260709_190153_phase0_alb_smoke",
+      "phase": "phase0",
+      "category": "smoke",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_190153_phase0_alb_smoke/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_190153_phase0_alb_smoke/report.md",
+      "sourcePaths": [
+        "run_20260709_190153_phase0_alb_smoke"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_192612_phase0_alb_50k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_192612_phase0_alb_50k/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_192612_phase0_alb_50k/report.md",
+      "sourcePaths": [
+        "run_20260709_192612_phase0_alb_50k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_193112_phase0_alb_17k5",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_193112_phase0_alb_17k5/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_193112_phase0_alb_17k5/report.md",
+      "sourcePaths": [
+        "run_20260709_193112_phase0_alb_17k5"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_193312_phase0_alb_10k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_193312_phase0_alb_10k/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_193312_phase0_alb_10k/report.md",
+      "sourcePaths": [
+        "run_20260709_193312_phase0_alb_10k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_193612_phase0_alb_5k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_193612_phase0_alb_5k/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_193612_phase0_alb_5k/report.md",
+      "sourcePaths": [
+        "run_20260709_193612_phase0_alb_5k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_194012_phase0_alb_ramp",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_194012_phase0_alb_ramp/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_194012_phase0_alb_ramp/report.md",
+      "sourcePaths": [
+        "run_20260709_194012_phase0_alb_ramp"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_203904_phase0_alb_precomputed",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_203904_phase0_alb_precomputed/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_203904_phase0_alb_precomputed/report.md",
+      "sourcePaths": [
+        "run_20260709_203904_phase0_alb_precomputed"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_210700_phase0_alb_50k_precomputed",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_210700_phase0_alb_50k_precomputed/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_210700_phase0_alb_50k_precomputed/report.md",
+      "sourcePaths": [
+        "run_20260709_210700_phase0_alb_50k_precomputed"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260709_230404_phase0_alb_ec2_sweep",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260709_230404_phase0_alb_ec2_sweep/summary.json",
+      "reportPath": "experiments/phase0/run_20260709_230404_phase0_alb_ec2_sweep/report.md",
+      "sourcePaths": [
+        "run_20260709_230404_phase0_alb_ec2_sweep"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_001859_phase0_alb_keepalive_4ec2",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_001859_phase0_alb_keepalive_4ec2/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_001859_phase0_alb_keepalive_4ec2/report.md",
+      "sourcePaths": [
+        "run_20260710_001859_phase0_alb_keepalive_4ec2"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_011033_phase0_alb_keepalive_50k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "blocked",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_011033_phase0_alb_keepalive_50k/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_011033_phase0_alb_keepalive_50k/report.md",
+      "sourcePaths": [
+        "run_20260710_011033_phase0_alb_keepalive_50k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "blocked",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_013753_phase0_alb_keepalive_multiprocess_50k/report.md",
+      "sourcePaths": [
+        "run_20260710_013753_phase0_alb_keepalive_multiprocess_50k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_020152_phase0_alb_keepalive_multiprocess_54k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "blocked",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_020152_phase0_alb_keepalive_multiprocess_54k/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_020152_phase0_alb_keepalive_multiprocess_54k/report.md",
+      "sourcePaths": [
+        "run_20260710_020152_phase0_alb_keepalive_multiprocess_54k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_022215_phase0_alb_keepalive_5proc_62k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_022215_phase0_alb_keepalive_5proc_62k/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_022215_phase0_alb_keepalive_5proc_62k/report.md",
+      "sourcePaths": [
+        "run_20260710_022215_phase0_alb_keepalive_5proc_62k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_032617_phase0_alb_oha_16vcpu_12500c",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_032617_phase0_alb_oha_16vcpu_12500c/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_032617_phase0_alb_oha_16vcpu_12500c/report.md",
+      "sourcePaths": [
+        "run_20260710_032617_phase0_alb_oha_16vcpu_12500c"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_034012_phase0_alb_oha_16vcpu_75s",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_034012_phase0_alb_oha_16vcpu_75s/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_034012_phase0_alb_oha_16vcpu_75s/report.md",
+      "sourcePaths": [
+        "run_20260710_034012_phase0_alb_oha_16vcpu_75s"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s/report.md",
+      "sourcePaths": [
+        "run_20260710_040601_phase0_alb_oha_pool_1xc6inlarge_75s"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s/report.md",
+      "sourcePaths": [
+        "run_20260710_042125_phase0_alb_oha_pool_2xc6inlarge_90s"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps/report.md",
+      "sourcePaths": [
+        "run_20260710_043002_phase0_alb_oha_pool_2xc6inlarge_60krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps/report.md",
+      "sourcePaths": [
+        "run_20260710_043706_phase0_alb_oha_pool_1xc6inlarge_55krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_105235_phase0_alb_16vcpu_5proc_62k",
+      "phase": "phase0",
+      "category": "experiment",
+      "status": "inconclusive",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase0/run_20260710_105235_phase0_alb_16vcpu_5proc_62k/summary.json",
+      "reportPath": "experiments/phase0/run_20260710_105235_phase0_alb_16vcpu_5proc_62k/report.md",
+      "sourcePaths": [
+        "run_20260710_105235_phase0_alb_16vcpu_5proc_62k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_221849_phase1_kinesis_smoke_1c_1krps",
+      "phase": "phase1",
+      "category": "smoke",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260710_221849_phase1_kinesis_smoke_1c_1krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260710_221849_phase1_kinesis_smoke_1c_1krps/report.md",
+      "sourcePaths": [
+        "run_20260710_221849_phase1_kinesis_smoke_1c_1krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_225534_phase1_kinesis_smoke_retry",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260710_225534_phase1_kinesis_smoke_retry/summary.json",
+      "reportPath": "experiments/phase1/run_20260710_225534_phase1_kinesis_smoke_retry/report.md",
+      "sourcePaths": [
+        "run_20260710_225534_phase1_kinesis_smoke_retry"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-smoke"
+      ]
+    },
+    {
+      "runId": "run_20260710_232642_phase1_kinesis_explore_1c_5krps",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260710_232642_phase1_kinesis_explore_1c_5krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260710_232642_phase1_kinesis_explore_1c_5krps/report.md",
+      "sourcePaths": [
+        "run_20260710_232642_phase1_kinesis_explore_1c_5krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260710_235854_phase1_kinesis_al2023_smoke",
+      "phase": "phase1",
+      "category": "smoke",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260710_235854_phase1_kinesis_al2023_smoke/summary.json",
+      "reportPath": "experiments/phase1/run_20260710_235854_phase1_kinesis_al2023_smoke/report.md",
+      "sourcePaths": [
+        "run_20260710_235854_phase1_kinesis_al2023_smoke"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_003908_phase1_kinesis_1c_5krps",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_003908_phase1_kinesis_1c_5krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_003908_phase1_kinesis_1c_5krps/report.md",
+      "sourcePaths": [
+        "run_20260711_003908_phase1_kinesis_1c_5krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_010045_phase1_kinesis_1c_10krps",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_010045_phase1_kinesis_1c_10krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_010045_phase1_kinesis_1c_10krps/report.md",
+      "sourcePaths": [
+        "run_20260711_010045_phase1_kinesis_1c_10krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_011750_phase1_kinesis_2c_10krps",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_011750_phase1_kinesis_2c_10krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_011750_phase1_kinesis_2c_10krps/report.md",
+      "sourcePaths": [
+        "run_20260711_011750_phase1_kinesis_2c_10krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_013903_phase1_kinesis_2c_10k_retry",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_013903_phase1_kinesis_2c_10k_retry/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_013903_phase1_kinesis_2c_10k_retry/report.md",
+      "sourcePaths": [
+        "run_20260711_013903_phase1_kinesis_2c_10k_retry"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
+    },
+    {
+      "runId": "run_20260711_015921_phase1_kinesis_2c_10k_retry2",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_015921_phase1_kinesis_2c_10k_retry2/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_015921_phase1_kinesis_2c_10k_retry2/report.md",
+      "sourcePaths": [
+        "run_20260711_015921_phase1_kinesis_2c_10k_retry2"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
+    },
+    {
+      "runId": "run_20260711_101443_phase1_kinesis_2c_10k_retry3",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_101443_phase1_kinesis_2c_10k_retry3/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_101443_phase1_kinesis_2c_10k_retry3/report.md",
+      "sourcePaths": [
+        "run_20260711_101443_phase1_kinesis_2c_10k_retry3"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-2c-10k"
+      ]
+    },
+    {
+      "runId": "run_20260711_103455_phase1_kinesis_4c_10krps",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_103455_phase1_kinesis_4c_10krps/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_103455_phase1_kinesis_4c_10krps/report.md",
+      "sourcePaths": [
+        "run_20260711_103455_phase1_kinesis_4c_10krps"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_105300_phase1_kinesis_4c_10k_ec2",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_105300_phase1_kinesis_4c_10k_ec2/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_105300_phase1_kinesis_4c_10k_ec2/report.md",
+      "sourcePaths": [
+        "run_20260711_105300_phase1_kinesis_4c_10k_ec2"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_112221_phase1_kinesis_4c_20k",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_112221_phase1_kinesis_4c_20k/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_112221_phase1_kinesis_4c_20k/report.md",
+      "sourcePaths": [
+        "run_20260711_112221_phase1_kinesis_4c_20k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_114008_phase1_kinesis_6c_20k",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_114008_phase1_kinesis_6c_20k/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_114008_phase1_kinesis_6c_20k/report.md",
+      "sourcePaths": [
+        "run_20260711_114008_phase1_kinesis_6c_20k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_121544_phase1_kinesis_8c_20k",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_121544_phase1_kinesis_8c_20k/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_121544_phase1_kinesis_8c_20k/report.md",
+      "sourcePaths": [
+        "run_20260711_121544_phase1_kinesis_8c_20k"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_123500_phase1_kinesis_final_cleanup",
+      "phase": "phase1",
+      "category": "cleanup",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_123500_phase1_kinesis_final_cleanup/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_123500_phase1_kinesis_final_cleanup/report.md",
+      "sourcePaths": [
+        "run_20260711_123500_phase1_kinesis_final_cleanup"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_132330_phase1_kinesis_pprof_baseline",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_132330_phase1_kinesis_pprof_baseline/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_132330_phase1_kinesis_pprof_baseline/report.md",
+      "sourcePaths": [
+        "run_20260711_132330_phase1_kinesis_pprof_baseline"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_142200_phase1_kinesis_combined1024",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_142200_phase1_kinesis_combined1024/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_142200_phase1_kinesis_combined1024/report.md",
+      "sourcePaths": [
+        "run_20260711_142200_phase1_kinesis_combined1024"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_144444_phase1_kinesis_conn256",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_144444_phase1_kinesis_conn256/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_144444_phase1_kinesis_conn256/report.md",
+      "sourcePaths": [
+        "run_20260711_144444_phase1_kinesis_conn256"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_150400_phase1_kinesis_conn128",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_150400_phase1_kinesis_conn128/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_150400_phase1_kinesis_conn128/report.md",
+      "sourcePaths": [
+        "run_20260711_150400_phase1_kinesis_conn128"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260711_151900_phase1_kinesis_conn512",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260711_151900_phase1_kinesis_conn512/summary.json",
+      "reportPath": "experiments/phase1/run_20260711_151900_phase1_kinesis_conn512/report.md",
+      "sourcePaths": [
+        "run_20260711_151900_phase1_kinesis_conn512"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_050212_phase1_kinesis_compare_go-sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_050212_phase1_kinesis_compare_go-sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_050212_phase1_kinesis_compare_go-sync/report.md",
+      "sourcePaths": [
+        "run_20260712_050212_phase1_kinesis_compare_go-sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_061339_phase1_kinesis_compare_go-batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_061339_phase1_kinesis_compare_go-batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_061339_phase1_kinesis_compare_go-batch/report.md",
+      "sourcePaths": [
+        "run_20260712_061339_phase1_kinesis_compare_go-batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_065416_phase1_kinesis_compare_java-kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_065416_phase1_kinesis_compare_java-kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_065416_phase1_kinesis_compare_java-kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_065416_phase1_kinesis_compare_java-kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "aborted",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_capacity_go_sync_attempt1_interrupted_unaligned_metrics"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_capacity_go_sync_attempt2_failed_incomplete_metric_period"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "inconclusive",
+      "validity": "invalidated",
+      "summaryPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_capacity_go_sync_attempt3_invalidated_by_scout_order"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_phase1_kinesis_capacity_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_go_sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_phase1_kinesis_capacity_go_sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_081500_phase1_kinesis_capacity_java_kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_081500_phase1_kinesis_capacity_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_081500_phase1_kinesis_capacity_java_kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_final_plan",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_final_plan/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_final_plan/report.md",
+      "sourcePaths": [
+        "run_20260712_102207_phase1_kinesis_capacity_final_plan"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_102207_phase1_kinesis_capacity_scout_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_go_sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_102207_phase1_kinesis_capacity_scout_go_sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_102207_phase1_kinesis_capacity_scout_java_kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_114756_phase1_kinesis_capacity_scout_cleanup",
+      "phase": "phase1",
+      "category": "cleanup",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_114756_phase1_kinesis_capacity_scout_cleanup/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_114756_phase1_kinesis_capacity_scout_cleanup/report.md",
+      "sourcePaths": [
+        "run_20260712_114756_phase1_kinesis_capacity_scout_cleanup"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_capacity_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_capacity_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_capacity_go_sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_capacity_go_sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_capacity_java_kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_capacity_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_capacity_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_capacity_java_kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_phase1_kinesis_capacity_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_go_sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_phase1_kinesis_capacity_go_sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_120232_phase1_kinesis_capacity_java_kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_120232_phase1_kinesis_capacity_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_120232_phase1_kinesis_capacity_java_kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup",
+      "phase": "phase1",
+      "category": "cleanup",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_123100_phase1_kinesis_capacity_previous_cleanup/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_123100_phase1_kinesis_capacity_previous_cleanup/report.md",
+      "sourcePaths": [
+        "run_20260712_123100_phase1_kinesis_capacity_previous_cleanup"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node/report.md",
+      "sourcePaths": [
+        "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_batch_topology_1node"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_131956_phase1_kinesis_capacity_oha12k_go_sync"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_131956_phase1_kinesis_capacity_oha12k_java_kpl"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic/report.md",
+      "sourcePaths": [
+        "run_20260712_135012_phase1_kinesis_capacity_oha12k_java_kpl_diagnostic"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-capacity-oha12k-java-kpl-diagnostic"
+      ]
+    },
+    {
+      "runId": "run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup",
+      "phase": "phase1",
+      "category": "cleanup",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup/report.md",
+      "sourcePaths": [
+        "run_20260712_141400_phase1_kinesis_capacity_oha12k_cleanup"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p/report.md",
+      "sourcePaths": [
+        "run_20260712_150933_phase1_kinesis_generator_diagnosis_fast_control_topology_1n1p"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p/report.md",
+      "sourcePaths": [
+        "run_20260712_152523_phase1_kinesis_generator_diagnosis_fast_control_topology_1n2p"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p/report.md",
+      "sourcePaths": [
+        "run_20260712_152735_phase1_kinesis_generator_diagnosis_fast_control_topology_1n4p"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p/report.md",
+      "sourcePaths": [
+        "run_20260712_153705_phase1_kinesis_generator_diagnosis_fast_control_topology_2n1p"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p/report.md",
+      "sourcePaths": [
+        "run_20260712_154449_phase1_kinesis_generator_diagnosis_fast_control_topology_2n2p"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync/report.md",
+      "sourcePaths": [
+        "run_20260712_155759_phase1_kinesis_generator_diagnosis_go_sync"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_164144_phase1_kinesis_generator_diagnosis_go_batch"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl/report.md",
+      "sourcePaths": [
+        "run_20260712_171051_phase1_kinesis_generator_diagnosis_java_kpl"
+      ],
+      "incidentIds": [
+        "incident-phase1-generator-diagnosis"
+      ]
+    },
+    {
+      "runId": "run_20260712_181327_phase1_kinesis_alb_warmup_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_181327_phase1_kinesis_alb_warmup_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_181327_phase1_kinesis_alb_warmup_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_181327_phase1_kinesis_alb_warmup_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_184653_phase1_kinesis_alb_warmup_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_184653_phase1_kinesis_alb_warmup_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_184653_phase1_kinesis_alb_warmup_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260712_191537_phase1_kinesis_alb_warmup_go_batch",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260712_191537_phase1_kinesis_alb_warmup_go_batch/summary.json",
+      "reportPath": "experiments/phase1/run_20260712_191537_phase1_kinesis_alb_warmup_go_batch/report.md",
+      "sourcePaths": [
+        "run_20260712_191537_phase1_kinesis_alb_warmup_go_batch"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session/summary.json",
+      "reportPath": "experiments/phase1/run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session/report.md",
+      "sourcePaths": [
+        "run_20260713_140507_phase1_kinesis_tcp_alb_path_diagnosis_session"
+      ],
+      "incidentIds": [
+        "incident-phase1-kinesis-tcp-alb-path-diagnosis-session"
+      ]
+    },
+    {
+      "runId": "run_20260713_163800_phase1_kinesis_admission_scaleout_session",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260713_163800_phase1_kinesis_admission_scaleout_session/summary.json",
+      "reportPath": "experiments/phase1/run_20260713_163800_phase1_kinesis_admission_scaleout_session/report.md",
+      "sourcePaths": [
+        "run_20260713_163800_phase1_kinesis_admission_scaleout_session"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a/summary.json",
+      "reportPath": "experiments/phase1/run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a/report.md",
+      "sourcePaths": [
+        "run_20260713_163800_phase1_kinesis_admission_scaleout_session/correctness/run_20260713_163800_phase1_kinesis_admission_scaleout_session_profile_a"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260713_193800_latency_tcp_root",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260713_193800_latency_tcp_root/summary.json",
+      "reportPath": "experiments/phase1/run_20260713_193800_latency_tcp_root/report.md",
+      "sourcePaths": [
+        "run_20260713_193800_latency_tcp_root"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260713_220500_alb_fanout_crossover",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260713_220500_alb_fanout_crossover/summary.json",
+      "reportPath": "experiments/phase1/run_20260713_220500_alb_fanout_crossover/report.md",
+      "sourcePaths": [
+        "run_20260713_220500_alb_fanout_crossover"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_112000_protocol_crossover",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_112000_protocol_crossover/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_112000_protocol_crossover/report.md",
+      "sourcePaths": [
+        "run_20260714_112000_protocol_crossover"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_161818_independent_crossover",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_161818_independent_crossover/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_161818_independent_crossover/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_175820_a2_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_175820_a2_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_175820_a2_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/a2/run_20260714_175820_a2_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_190050_n2_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_190050_n2_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_190050_n2_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/n2/run_20260714_190050_n2_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_191800_n2_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_191800_n2_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_191800_n2_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/n2/run_20260714_191800_n2_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_195000_n3_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_195000_n3_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_195000_n3_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_195000_n3_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_200300_n3_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_200300_n3_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_200300_n3_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_200300_n3_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_200800_n3_correctness",
+      "phase": "phase1",
+      "category": "correctness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_200800_n3_correctness/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_200800_n3_correctness/report.md",
+      "sourcePaths": [
+        "run_20260714_161818_independent_crossover/correctness/n3/run_20260714_200800_n3_correctness"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260714_225101_connection_path",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260714_225101_connection_path/summary.json",
+      "reportPath": "experiments/phase1/run_20260714_225101_connection_path/report.md",
+      "sourcePaths": [
+        "run_20260714_225101_connection_path",
+        "run_20260714_225101_connection_path/rollback-alb-bucket-02/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path",
+        "run_20260714_225101_connection_path/rollback-alb-bucket/phase1-kinesis-connection-path-20260714T135101Z/run_20260714_225101_connection_path"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260715_002706_connection_path_retry",
+      "phase": "phase1",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260715_002706_connection_path_retry/summary.json",
+      "reportPath": "experiments/phase1/run_20260715_002706_connection_path_retry/report.md",
+      "sourcePaths": [
+        "run_20260715_002706_connection_path_retry"
+      ],
+      "incidentIds": [
+        "incident-connection-path"
+      ]
+    },
+    {
+      "runId": "run_20260715_011247_connection_path_60usd",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260715_011247_connection_path_60usd/summary.json",
+      "reportPath": "experiments/phase1/run_20260715_011247_connection_path_60usd/report.md",
+      "sourcePaths": [
+        "run_20260715_011247_connection_path_60usd"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260715_111808_t3_e2e_30usd",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260715_111808_t3_e2e_30usd/summary.json",
+      "reportPath": "experiments/phase1/run_20260715_111808_t3_e2e_30usd/report.md",
+      "sourcePaths": [
+        "goal_20260715_oha_p95/run_20260715_111808_t3_e2e_30usd",
+        "run_20260715_111808_t3_e2e_30usd",
+        "run_20260715_111808_t3_e2e_30usd/correctness-6collector/run_20260715_111808_t3_e2e_30usd"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260715_213856_oha_p95",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260715_213856_oha_p95/summary.json",
+      "reportPath": "experiments/phase1/run_20260715_213856_oha_p95/report.md",
+      "sourcePaths": [
+        "run_20260715_213856_oha_p95"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_010529_haproxy_auto",
+      "phase": "phase1",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260716_010529_haproxy_auto/summary.json",
+      "reportPath": "experiments/phase1/run_20260716_010529_haproxy_auto/report.md",
+      "sourcePaths": [
+        "run_20260716_010529_haproxy_auto"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_031735_locust_kinesis_generator_qualification",
+      "phase": "phase1",
+      "category": "qualification",
+      "status": "blocked",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260716_031735_locust_kinesis_generator_qualification/summary.json",
+      "reportPath": "experiments/phase1/run_20260716_031735_locust_kinesis_generator_qualification/report.md",
+      "sourcePaths": [
+        "run_20260716_031735_locust_kinesis_generator_qualification"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_090942_locust_kinesis_generator_qualification",
+      "phase": "phase1",
+      "category": "qualification",
+      "status": "inconclusive",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260716_090942_locust_kinesis_generator_qualification/summary.json",
+      "reportPath": "experiments/phase1/run_20260716_090942_locust_kinesis_generator_qualification/report.md",
+      "sourcePaths": [
+        "run_20260716_090942_locust_kinesis_generator_qualification"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_101059_phase4_clickhouse_lambda",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "aborted",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_101059_phase4_clickhouse_lambda/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_101059_phase4_clickhouse_lambda/report.md",
+      "sourcePaths": [
+        "run_20260716_101059_phase4_clickhouse_lambda"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_110956_locust_kinesis_generator_qualification",
+      "phase": "phase1",
+      "category": "qualification",
+      "status": "passed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase1/run_20260716_110956_locust_kinesis_generator_qualification/summary.json",
+      "reportPath": "experiments/phase1/run_20260716_110956_locust_kinesis_generator_qualification/report.md",
+      "sourcePaths": [
+        "run_20260716_110956_locust_kinesis_generator_qualification"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_114704_phase4_clickhouse_lambda",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "aborted",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_114704_phase4_clickhouse_lambda/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_114704_phase4_clickhouse_lambda/report.md",
+      "sourcePaths": [
+        "run_20260716_114704_phase4_clickhouse_lambda"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_142341_phase4_clickhouse_ecs",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "aborted",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_142341_phase4_clickhouse_ecs/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_142341_phase4_clickhouse_ecs/report.md",
+      "sourcePaths": [
+        "run_20260716_142341_phase4_clickhouse_ecs"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_150729_phase4_clickhouse_ecs",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_150729_phase4_clickhouse_ecs/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_150729_phase4_clickhouse_ecs/report.md",
+      "sourcePaths": [
+        "run_20260716_150729_phase4_clickhouse_ecs"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_155254_phase4_clickhouse_ecs",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_155254_phase4_clickhouse_ecs/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_155254_phase4_clickhouse_ecs/report.md",
+      "sourcePaths": [
+        "run_20260716_155254_phase4_clickhouse_ecs"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_165030_phase4_clickhouse_ecs",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_165030_phase4_clickhouse_ecs/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_165030_phase4_clickhouse_ecs/report.md",
+      "sourcePaths": [
+        "run_20260716_165030_phase4_clickhouse_ecs"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260716_194426_phase4_clickhouse_ecs",
+      "phase": "phase4",
+      "category": "experiment",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase4/run_20260716_194426_phase4_clickhouse_ecs/summary.json",
+      "reportPath": "experiments/phase4/run_20260716_194426_phase4_clickhouse_ecs/report.md",
+      "sourcePaths": [
+        "run_20260716_194426_phase4_clickhouse_ecs"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_041219_phase6_clickhouse_s3_archive",
+      "phase": "phase6",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase6/run_20260717_041219_phase6_clickhouse_s3_archive/summary.json",
+      "reportPath": "experiments/phase6/run_20260717_041219_phase6_clickhouse_s3_archive/report.md",
+      "sourcePaths": [
+        "run_20260717_041219_phase6_clickhouse_s3_archive"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_050834_phase6_archive_local_bootstrap_fix",
+      "phase": "phase6",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase6/run_20260717_050834_phase6_archive_local_bootstrap_fix/summary.json",
+      "reportPath": "experiments/phase6/run_20260717_050834_phase6_archive_local_bootstrap_fix/report.md",
+      "sourcePaths": [
+        "run_20260717_050834_phase6_archive_local_bootstrap_fix"
+      ],
+      "incidentIds": [
+        "incident-phase6-archive-local-fixes"
+      ]
+    },
+    {
+      "runId": "run_20260717_055837_phase6_clickhouse_s3_archive",
+      "phase": "phase6",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase6/run_20260717_055837_phase6_clickhouse_s3_archive/summary.json",
+      "reportPath": "experiments/phase6/run_20260717_055837_phase6_clickhouse_s3_archive/report.md",
+      "sourcePaths": [
+        "run_20260717_055837_phase6_clickhouse_s3_archive"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_072656_phase6_archive_local",
+      "phase": "phase6",
+      "category": "validation",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase6/run_20260717_072656_phase6_archive_local/summary.json",
+      "reportPath": "experiments/phase6/run_20260717_072656_phase6_archive_local/report.md",
+      "sourcePaths": [
+        "run_20260717_072656_phase6_archive_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_083257_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_083257_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_083257_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_083257_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_083457_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_083457_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_083457_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_083457_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_083757_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_083757_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_083757_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_083757_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_084157_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_084157_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_084157_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_084157_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_084709_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_084709_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_084709_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_084709_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_085149_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_085149_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_085149_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_085149_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_085618_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_085618_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_085618_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_085618_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_090042_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_090042_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_090042_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_090042_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_090350_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_090350_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_090350_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_090350_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_091439_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_091439_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_091439_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_091439_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_091812_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_091812_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_091812_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_091812_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_092553_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_092553_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_092553_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_092553_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_093049_phase7_local",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_093049_phase7_local/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_093049_phase7_local/report.md",
+      "sourcePaths": [
+        "run_20260717_093049_phase7_local"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_100126_phase6_archive_local_retry",
+      "phase": "phase6",
+      "category": "diagnostic",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase6/run_20260717_100126_phase6_archive_local_retry/summary.json",
+      "reportPath": "experiments/phase6/run_20260717_100126_phase6_archive_local_retry/report.md",
+      "sourcePaths": [
+        "run_20260717_100126_phase6_archive_local_retry"
+      ],
+      "incidentIds": [
+        "incident-phase6-archive-local-fixes"
+      ]
+    },
+    {
+      "runId": "run_20260717_112554_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_112554_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_112554_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_112554_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_114232_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_114232_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_114232_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_114232_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-114232"
+      ]
+    },
+    {
+      "runId": "run_20260717_115310_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_115310_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_115310_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_115310_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_120032_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_120032_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_120032_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_120032_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-120032"
+      ]
+    },
+    {
+      "runId": "run_20260717_121121_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_121121_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_121121_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_121121_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_121922_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_121922_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_121922_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_121922_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-121922"
+      ]
+    },
+    {
+      "runId": "run_20260717_122819_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_122819_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_122819_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_122819_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_122936_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_122936_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_122936_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_122936_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_123647_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_123647_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_123647_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_123647_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-123647"
+      ]
+    },
+    {
+      "runId": "run_20260717_123647_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_123647_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_123647_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_123647_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-123647"
+      ]
+    },
+    {
+      "runId": "run_20260717_135302_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_135302_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_135302_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_135302_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_140022_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_140022_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_140022_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_140022_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-140022"
+      ]
+    },
+    {
+      "runId": "run_20260717_145409_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_145409_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_145409_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_145409_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_145426_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_145426_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_145426_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_145426_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_150129_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_150129_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_150129_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_150129_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-150129"
+      ]
+    },
+    {
+      "runId": "run_20260717_223832_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_223832_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_223832_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_223832_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_224217_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_224217_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_224217_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_224217_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260717_225316_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_225316_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_225316_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260717_225316_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-225316"
+      ]
+    },
+    {
+      "runId": "run_20260717_225316_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260717_225316_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260717_225316_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260717_225316_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260717-225316"
+      ]
+    },
+    {
+      "runId": "run_20260718_002925_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_002925_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_002925_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_002925_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_003703_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_003703_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_003703_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_003703_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_004921_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_004921_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_004921_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_004921_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-004921"
+      ]
+    },
+    {
+      "runId": "run_20260718_004921_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_004921_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_004921_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_004921_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-004921"
+      ]
+    },
+    {
+      "runId": "run_20260718_011725_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_011725_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_011725_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_011725_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_011744_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_011744_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_011744_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_011744_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_024916_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_024916_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_024916_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_024916_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_025510_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_025510_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_025510_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_025510_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-025510"
+      ]
+    },
+    {
+      "runId": "run_20260718_025510_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_025510_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_025510_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_025510_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-025510"
+      ]
+    },
+    {
+      "runId": "run_20260718_041110_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_041110_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_041110_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_041110_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_041125_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_041125_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_041125_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_041125_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_042130_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_042130_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_042130_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_042130_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-042130"
+      ]
+    },
+    {
+      "runId": "run_20260718_042130_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_042130_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_042130_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_042130_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-042130"
+      ]
+    },
+    {
+      "runId": "run_20260718_055034_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_055034_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_055034_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_055034_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_055103_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_055103_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_055103_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_055103_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_060935_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_060935_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_060935_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_060935_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_061644_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_061644_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_061644_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_061644_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-061644"
+      ]
+    },
+    {
+      "runId": "run_20260718_061644_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_061644_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_061644_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_061644_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-061644"
+      ]
+    },
+    {
+      "runId": "run_20260718_074333_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_074333_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_074333_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_074333_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_074351_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_074351_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_074351_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_074351_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_075926_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_075926_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_075926_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_075926_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-075926"
+      ]
+    },
+    {
+      "runId": "run_20260718_075926_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_075926_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_075926_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_075926_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-075926"
+      ]
+    },
+    {
+      "runId": "run_20260718_104859_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_104859_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_104859_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_104859_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_105848_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_105848_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_105848_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_105848_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-105848"
+      ]
+    },
+    {
+      "runId": "run_20260718_105848_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_105848_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_105848_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_105848_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-105848"
+      ]
+    },
+    {
+      "runId": "run_20260718_120309_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_120309_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_120309_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_120309_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_122355_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_122355_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_122355_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_122355_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_124510_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_124510_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_124510_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_124510_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-124510"
+      ]
+    },
+    {
+      "runId": "run_20260718_124510_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_124510_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_124510_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_124510_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-124510"
+      ]
+    },
+    {
+      "runId": "run_20260718_140208_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_140208_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_140208_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_140208_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_140243_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_140243_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_140243_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_140243_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_141425_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_141425_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_141425_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_141425_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-141425"
+      ]
+    },
+    {
+      "runId": "run_20260718_143442_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_143442_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_143442_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_143442_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_144405_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_144405_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_144405_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_144405_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-144405"
+      ]
+    },
+    {
+      "runId": "run_20260718_144405_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_144405_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_144405_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_144405_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-144405"
+      ]
+    },
+    {
+      "runId": "run_20260718_160954_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_160954_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_160954_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_160954_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_161016_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_161016_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_161016_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_161016_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_162042_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_162042_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_162042_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_162042_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-162042"
+      ]
+    },
+    {
+      "runId": "run_20260718_162042_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_162042_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_162042_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_162042_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-162042"
+      ]
+    },
+    {
+      "runId": "run_20260718_175009_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_175009_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_175009_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_175009_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_175720_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_175720_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_175720_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_175720_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-175720"
+      ]
+    },
+    {
+      "runId": "run_20260718_175720_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_175720_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_175720_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_175720_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-175720"
+      ]
+    },
+    {
+      "runId": "run_20260718_192234_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_192234_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_192234_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_192234_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_192254_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_192254_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_192254_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_192254_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_193035_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_193035_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_193035_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_193035_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-193035"
+      ]
+    },
+    {
+      "runId": "run_20260718_193035_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_193035_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_193035_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_193035_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-193035"
+      ]
+    },
+    {
+      "runId": "run_20260718_205704_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_205704_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_205704_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_205704_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_210703_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_210703_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_210703_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_210703_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-210703"
+      ]
+    },
+    {
+      "runId": "run_20260718_210703_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_210703_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_210703_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_210703_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-210703"
+      ]
+    },
+    {
+      "runId": "run_20260718_224032_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_224032_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_224032_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_224032_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_224059_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_224059_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_224059_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_224059_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260718_225218_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_225218_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_225218_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260718_225218_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-225218"
+      ]
+    },
+    {
+      "runId": "run_20260718_225218_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260718_225218_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260718_225218_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260718_225218_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260718-225218"
+      ]
+    },
+    {
+      "runId": "run_20260719_003924_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_003924_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_003924_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_003924_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260719_003944_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_003944_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_003944_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_003944_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260719_012539_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_012539_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_012539_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_012539_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260719_020156_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_020156_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_020156_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_020156_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-020156"
+      ]
+    },
+    {
+      "runId": "run_20260719_020156_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_020156_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_020156_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_020156_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-020156"
+      ]
+    },
+    {
+      "runId": "run_20260719_034506_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_034506_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_034506_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_034506_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260719_041439_phase7_1_local_integration",
+      "phase": "phase7",
+      "category": "validation",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_041439_phase7_1_local_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_041439_phase7_1_local_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_041439_phase7_1_local_integration"
+      ],
+      "incidentIds": []
+    },
+    {
+      "runId": "run_20260719_043415_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_043415_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_043415_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_043415_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-043415"
+      ]
+    },
+    {
+      "runId": "run_20260719_043415_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_043415_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_043415_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_043415_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-043415"
+      ]
+    },
+    {
+      "runId": "run_20260719_071857_phase7_2_aws_targeted_diagnostic",
+      "phase": "phase7",
+      "category": "diagnostic",
+      "status": "blocked",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_071857_phase7_2_aws_targeted_diagnostic/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_071857_phase7_2_aws_targeted_diagnostic/report.md",
+      "sourcePaths": [
+        "run_20260719_071857_phase7_2_aws_targeted_diagnostic"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-071857"
+      ]
+    },
+    {
+      "runId": "run_20260719_071857_phase7_2_targeted_archive_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_071857_phase7_2_targeted_archive_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_071857_phase7_2_targeted_archive_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_071857_phase7_2_targeted_archive_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-071857"
+      ]
+    },
+    {
+      "runId": "run_20260719_083356_phase7_2_aws_targeted_diagnostic",
+      "phase": "phase7",
+      "category": "diagnostic",
+      "status": "failed",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_083356_phase7_2_aws_targeted_diagnostic/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_083356_phase7_2_aws_targeted_diagnostic/report.md",
+      "sourcePaths": [
+        "run_20260719_083356_phase7_2_aws_targeted_diagnostic"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-083356"
+      ]
+    },
+    {
+      "runId": "run_20260719_083356_phase7_2_targeted_archive_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_083356_phase7_2_targeted_archive_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_083356_phase7_2_targeted_archive_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_083356_phase7_2_targeted_archive_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-083356"
+      ]
+    },
+    {
+      "runId": "run_20260719_094035_phase7_2_aws_targeted_diagnostic",
+      "phase": "phase7",
+      "category": "diagnostic",
+      "status": "aborted",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_094035_phase7_2_aws_targeted_diagnostic/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_094035_phase7_2_aws_targeted_diagnostic/report.md",
+      "sourcePaths": [
+        "run_20260719_094035_phase7_2_aws_targeted_diagnostic"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-094035"
+      ]
+    },
+    {
+      "runId": "run_20260719_125547_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_125547_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_125547_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_125547_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-125547"
+      ]
+    },
+    {
+      "runId": "run_20260719_125547_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_125547_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_125547_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_125547_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-125547"
+      ]
+    },
+    {
+      "runId": "run_20260719_144544_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_144544_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_144544_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_144544_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-144544"
+      ]
+    },
+    {
+      "runId": "run_20260719_144544_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_144544_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_144544_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_144544_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-144544"
+      ]
+    },
+    {
+      "runId": "run_20260719_162701_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_162701_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_162701_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_162701_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-162701"
+      ]
+    },
+    {
+      "runId": "run_20260719_164311_phase7_2_aws_integration",
+      "phase": "phase7",
+      "category": "experiment",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_164311_phase7_2_aws_integration/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_164311_phase7_2_aws_integration/report.md",
+      "sourcePaths": [
+        "run_20260719_164311_phase7_2_aws_integration"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-164311"
+      ]
+    },
+    {
+      "runId": "run_20260719_164311_phase7_2_deployment_readiness",
+      "phase": "phase7",
+      "category": "deployment_readiness",
+      "status": "unknown",
+      "validity": "unknown",
+      "summaryPath": "experiments/phase7/run_20260719_164311_phase7_2_deployment_readiness/summary.json",
+      "reportPath": "experiments/phase7/run_20260719_164311_phase7_2_deployment_readiness/report.md",
+      "sourcePaths": [
+        "run_20260719_164311_phase7_2_deployment_readiness"
+      ],
+      "incidentIds": [
+        "incident-phase7-20260719-164311"
+      ]
+    }
+  ],
+  "incidentCount": 38
+}

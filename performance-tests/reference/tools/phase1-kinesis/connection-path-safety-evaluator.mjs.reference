@@ -1,0 +1,136 @@
+export const CONNECTION_PATH_SAFETY_DEFAULTS = Object.freeze({
+    expectedRps: 50_000,
+    expectedConnections: 12_000,
+    minimumPhysicalConnectionAccuracy: 0.95,
+    minimumLoadAccuracy: 0.99,
+    loadAccuracyWindowSeconds: 60,
+    enforceLiveLoadAccuracy: false,
+    maximumKinesisRetryRate: 0.00001,
+    maximumBadStatusRate: 0.001,
+    badStatusWindowSeconds: 60,
+    queueGrowthSeconds: 60,
+    baselineP95Ms: 489.797913,
+    p95RegressionRatio: 1.2,
+    p95RegressionSeconds: 120,
+    maximumSampleGapSeconds: 25,
+    requireLiveHistogram: true,
+    enforceLiveP95: true,
+});
+
+export function evaluateConnectionPathSafety(samples, overrides = {}) {
+    const config = { ...CONNECTION_PATH_SAFETY_DEFAULTS, ...overrides };
+    if (samples.length === 0) return result(['telemetryMissing'], config, null, {});
+    const ordered = [...samples].toSorted((a, b) => a.timestampMs - b.timestampMs);
+    const current = ordered.at(-1);
+    const reasons = [];
+    if (current.telemetryComplete !== true) reasons.push('telemetryMissing');
+    if (config.requireLiveHistogram && current.histogramComplete !== true) reasons.push('histogramMissing');
+    if (number(current.kinesisThrottleRetryFailure) > 0) reasons.push('kinesisThrottleRetryFailure');
+    if (number(current.kinesisRetries) > 0) reasons.push('kinesisRetryObserved');
+    if (number(current.kinesisRetryRate) > config.maximumKinesisRetryRate) reasons.push('kinesisRetryRateAboveLimit');
+    if (number(current.fatalStatusDelta) > 0) reasons.push('http429Or5xxObserved');
+    if (number(current.taskRestartOomFatal) > 0) reasons.push('taskRestartOomFatal');
+    if (current.gatePassed !== true) reasons.push('costOrDeadlineGateFailed');
+
+    const loadAccuracy = rollingLoadAccuracy(ordered, config.loadAccuracyWindowSeconds, config.expectedRps);
+    const accuracy = {
+        enforced: current.enforceAccuracy === true,
+        physicalConnectionRatio: number(current.physicalConnections) / config.expectedConnections,
+        currentLoadRatio: number(current.achievedRps) / config.expectedRps,
+        loadRatio: loadAccuracy.ratio,
+        loadWindowSeconds: loadAccuracy.coverageSeconds,
+        loadWindowComplete: loadAccuracy.complete,
+        loadEnforced: current.enforceAccuracy === true && config.enforceLiveLoadAccuracy,
+    };
+    if (accuracy.enforced && accuracy.physicalConnectionRatio < config.minimumPhysicalConnectionAccuracy) reasons.push('physicalConnectionAccuracyBelowMinimum');
+    if (accuracy.loadEnforced && accuracy.loadWindowComplete && accuracy.loadRatio < config.minimumLoadAccuracy) reasons.push('loadAccuracyBelowMinimum');
+
+    const queue = sustainedMonotonicGrowth(ordered, config.queueGrowthSeconds * 1_000);
+    if (queue.sustained) reasons.push('queueOutstandingGrowing60Seconds');
+    const statuses = rollingBadStatusRate(ordered, config.badStatusWindowSeconds);
+    const p95 = config.enforceLiveP95
+        ? sustainedP95Regression(ordered, config)
+        : { available: false, thresholdMs: null, durationSeconds: 0, sustained: false };
+    if (config.enforceLiveP95 && p95.sustained) reasons.push('p95TwentyPercentWorseFor120Seconds');
+    return result(reasons, config, current, { accuracy, queue, statuses, p95 });
+}
+
+function rollingLoadAccuracy(samples, requiredSeconds, expectedRps) {
+    const currentPhase = samples.at(-1).phaseId;
+    const selected = [];
+    let coverageSeconds = 0;
+    for (let index = samples.length - 1; index >= 0 && coverageSeconds < requiredSeconds; index -= 1) {
+        const sample = samples[index];
+        if (sample.phaseId !== currentPhase) break;
+        const intervalSeconds = number(sample.intervalSeconds);
+        if (intervalSeconds <= 0) continue;
+        selected.push(sample);
+        coverageSeconds += intervalSeconds;
+    }
+    const finalAcks = selected.reduce((sum, sample) => {
+        const intervalSeconds = number(sample.intervalSeconds);
+        const loadCompleted = Number(sample.loadCompletedDelta);
+        const finalAck = Number(sample.finalAckDelta);
+        const observed = Number.isFinite(loadCompleted) ? loadCompleted : finalAck;
+        return sum + (Number.isFinite(observed) ? Math.max(0, observed) : number(sample.achievedRps) * intervalSeconds);
+    }, 0);
+    const achievedRps = coverageSeconds > 0 ? finalAcks / coverageSeconds : 0;
+    return {
+        coverageSeconds,
+        finalAcks,
+        achievedRps,
+        ratio: expectedRps > 0 ? achievedRps / expectedRps : 0,
+        complete: coverageSeconds >= requiredSeconds,
+    };
+}
+
+function sustainedMonotonicGrowth(samples, windowMilliseconds) {
+    const current = samples.at(-1);
+    const window = samples.filter((sample) => current.timestampMs - sample.timestampMs <= windowMilliseconds);
+    const durationMilliseconds = window.length < 2 ? 0 : current.timestampMs - window[0].timestampMs;
+    const values = window.map((sample) => number(sample.queueOutstanding));
+    const nonDecreasing = values.slice(1).every((value, index) => value >= values[index]);
+    const increased = values.length > 1 && values.at(-1) > values[0];
+    return { durationSeconds: durationMilliseconds / 1_000, values, nonDecreasing, increased,
+        sustained: durationMilliseconds >= windowMilliseconds && nonDecreasing && increased };
+}
+
+function rollingBadStatusRate(samples, requiredSeconds) {
+    const currentPhase = samples.at(-1).phaseId;
+    const selected = [];
+    let coverageSeconds = 0;
+    for (let index = samples.length - 1; index >= 0 && coverageSeconds < requiredSeconds; index -= 1) {
+        const sample = samples[index];
+        if (sample.phaseId !== currentPhase) break;
+        selected.push(sample);
+        coverageSeconds += number(sample.intervalSeconds);
+    }
+    const completed = selected.reduce((sum, sample) => sum + number(sample.completedDelta), 0);
+    const bad = selected.reduce((sum, sample) => sum + number(sample.badStatusDelta), 0);
+    return { coverageSeconds, completed, bad, complete: coverageSeconds >= requiredSeconds,
+        rate: completed === 0 ? (bad === 0 ? 0 : 1) : bad / completed };
+}
+
+function sustainedP95Regression(samples, config) {
+    const current = samples.at(-1);
+    const thresholdMs = config.baselineP95Ms * config.p95RegressionRatio;
+    if (!(number(current.pooledP95Ms) >= thresholdMs)) return { thresholdMs, durationSeconds: 0, sustained: false };
+    let earliest = current;
+    for (let index = samples.length - 2; index >= 0; index -= 1) {
+        const candidate = samples[index];
+        if (candidate.phaseId !== current.phaseId || number(candidate.pooledP95Ms) < thresholdMs ||
+            earliest.timestampMs - candidate.timestampMs > config.maximumSampleGapSeconds * 1_000) break;
+        earliest = candidate;
+    }
+    const durationSeconds = (current.timestampMs - earliest.timestampMs) / 1_000;
+    return { thresholdMs, durationSeconds, sustained: durationSeconds >= config.p95RegressionSeconds };
+}
+
+function result(reasons, config, current, details) {
+    return { evaluatedAt: new Date(current?.timestampMs ?? Date.now()).toISOString(), abort: reasons.length > 0,
+        passed: reasons.length === 0, reasons, config, current: current ?? null, details };
+}
+
+function number(value) {
+    return Number.isFinite(Number(value)) ? Number(value) : 0;
+}

@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+
+import { writeFileSync } from 'node:fs';
+
+export const DEADLINES = Object.freeze({
+    deployStopUtc: '2026-07-13T18:30:00.000Z',
+    stageStopUtc: '2026-07-13T19:30:00.000Z',
+    cleanupOnlyUtc: '2026-07-13T20:15:00.000Z',
+    hardDeadlineUtc: '2026-07-13T21:00:00.000Z',
+});
+
+export function buildFanoutCrossoverPlan(seed) {
+    if (!Number.isSafeInteger(seed) || seed < 1) throw new Error('seed must be a positive safe integer');
+    const remaining = [
+        { label: 'b_oha_direct', path: 'direct', driver: 'oha' },
+        { label: 'c_reference_alb', path: 'alb', driver: 'reference' },
+        { label: 'd_reference_direct', path: 'direct', driver: 'reference' },
+    ];
+    let state = seed >>> 0;
+    for (let index = remaining.length - 1; index > 0; index -= 1) {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        const selected = state % (index + 1);
+        [remaining[index], remaining[selected]] = [remaining[selected], remaining[index]];
+    }
+    return {
+        schemaVersion: 1,
+        seed,
+        initialReproduction: { label: 'a_oha_alb', path: 'alb', driver: 'oha', maxAttempts: 3 },
+        conditionalOrderAfterReproduction: remaining,
+        topology: { offeredRps: 10_000, connections: 12_000, generators: 4, processesPerNode: 2, rpsPerProcess: 1_250, connectionsPerProcess: 1_500, durationSeconds: 45, timeoutSeconds: 10 },
+        deadlines: DEADLINES,
+        conditionalMitigationConnections: [12_000, 6_000, 3_000],
+    };
+}
+
+function option(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
+    const output = option('--output');
+    const seed = Number(option('--seed'));
+    if (!output) throw new Error('--output is required');
+    const plan = buildFanoutCrossoverPlan(seed);
+    writeFileSync(output, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+}

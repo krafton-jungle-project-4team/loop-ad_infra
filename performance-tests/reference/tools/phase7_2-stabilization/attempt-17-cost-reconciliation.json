@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 17,
+  "runId": "run_20260719_043415_phase7_integration",
+  "sessionId": "phase7-integration-20260719T043415Z",
+  "reconciledAt": "2026-07-19T06:01:58Z",
+  "paidRuntime": {
+    "imagePreparationStartedAt": "2026-07-19T04:43:12.859Z",
+    "deployStartedAt": "2026-07-19T05:05:10.521818Z",
+    "runtimeDeployCompletedAt": "2026-07-19T05:16:11.430595Z",
+    "verifyCompletedAt": "2026-07-19T05:16:54.607867Z",
+    "correctnessCompletedAt": "2026-07-19T05:19:30.301593Z",
+    "seedCompletedAt": "2026-07-19T05:19:59.498160Z",
+    "warmupCompletedAt": "2026-07-19T05:29:14.051318Z",
+    "scoreArchiveFailedAt": "2026-07-19T05:43:50.551542Z",
+    "cleanupFinishedAt": "2026-07-19T05:56:41.160913Z",
+    "authoritativeCleanupZeroAt": "2026-07-19T05:56:58.549Z",
+    "postFinalZeroConfirmedAt": "2026-07-19T05:57:55Z",
+    "runtimeStartToAuthoritativeZeroSeconds": "3108.028000",
+    "imageStartToAuthoritativeZeroSeconds": "4425.690000"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-17-cost-explorer-20260719.json",
+    "evidenceSha256": "8458ea18d093a7a2342b80368be38e575fa874ebd3a86c850044946a553b280e",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "Delayed current-day zero is not treated as zero cost."
+  },
+  "priceEvidence": {
+    "path": "performance-tests/run_20260719_043415_phase7_2_deployment_readiness/prices-final.json",
+    "sha256": "24f9b5daabee11cc06736a0e544cef28f90b6eee4cb3af090d77ffa8f6a0c01d",
+    "asOf": "2026-07-19T04:50:28.552Z"
+  },
+  "modeledFailurePath": {
+    "billableRuntimeDurationCeilingSeconds": 3600,
+    "actualRuntimeDurationBelowCeiling": true,
+    "executedWork": {
+      "correctnessRequests": 1002,
+      "replacementRequests": 900,
+      "warmupRequestedRequests": 9000000,
+      "scoreRequestedRequests": 15000000,
+      "archiveStarted": true,
+      "archiveTaskCount": 1
+    },
+    "baselineOneHourUpperBoundUsd": "15.356544828197",
+    "baselineSource": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-16-cost-reconciliation.json",
+      "sha256": "f75cdf9132dcdc458a658c3c4c2a0486691c1b88b1ed042b5ab9cc6b489d9216"
+    },
+    "additionalScoreKinesisPutUnits": 15000000,
+    "additionalScoreKinesisPutCostUsd": "0.306000000000",
+    "archiveS3AndControlCostCoveredByBaselineAllowances": true,
+    "rawTotalUsd": "15.662544828197",
+    "upperBoundUsd": "15.662545"
+  },
+  "roundingPolicy": "Charge 16.000000 USD by rounding the modeled upper bound upward and retaining delayed-billing margin.",
+  "chargedUpperBoundUsd": "16.000000",
+  "budgetBeforeAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-16",
+    "activeEpochAccruedUpperBoundUsd": "0.000000",
+    "lifetimeChargedUpperBoundUsd": "115.000000"
+  },
+  "budgetAfterAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-16",
+    "activeEpochAccruedUpperBoundUsd": "16.000000",
+    "lifetimeChargedUpperBoundUsd": "131.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000",
+    "lifetimeValueInformationalOnly": true
+  },
+  "nextFullAttemptGate": {
+    "priorActiveEpochAccruedUpperBoundUsd": "16.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "activeEpochOperationalMaximumUsd": "49.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "54.870718",
+    "newWorkStopUsd": "55.000000",
+    "hardCapUsd": "60.000000",
+    "remainingMarginUsd": "5.129282",
+    "passed": true
+  }
+}

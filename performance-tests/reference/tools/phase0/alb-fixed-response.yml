@@ -1,0 +1,29 @@
+config:
+  target: "http://127.0.0.1"
+  payload:
+    path: "./payloads/sdk-compatible-event-bodies.tsv"
+    fields:
+      - "body_json"
+      - "payload_size_profile"
+      - "payload_actual_bytes"
+    skipHeader: true
+    delimiter: "\t"
+    cast: false
+    options:
+      quote: false
+    order: sequence
+  phases:
+    - name: "single Artillery process 2500 rps hold"
+      duration: 300
+      arrivalRate: 2500
+  defaults:
+    headers:
+      content-type: "application/json"
+  http:
+    timeout: 5
+scenarios:
+  - name: "POST ALB fixed response"
+    flow:
+      - post:
+          url: "/__fixed"
+          body: "{{ body_json }}"

@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_100126_phase6_archive_local_retry",
+  "phase": "phase6",
+  "category": "diagnostic",
+  "executedAt": "2026-07-17T10:01:26",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "local-only",
+  "majorSettings": [
+    {
+      "name": "retryResult.attemptCount",
+      "value": 21,
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "passed",
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    },
+    {
+      "name": "retryResult.attemptCount",
+      "value": 21,
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    },
+    {
+      "name": "previousRun.verdict",
+      "value": "failed",
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    },
+    {
+      "name": "startingGitStatusSha256",
+      "value": "4d357da4e37d3190e8531eca465fb653eaf86af5c159ad561007b079f1a8b8bd",
+      "source": "run_20260717_100126_phase6_archive_local_retry/run.json"
+    },
+    {
+      "name": "scale15M.attemptCount",
+      "value": 21,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.uniqueEvents",
+      "value": 15000000,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.durationSeconds",
+      "value": 740.818651,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryBytes",
+      "value": 5493630171,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.peakMemoryPercentOfDockerLimit",
+      "value": 66.015624,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.oomCount",
+      "value": 0,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "scale15M.restartCount",
+      "value": 0,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "cost.deterministicMaximumUsd",
+      "value": "6.089506",
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "cost.hardCapUsd",
+      "value": "15",
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    },
+    {
+      "name": "cost.passed",
+      "value": true,
+      "source": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "passed",
+  "conclusion": "passed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase6-archive-local-fixes"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_100126_phase6_archive_local_retry"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_100126_phase6_archive_local_retry/cleanup-verification.json",
+      "bytes": 734,
+      "sha256": "438e64585141fe88343833a11ede3a20cc68a11c51ab00f3434c547c935816e1"
+    },
+    {
+      "path": "run_20260717_100126_phase6_archive_local_retry/commands.md",
+      "bytes": 772,
+      "sha256": "1e8e5503117e1a4304711e50a40cab649bac5d58ad72bd1a004fdc369605249a"
+    },
+    {
+      "path": "run_20260717_100126_phase6_archive_local_retry/metrics-summary.json",
+      "bytes": 1021,
+      "sha256": "705db10842bfeaec17f7ca89c50a05dc818f6896a386b9ab94da4212ab7b61ce"
+    },
+    {
+      "path": "run_20260717_100126_phase6_archive_local_retry/report.md",
+      "bytes": 3000,
+      "sha256": "0df8bee2dc08f856b7b5dee6e5080b137eeb76d303c23280fcef12b0ae056ca2"
+    },
+    {
+      "path": "run_20260717_100126_phase6_archive_local_retry/run.json",
+      "bytes": 1301,
+      "sha256": "d8bbedd3668c5c91d5428808780334b30319477301f363ab8810e41045c7af7b"
+    }
+  ]
+}

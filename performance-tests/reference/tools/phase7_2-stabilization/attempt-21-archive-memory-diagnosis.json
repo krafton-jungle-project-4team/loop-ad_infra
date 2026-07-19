@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 21,
+  "runId": "run_20260719_144544_phase7_integration",
+  "sessionId": "phase7-integration-20260719T144544Z",
+  "attemptType": "aws-full-stack-scoped-diagnostic",
+  "recordedAt": "2026-07-19T15:37:00Z",
+  "firstFailingGate": "archive",
+  "archiveTaskArn": "arn:aws:ecs:ap-northeast-2:742711170910:task/LoopAdPerfPhase7IntegrationStack-ClickHouseCluster6C6D09C2-6z4jdsvdEZr3/668c43589887497cb52963ee556e01ab",
+  "archiveTaskExitCode": 1,
+  "rawAwsError": "ValueError: ClickHouse query memory must be at most 5 GiB",
+  "rawErrorSource": {
+    "capturedBeforeCleanup": true,
+    "source": "immutable archive result JSON re-read from the exact run-owned S3 archive bucket",
+    "objectKey": "attempts/v1/table=events/event_date=2026-07-11/phase7-result-run_20260719_144544_phase7_integration.json",
+    "objectSha256": "68abad9f52d946fa489e49388b836bbe13a25110818d307be779d0983b8a3108"
+  },
+  "diagnosis": "Attempt 21 successfully deployed the unchanged standard Phase 7 topology, passed minimal service/TLS/ClickHouse smoke and produced two identical deterministic fingerprints for exactly 15,000,000 source rows. The Phase 7 entrypoint supplied 6 GiB, but the inherited Phase 6 ArchiveConfig still rejected every value above 5 GiB before issuing an archive query. Attempt 20's operational-headroom fix therefore did not reach the actual archive engine validation boundary.",
+  "fixDirection": {
+    "archiveQueryEnvelope": "Keep the Phase 6 default at 5 GiB, accept caller-selected query memory through 6.5 GiB and retain at least 512 MiB below the 7 GiB ClickHouse server ceiling. The current Phase 7 caller remains 6 GiB; exact point equality is not acceptance.",
+    "cleanup": "ECS rejects UntagResource after a task reaches STOPPED. Continue exact-owned runtime/image deletion, classify the stopped task as an immutable Tagging API tombstone and poll it to zero instead of blocking deletion.",
+    "failureEvidence": "CloudWatch Logs GetLogEvents is not pageable through get_paginator. Follow nextForwardToken until stable so future failure bundles retain logs and CloudTrail evidence."
+  },
+  "acceptancePolicy": {
+    "strict": [
+      "deterministic row and fingerprint correctness",
+      "bidirectional archive equivalence",
+      "immutable COMMITTED re-read",
+      "source DROP safety",
+      "run ownership",
+      "authoritative cleanup zero",
+      "campaign budget",
+      "previously frozen performance baseline"
+    ],
+    "operationalHeadroomNotExactAcceptance": [
+      "archive per-query memory ceiling",
+      "similar non-performance runtime tuning caps"
+    ]
+  },
+  "sourceDropExecuted": false,
+  "sourceDropNonExecutionBasis": {
+    "retainSourceOverride": "The sealed controller supplied ARCHIVE_RETAIN_SOURCE_AFTER_COMMIT=true to its only archive RunTask call.",
+    "failureOrdering": "ArchiveConfig.validate rejected the 6 GiB value before export, COMMITTED creation or any source DROP path.",
+    "queryLogSourceDropQueries": 0
+  },
+  "cleanup": {
+    "initialAttempts": 3,
+    "initialRawError": "InvalidParameterException: The specified task is stopped. Specify a running task and try again.",
+    "runtimeStackDeleted": true,
+    "imageStackDeleted": true,
+    "exactRepositoriesDeleted": true,
+    "serviceInventoryZero": true,
+    "taggingApiTombstonePendingAtRecordTime": true
+  },
+  "evidence": {
+    "deploymentVerification": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/deployment-verification.json",
+      "sha256": "20d51ca3ba664b2ba95d3cc68e17d67779615def43f01efd44a6b070252da916"
+    },
+    "seedSummary": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/seed-summary.json",
+      "sha256": "6047a1dbd497de1f4328d6365933787045c4b344948d6184ef3e0467302a98e8"
+    },
+    "runnerFailure": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/failure.json",
+      "sha256": "20c799bccb414563bd5ba352bf8e29529506e26539639618a6f3d0f8f38c0049"
+    },
+    "failureEvidence": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/failure-evidence.json",
+      "sha256": "89bb1ded4b45d29effc7e52d1ab1ccd63a5e5c838a3846220703f9ffcc6d99e9"
+    },
+    "executionSummary": {
+      "path": "performance-tests/run_20260719_144544_phase7_2_aws_integration/execution-summary.json",
+      "sha256": "5f70ec344a2475acaece60e8ad4912215ecca8ff29d758f632f30702330f0aaf"
+    },
+    "phase6ArchiveBeforeFix": {
+      "path": "performance-tests/phase6-archive/archive.py",
+      "sha256": "f6967e7bf4156d22db2963c90d93c7df9a2cb6772de6b2773594387e5e3e5d52"
+    },
+    "cleanupBeforeFix": {
+      "path": "performance-tests/phase7-integration/aws/cleanup.py",
+      "sha256": "90f8608ba421f089866ab83d1c3511a3383f18d3f377a7eba5df88c46a6809cb"
+    },
+    "controllerBeforeFix": {
+      "path": "performance-tests/phase7-integration/aws/full_stack_scoped_archive.py",
+      "sha256": "0e91311290316457b8013c14c2a15b7734f2194412ee8bef41969cacdb4ae6df"
+    }
+  }
+}

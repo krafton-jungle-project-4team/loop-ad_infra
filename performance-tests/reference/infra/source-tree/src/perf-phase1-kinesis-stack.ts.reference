@@ -1,0 +1,2043 @@
+import {
+    CfnOutput,
+    CfnWaitCondition,
+    CfnWaitConditionHandle,
+    Duration,
+    Fn,
+    RemovalPolicy,
+    Stack,
+    Tags,
+    type StackProps,
+} from 'aws-cdk-lib';
+import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
+import { Construct } from 'constructs';
+import { createHash } from 'node:crypto';
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DEV_VPC_AVAILABILITY_ZONES } from './dev-config';
+
+const COLLECTOR_COUNT_CONTEXT_KEY = 'phase1CollectorCount';
+const COLLECTOR_SHA_CONTEXT_KEY = 'phase1CollectorSha';
+const COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY = 'phase1CollectorImageDigest';
+const KINESIS_MAX_CONNECTIONS_CONTEXT_KEY = 'phase1KinesisMaxConnections';
+const KINESIS_SHARD_COUNT_CONTEXT_KEY = 'phase1KinesisShardCount';
+const APPLICATION_MAX_IN_FLIGHT_CONTEXT_KEY = 'phase1ApplicationMaxInFlight';
+const CAPACITY_PROFILE_CONTEXT_KEY = 'phase1CapacityProfile';
+const RUN_ID_CONTEXT_KEY = 'phase1RunId';
+const SESSION_ID_CONTEXT_KEY = 'phase1SessionId';
+const CANDIDATE_CONTEXT_KEY = 'phase1Candidate';
+const EXPERIMENT_MODE_CONTEXT_KEY = 'phase1ExperimentMode';
+const LOAD_GENERATOR_COUNT_CONTEXT_KEY = 'phase1LoadGeneratorCount';
+const CERTIFICATE_ARN_CONTEXT_KEY = 'phase1CertificateArn';
+const PROTOCOL_TLS_SECRET_ARN_CONTEXT_KEY = 'phase1ProtocolTlsSecretArn';
+const LOAD_BALANCER_KIND_CONTEXT_KEY = 'phase1LoadBalancerKind';
+const NLB_LISTENER_PROTOCOL_CONTEXT_KEY = 'phase1NlbListenerProtocol';
+const ALB_TARGET_PROTOCOL_VERSION_CONTEXT_KEY = 'phase1AlbTargetProtocolVersion';
+const HAPROXY_PROFILE_CONTEXT_KEY = 'phase1HAProxyProfile';
+const MAX_COLLECTOR_COUNT = 17;
+
+type Phase1Candidate = 'go-sync' | 'go-batch' | 'java-kpl';
+type Phase1ExperimentMode = 'comparison' | 'capacity' | 'scout' | 'capacity-oha12k' | 'generator-diagnosis' | 'alb-warmup' | 'tcp-alb-path-diagnosis' | 'admission-scaleout-capacity' | 'protocol-crossover' | 'connection-path-crossover';
+type Phase1CapacityProfile = 'A' | 'B';
+type Phase1LoadBalancerKind = 'alb' | 'nlb';
+type Phase1NlbListenerProtocol = 'tcp' | 'quic';
+type Phase1AlbTargetProtocolVersion = 'HTTP1' | 'HTTP2';
+type Phase1HAProxyProfile = 'baseline-full' | 'sampled-202' | 'sampled-202-capacity';
+
+export const DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE: Phase1HAProxyProfile = 'sampled-202';
+
+const DEFAULT_COLLECTOR_INSTANCE_TYPE = 'c6i.xlarge';
+const DEFAULT_COLLECTOR_VCPUS_PER_INSTANCE = 4;
+const DEFAULT_COLLECTOR_MEMORY_GIB_PER_INSTANCE = 8;
+const LOAD_GENERATOR_INSTANCE_TYPE = 'c6in.large';
+const LOAD_GENERATOR_VCPUS = 2;
+const CONNECTION_PATH_DEFAULT_COLLECTOR_COUNT = 6;
+const CONNECTION_PATH_DEFAULT_LOAD_GENERATOR_COUNT = 8;
+const COLLECTOR_PORT = 8080;
+const COLLECTOR_PROTOCOL_TLS_PORT = 8443;
+const DEFAULT_KINESIS_SHARD_COUNT = 80;
+const CONNECTION_PATH_KINESIS_SHARD_COUNT = 120;
+const EVENT_COLLECTOR_REPOSITORY_NAME = 'loop-ad/event-collector';
+const OHA_IMAGE = 'ghcr.io/hatoo/oha@sha256:76c300321fd0101d7e0588ae0486956a83034d7057a37be052619fa28204a072';
+const HAPROXY_IMAGE = 'haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d';
+const HAPROXY_BASELINE_INSTANCE_TYPE = 'c6in.xlarge';
+const HAPROXY_CAPACITY_INSTANCE_TYPE = 'c6in.2xlarge';
+const HAPROXY_PORT = 8443;
+const HAPROXY_STATS_PORT = 8404;
+
+const COLLECTOR_CLUSTER_NAME = 'perf-phase1-loop-ad-collector-cluster';
+const COLLECTOR_ASG_NAME = 'perf-phase1-loop-ad-collector';
+const COLLECTOR_SERVICE_NAME = 'perf-phase1-loop-ad-collector';
+const COLLECTOR_INSTANCE_ROLE_NAME = 'loop-ad-perf-phase1-collector-instance';
+const COLLECTOR_TASK_ROLE_NAME = 'loop-ad-perf-phase1-collector-task';
+const COLLECTOR_EXECUTION_ROLE_NAME = 'loop-ad-perf-phase1-collector-execution';
+const LOAD_GENERATOR_ASG_NAME = 'perf-phase1-loop-ad-load-generator';
+const LOAD_GENERATOR_INSTANCE_ROLE_NAME = 'loop-ad-perf-phase1-load-generator-instance';
+const STREAM_NAME = 'perf-phase1-loop-ad-events';
+
+interface Phase1Config {
+    readonly experimentMode: Phase1ExperimentMode;
+    readonly collectorCount: number;
+    readonly loadGeneratorCount: number;
+    readonly collectorSha: string;
+    readonly collectorImageTag: string;
+    readonly collectorImageDigest: string;
+    readonly kinesisMaxConnections: number;
+    readonly applicationMaxInFlight: number;
+    readonly capacityProfile?: Phase1CapacityProfile;
+    readonly collectorInstanceType: string;
+    readonly collectorVcpusPerInstance: number;
+    readonly collectorMemoryGibPerInstance: number;
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly candidate: Phase1Candidate;
+    readonly certificateArn?: string;
+    readonly protocolTlsSecretArn?: string;
+    readonly loadBalancerKind: Phase1LoadBalancerKind;
+    readonly nlbListenerProtocol: Phase1NlbListenerProtocol;
+    readonly albTargetProtocolVersion: Phase1AlbTargetProtocolVersion;
+	readonly haproxyProfile: Phase1HAProxyProfile;
+	readonly haproxyInstanceType: string;
+	readonly haproxyVcpusPerInstance: number;
+	readonly haproxyLoggingPolicy: 'full' | 'normal-202-deterministic-0.1-percent';
+	readonly haproxyThreadMode: 'explicit-4' | 'automatic';
+}
+
+interface Phase1Network {
+    readonly vpc: ec2.IVpc;
+    readonly publicSubnetIds: string;
+    readonly publicSubnets: readonly ec2.ISubnet[];
+    readonly albSecurityGroup: ec2.ISecurityGroup;
+    readonly collectorSecurityGroup: ec2.ISecurityGroup;
+    readonly loadGeneratorSecurityGroup: ec2.ISecurityGroup;
+    readonly proxySecurityGroup?: ec2.ISecurityGroup;
+}
+
+interface CollectorService {
+    readonly service: ecs.Ec2Service;
+    readonly clusterName: string;
+    readonly serviceName: string;
+    readonly autoScalingGroupName: string;
+    readonly taskRoleArn: string;
+    readonly executionRoleArn: string;
+    readonly logGroupName: string;
+	readonly instanceRole: iam.IRole;
+}
+
+interface LoadGenerator {
+    readonly autoScalingGroupNames: readonly string[];
+    readonly instanceRoleArn: string;
+}
+
+interface TcpAlbDiagnostics {
+    readonly flowLogId?: string;
+    readonly flowLogGroupName?: string;
+    readonly flowLogRoleArn?: string;
+}
+
+export class LoopAdPerfPhase1KinesisStack extends Stack {
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        const config = readPhase1Config(this);
+        Tags.of(this).add('Project', 'loop-ad');
+        Tags.of(this).add('Environment', 'perf-phase1-kinesis');
+        Tags.of(this).add('RunId', config.runId);
+        Tags.of(this).add('ComparisonSessionId', config.sessionId);
+        Tags.of(this).add('Candidate', config.candidate);
+        addCapacityOwnershipTags(this, config.experimentMode, config.sessionId, config.runId);
+
+        const network = createPhase1Network(this, config);
+        const diagnostics = createTcpAlbDiagnostics(this, config, network);
+        const stream = importedEventStream(this);
+        const collector = createCollectorService(this, {
+            config,
+            network,
+            stream,
+        });
+        const target = createCollectorLoadBalancer(this, {
+            config,
+            network,
+            service: collector.service,
+        });
+		if (isPathEvidenceMode(config.experimentMode) && target.evidenceBucket) {
+			collector.instanceRole.addToPrincipalPolicy(new iam.PolicyStatement({
+				actions: ['s3:PutObject'],
+				resources: [target.evidenceBucket.arnForObjects(`${config.sessionId}/${config.runId}/collector-evidence/*`)],
+			}));
+		}
+        const loadGenerator = createLoadGenerator(this, network, config, target.evidenceBucket);
+
+        outputPhase1RunConfiguration(this, {
+            config,
+            network,
+            stream,
+            collector,
+            loadGenerator,
+            target,
+            diagnostics,
+        });
+    }
+}
+
+export class LoopAdPerfPhase1KinesisStreamStack extends Stack {
+    public readonly stream: kinesis.IStream;
+
+    public constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        const experimentMode = readExperimentMode(this);
+        const sessionId = readPhase1SessionId(this, experimentMode);
+        const shardCount = readKinesisShardCount(this, experimentMode);
+        Tags.of(this).add('Project', 'loop-ad');
+        Tags.of(this).add('Environment', 'perf-phase1-kinesis');
+        Tags.of(this).add('ResourceScope', 'shared-test-session');
+        Tags.of(this).add('ComparisonSessionId', sessionId);
+        addCapacityOwnershipTags(this, experimentMode, sessionId, sessionId);
+
+        this.stream = createEventStream(this, shardCount, experimentMode === 'connection-path-crossover');
+        new CfnOutput(this, 'Phase1KinesisStreamName', {
+            value: this.stream.streamName,
+            description: `Shared ${shardCount}-shard Kinesis stream retained across consecutive Phase 1 runs.`,
+        });
+        new CfnOutput(this, 'Phase1KinesisStreamArn', {
+            value: this.stream.streamArn,
+            description: 'Shared Kinesis stream ARN used by run-scoped collector stacks.',
+        });
+        new CfnOutput(this, 'Phase1KinesisShardCount', {
+            value: shardCount.toString(),
+            description: 'Provisioned shard count selected for this experiment mode.',
+        });
+    }
+}
+
+function createPhase1Network(scope: Construct, config: Phase1Config): Phase1Network {
+    const vpc = new ec2.Vpc(scope, 'Vpc', {
+        vpcName: 'perf-phase1-loop-ad-vpc',
+        availabilityZones: DEV_VPC_AVAILABILITY_ZONES,
+        natGateways: 0,
+        restrictDefaultSecurityGroup: true,
+        subnetConfiguration: [
+            {
+                name: 'public',
+                subnetType: ec2.SubnetType.PUBLIC,
+                cidrMask: 24,
+            },
+        ],
+    });
+    const publicSubnets = vpc.selectSubnets({ subnetGroupName: 'public' });
+
+    const albSecurityGroup = new ec2.SecurityGroup(scope, 'AlbSecurityGroup', {
+        vpc,
+        allowAllOutbound: false,
+        description: 'Perf phase 1 internal collector ALB.',
+    });
+    const collectorSecurityGroup = new ec2.SecurityGroup(scope, 'CollectorSecurityGroup', {
+        vpc,
+        allowAllOutbound: false,
+        description: 'Perf phase 1 ECS collector hosts.',
+    });
+    const loadGeneratorSecurityGroup = new ec2.SecurityGroup(scope, 'LoadGeneratorSecurityGroup', {
+        vpc,
+        allowAllOutbound: false,
+        description: 'Perf phase 1 EC2 oha load generator.',
+    });
+    const proxySecurityGroup = config.experimentMode === 'connection-path-crossover'
+        ? new ec2.SecurityGroup(scope, 'ProxySecurityGroup', {
+            vpc,
+            allowAllOutbound: false,
+            description: 'Dedicated two-AZ HAProxy connection-path fleet.',
+        })
+        : undefined;
+
+    albSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(80), 'Load generator may reach the internal ALB.');
+    albSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(443), 'Load generator may reach the internal TLS load balancer.');
+    albSecurityGroup.addEgressRule(collectorSecurityGroup, ec2.Port.tcp(COLLECTOR_PORT), 'ALB may send ingest and health traffic to collector hosts.');
+    collectorSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.tcp(COLLECTOR_PORT), 'ALB may reach the collector host port.');
+    loadGeneratorSecurityGroup.addEgressRule(albSecurityGroup, ec2.Port.tcp(80), 'Load generator may send phase 1 traffic to the ALB.');
+    loadGeneratorSecurityGroup.addEgressRule(albSecurityGroup, ec2.Port.tcp(443), 'Load generator may send phase 1 TLS traffic to the load balancer.');
+	collectorSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(COLLECTOR_PROTOCOL_TLS_PORT), 'NLB-preserved generator sources may reach collector TLS HTTP/2.');
+	if (config.experimentMode === 'protocol-crossover') {
+		collectorSecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.udp(COLLECTOR_PROTOCOL_TLS_PORT), 'NLB-preserved generator sources may reach collector QUIC HTTP/3.');
+	}
+	loadGeneratorSecurityGroup.addEgressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(443), 'Load generator may reach run-scoped NLB TCP listeners.');
+	loadGeneratorSecurityGroup.addEgressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.udp(443), 'Load generator may reach run-scoped NLB QUIC listeners.');
+	if (config.experimentMode === 'connection-path-crossover') {
+		loadGeneratorSecurityGroup.addEgressRule(
+			ec2.Peer.ipv4(vpc.vpcCidrBlock),
+			ec2.Port.tcp(COLLECTOR_PROTOCOL_TLS_PORT),
+			'Load generator may run direct collector TLS readiness probes.',
+		);
+	}
+	if (proxySecurityGroup) {
+		proxySecurityGroup.addIngressRule(loadGeneratorSecurityGroup, ec2.Port.tcp(HAPROXY_PORT), 'NLB-preserved generator sources may reach HAProxy TLS HTTP/2.');
+		proxySecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(HAPROXY_PORT), 'Run-scoped NLB health checks may reach HAProxy.');
+		proxySecurityGroup.addEgressRule(collectorSecurityGroup, ec2.Port.tcp(COLLECTOR_PORT), 'HAProxy may reach collector h2c backends.');
+		collectorSecurityGroup.addIngressRule(proxySecurityGroup, ec2.Port.tcp(COLLECTOR_PORT), 'Dedicated HAProxy fleet may reach collector h2c.');
+		proxySecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HAProxy hosts may reach SSM, Secrets Manager, and the pinned image registry.');
+		proxySecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.udp(53), 'HAProxy hosts may resolve DNS over UDP.');
+		proxySecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(53), 'HAProxy hosts may resolve DNS over TCP.');
+	}
+	if (config.experimentMode === 'protocol-crossover' && config.loadBalancerKind === 'nlb') {
+		for (const subnet of publicSubnets.subnets) {
+			collectorSecurityGroup.addIngressRule(
+				ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+				ec2.Port.tcp(COLLECTOR_PORT),
+				'Run-scoped NLB subnet may reach the collector health endpoint.',
+			);
+			collectorSecurityGroup.addIngressRule(
+				ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+				ec2.Port.tcp(COLLECTOR_PROTOCOL_TLS_PORT),
+				'Run-scoped NLB client sources may reach collector TLS HTTP/2.',
+			);
+			collectorSecurityGroup.addIngressRule(
+				ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+				ec2.Port.udp(COLLECTOR_PROTOCOL_TLS_PORT),
+				'Run-scoped NLB client sources may reach collector QUIC HTTP/3.',
+			);
+		}
+	}
+	if (config.experimentMode === 'connection-path-crossover') {
+		for (const subnet of publicSubnets.subnets) {
+			collectorSecurityGroup.addIngressRule(
+				ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+				ec2.Port.tcp(COLLECTOR_PROTOCOL_TLS_PORT),
+				'Client-IP-preserving NLB traffic may reach collector TLS HTTP/2.',
+			);
+		}
+	}
+
+    for (const securityGroup of [collectorSecurityGroup, loadGeneratorSecurityGroup]) {
+        securityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Host may reach SSM and required HTTPS endpoints.');
+        securityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.udp(53), 'Host may resolve DNS over UDP.');
+        securityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(53), 'Host may resolve DNS over TCP.');
+    }
+
+    return {
+        vpc,
+        publicSubnetIds: Fn.join(',', publicSubnets.subnetIds),
+        publicSubnets: publicSubnets.subnets,
+        albSecurityGroup,
+        collectorSecurityGroup,
+        loadGeneratorSecurityGroup,
+        proxySecurityGroup,
+    };
+}
+
+function createEventStream(scope: Construct, shardCount: number, enableShardWriteMetrics: boolean): kinesis.Stream {
+    const stream = new kinesis.Stream(scope, 'EventStream', {
+        streamName: STREAM_NAME,
+        shardCount,
+        shardLevelMetrics: enableShardWriteMetrics ? [
+            kinesis.ShardLevelMetrics.INCOMING_BYTES,
+            kinesis.ShardLevelMetrics.INCOMING_RECORDS,
+            kinesis.ShardLevelMetrics.WRITE_PROVISIONED_THROUGHPUT_EXCEEDED,
+        ] : undefined,
+        streamMode: kinesis.StreamMode.PROVISIONED,
+        retentionPeriod: Duration.hours(24),
+        encryption: kinesis.StreamEncryption.MANAGED,
+    });
+    stream.applyRemovalPolicy(RemovalPolicy.DESTROY);
+    return stream;
+}
+
+function importedEventStream(scope: Construct): kinesis.IStream {
+    const stack = Stack.of(scope);
+    return kinesis.Stream.fromStreamArn(
+        scope,
+        'EventStream',
+        stack.formatArn({
+            service: 'kinesis',
+            resource: 'stream',
+            resourceName: STREAM_NAME,
+        }),
+    );
+}
+
+interface CollectorServiceInput {
+    readonly config: Phase1Config;
+    readonly network: Phase1Network;
+    readonly stream: kinesis.IStream;
+}
+
+function createCollectorService(scope: Construct, input: CollectorServiceInput): CollectorService {
+    const cluster = new ecs.Cluster(scope, 'CollectorCluster', {
+        vpc: input.network.vpc,
+        clusterName: COLLECTOR_CLUSTER_NAME,
+        containerInsightsV2: ecs.ContainerInsights.ENABLED,
+    });
+    if (input.config.experimentMode === 'connection-path-crossover') {
+        cluster.addDefaultCloudMapNamespace({
+            name: 'connection-path.internal',
+            type: servicediscovery.NamespaceType.DNS_PRIVATE,
+            vpc: input.network.vpc,
+        });
+    }
+    const instanceRole = createCollectorInstanceRole(scope);
+    const autoScalingGroup = new autoscaling.AutoScalingGroup(scope, 'CollectorAutoScalingGroup', {
+        vpc: input.network.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        autoScalingGroupName: COLLECTOR_ASG_NAME,
+        minCapacity: input.config.collectorCount,
+        maxCapacity: input.config.collectorCount,
+        ignoreUnmodifiedSizeProperties: false,
+        instanceType: new ec2.InstanceType(input.config.collectorInstanceType),
+        machineImage: ecs.EcsOptimizedImage.amazonLinux2023(),
+        requireImdsv2: true,
+        role: instanceRole,
+        securityGroup: input.network.collectorSecurityGroup,
+        associatePublicIpAddress: true,
+        instanceMonitoring: autoscaling.Monitoring.DETAILED,
+        signals: autoscaling.Signals.waitForAll({ timeout: Duration.minutes(10) }),
+        minHealthyPercentage: 0,
+        maxHealthyPercentage: 100,
+        updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+            minInstancesInService: 0,
+            maxBatchSize: input.config.collectorCount,
+            pauseTime: Duration.seconds(0),
+            waitOnResourceSignals: false,
+        }),
+    });
+    Tags.of(autoScalingGroup).add('Name', COLLECTOR_ASG_NAME, { applyToLaunchedInstances: true });
+    // The pinned CDK runtime retains this documented attachment method although its declaration omits it.
+    (cluster as unknown as {
+        addAutoScalingGroup(
+            group: autoscaling.AutoScalingGroup,
+            options: { readonly taskDrainTime: Duration },
+        ): void;
+    }).addAutoScalingGroup(autoScalingGroup, {
+        taskDrainTime: Duration.seconds(0),
+    });
+
+    addEcsReadinessSignal(autoScalingGroup, 'collector');
+
+    const taskRole = new iam.Role(scope, 'CollectorTaskRole', {
+        roleName: COLLECTOR_TASK_ROLE_NAME,
+        assumedBy: ecsTasksPrincipal(scope),
+        description: `Phase 1 ${input.config.candidate} runtime role limited to its required Kinesis operations.`,
+    });
+    taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: candidateKinesisActions(input.config.candidate),
+        resources: [input.stream.streamArn],
+    }));
+
+    const executionRole = new iam.Role(scope, 'CollectorExecutionRole', {
+        roleName: COLLECTOR_EXECUTION_ROLE_NAME,
+        assumedBy: ecsTasksPrincipal(scope),
+        description: 'Phase 1 collector ECS image-pull and CloudWatch Logs execution role.',
+        managedPolicies: [
+            iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+        ],
+    });
+    const taskDefinition = new ecs.Ec2TaskDefinition(scope, 'CollectorTaskDefinition', {
+        family: 'perf-phase1-loop-ad-collector',
+        networkMode: ecs.NetworkMode.BRIDGE,
+        taskRole,
+        executionRole,
+    });
+
+    const logGroup = new logs.LogGroup(scope, 'CollectorLogGroup', {
+        logGroupName: '/loop-ad/perf-phase1/event-collector',
+        retention: logs.RetentionDays.ONE_DAY,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const repository = ecr.Repository.fromRepositoryName(scope, 'CollectorRepository', EVENT_COLLECTOR_REPOSITORY_NAME);
+    repository.grantPull(executionRole);
+    const protocolTLSSecret = input.config.protocolTlsSecretArn
+        ? secretsmanager.Secret.fromSecretCompleteArn(scope, 'ProtocolTLSSecret', input.config.protocolTlsSecretArn)
+        : undefined;
+    protocolTLSSecret?.grantRead(executionRole);
+    const container = taskDefinition.addContainer('Collector', {
+        containerName: 'collector',
+        image: ecs.ContainerImage.fromRegistry(`${repository.repositoryUri}@${input.config.collectorImageDigest}`),
+        memoryReservationMiB: 512,
+        stopTimeout: Duration.seconds(30),
+        logging: ecs.LogDrivers.awsLogs({
+            logGroup,
+            streamPrefix: 'collector',
+        }),
+        environment: {
+            LOOPAD_ENV: 'perf-phase1-kinesis',
+            LOOPAD_SERVICE_ID: 'event-collector',
+            PORT: COLLECTOR_PORT.toString(),
+            AWS_REGION: Stack.of(scope).region,
+            LOOPAD_KINESIS_STREAM_NAME: input.stream.streamName,
+            LOOPAD_KINESIS_PRODUCER: input.config.candidate,
+            LOOPAD_COMPARISON_SESSION_ID: input.config.sessionId,
+            LOOPAD_COMPARISON_CANDIDATE: input.config.candidate,
+            LOOPAD_KINESIS_REQUEST_TIMEOUT: '5s',
+            LOOPAD_KINESIS_MAX_CONNECTIONS: input.config.kinesisMaxConnections.toString(),
+            LOOPAD_MAX_INFLIGHT_REQUESTS: input.config.applicationMaxInFlight.toString(),
+            LOOPAD_KINESIS_BATCH_WINDOW: '5ms',
+            LOOPAD_KINESIS_MAX_RECORDS: '50',
+            LOOPAD_KINESIS_INPUT_QUEUE: '2048',
+            LOOPAD_KINESIS_SENDER_QUEUE: '32',
+            LOOPAD_KINESIS_SENDER_COUNT: '16',
+            LOOPAD_KINESIS_MAX_ATTEMPTS: '4',
+            LOOPAD_KINESIS_RETRY_BACKOFF: '5ms',
+            LOOPAD_KINESIS_MAX_RETRY_BACKOFF: '25ms',
+            LOOPAD_KINESIS_SHUTDOWN_TIMEOUT: '5s',
+            LOOPAD_KPL_MAX_OUTSTANDING_RECORDS: '2048',
+            LOOPAD_KPL_MAX_OUTSTANDING_BYTES: (64 * 1024 * 2048).toString(),
+            LOOPAD_KPL_COLLECTION_MAX_COUNT: '50',
+            LOOPAD_KPL_RECORD_MAX_BUFFERED_TIME: '5ms',
+            LOOPAD_KPL_MAX_CONNECTIONS: '8',
+			...(['protocol-crossover', 'connection-path-crossover'].includes(input.config.experimentMode) ? {
+				LOOPAD_PROTOCOL_TLS_PORT: COLLECTOR_PROTOCOL_TLS_PORT.toString(),
+				...(input.config.experimentMode === 'protocol-crossover' ? { LOOPAD_QUIC_SERVER_ID: 'ecs-task-arn' } : {}),
+			} : {}),
+        },
+		...(protocolTLSSecret ? {
+			secrets: {
+				LOOPAD_PROTOCOL_TLS_CERTIFICATE_PEM: ecs.Secret.fromSecretsManager(protocolTLSSecret, 'certificate_pem'),
+				LOOPAD_PROTOCOL_TLS_PRIVATE_KEY_PEM: ecs.Secret.fromSecretsManager(protocolTLSSecret, 'private_key_pem'),
+			},
+		} : {}),
+        healthCheck: {
+            command: candidateHealthCheck(input.config.candidate),
+            interval: Duration.seconds(10),
+            timeout: Duration.seconds(5),
+            retries: 3,
+            startPeriod: Duration.seconds(10),
+        },
+    });
+    container.addPortMappings({
+        containerPort: COLLECTOR_PORT,
+        hostPort: COLLECTOR_PORT,
+        protocol: ecs.Protocol.TCP,
+    });
+	if (['protocol-crossover', 'connection-path-crossover'].includes(input.config.experimentMode)) {
+		// ECS service load-balancer bindings identify a port mapping by container
+		// name and port, not by transport protocol. Registering TCP and UDP on the
+		// same container port therefore makes the NLB TCP binding ambiguous.
+		// Expose only the transport owned by the active crossover variant.
+		container.addPortMappings({
+			containerPort: COLLECTOR_PROTOCOL_TLS_PORT,
+			hostPort: COLLECTOR_PROTOCOL_TLS_PORT,
+			protocol: input.config.loadBalancerKind === 'nlb' && input.config.nlbListenerProtocol === 'quic'
+				? ecs.Protocol.UDP
+				: ecs.Protocol.TCP,
+		});
+	}
+
+    const service = new ecs.Ec2Service(scope, 'CollectorService', {
+        cluster,
+        serviceName: COLLECTOR_SERVICE_NAME,
+        taskDefinition,
+        desiredCount: input.config.collectorCount,
+        placementConstraints: [ecs.PlacementConstraint.distinctInstances()],
+        minHealthyPercent: 0,
+        maxHealthyPercent: 100,
+        availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
+		...(input.config.loadBalancerKind === 'nlb' && input.config.nlbListenerProtocol === 'quic'
+			? {} : { healthCheckGracePeriod: Duration.seconds(30) }),
+        circuitBreaker: { rollback: true },
+        enableExecuteCommand: false,
+        enableECSManagedTags: input.config.experimentMode !== 'comparison',
+        ...(input.config.experimentMode !== 'comparison' ? {
+            propagateTags: ecs.PropagatedTagSource.SERVICE,
+        } : {}),
+        ...(input.config.experimentMode === 'connection-path-crossover' ? {
+            cloudMapOptions: {
+                name: '_collector._tcp',
+                dnsRecordType: servicediscovery.DnsRecordType.SRV,
+                dnsTtl: Duration.seconds(1),
+                failureThreshold: 1,
+                container,
+                containerPort: COLLECTOR_PORT,
+            },
+        } : {}),
+    });
+    const cfnService = service.node.defaultChild as ecs.CfnService;
+	if (input.config.loadBalancerKind === 'nlb' && input.config.nlbListenerProtocol === 'quic') {
+		// CloudFormation must send an explicit empty list when crossing over from
+		// the ECS-managed TCP target group. Omitting LoadBalancers leaves the
+		// deleted TCP target group attached to the service and blocks replacement.
+		cfnService.loadBalancers = [];
+	}
+    cfnService.addDependency(
+        autoScalingGroup.node.defaultChild as autoscaling.CfnAutoScalingGroup,
+    );
+
+    return {
+        service,
+        clusterName: cluster.clusterName,
+        serviceName: service.serviceName,
+        autoScalingGroupName: autoScalingGroup.autoScalingGroupName,
+        taskRoleArn: taskRole.roleArn,
+        executionRoleArn: executionRole.roleArn,
+        logGroupName: logGroup.logGroupName,
+		instanceRole,
+    };
+}
+
+function addEcsReadinessSignal(autoScalingGroup: autoscaling.AutoScalingGroup, unitPrefix: string): void {
+    const stack = Stack.of(autoScalingGroup);
+    const resource = autoScalingGroup.node.defaultChild as autoscaling.CfnAutoScalingGroup;
+    const logicalId = stack.getLogicalId(resource);
+    const scriptPath = `/usr/local/sbin/${unitPrefix}-cfn-signal`;
+    const unitName = `${unitPrefix}-cfn-signal.service`;
+    const marker = unitPrefix.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+    autoScalingGroup.addUserData(
+        'set -e',
+        `cat >${scriptPath} <<'${marker}_CFN_SIGNAL'`,
+        '#!/bin/bash',
+        'set -euo pipefail',
+        'imds_token="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -X PUT -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\" http://169.254.169.254/latest/api/token)"',
+        'instance_id="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -H \"X-aws-ec2-metadata-token: $imds_token\" http://169.254.169.254/latest/meta-data/instance-id)"',
+        `signal=(aws cloudformation signal-resource --region ${stack.region} --stack-name ${stack.stackName} --logical-resource-id ${logicalId} --unique-id "$instance_id")`,
+        'trap \'"${signal[@]}" --status FAILURE || true\' ERR',
+        'collector_ready=false',
+        'for attempt in $(seq 1 150); do',
+        '  if curl -fsS --max-time 2 http://127.0.0.1:51678/v1/metadata | grep -Eq \'"ContainerInstanceArn"[[:space:]]*:[[:space:]]*"arn:\'; then collector_ready=true; break; fi',
+        '  sleep 2',
+        'done',
+        'test "$collector_ready" = true',
+        '"${signal[@]}" --status SUCCESS',
+        'trap - ERR',
+        `${marker}_CFN_SIGNAL`,
+        `chmod 0755 ${scriptPath}`,
+        `cat >/etc/systemd/system/${unitName} <<'${marker}_CFN_SIGNAL_UNIT'`,
+        '[Unit]',
+        `Description=Signal ${unitPrefix} ECS readiness to CloudFormation`,
+        'Wants=ecs.service',
+        'After=ecs.service',
+        '',
+        '[Service]',
+        'Type=oneshot',
+        `ExecStart=${scriptPath}`,
+        'RemainAfterExit=yes',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+        `${marker}_CFN_SIGNAL_UNIT`,
+        'systemctl daemon-reload',
+        `systemctl enable ${unitName}`,
+        // Enqueue asynchronously so cloud-final can finish before AL2023 starts ecs.service.
+        `systemctl start --no-block ${unitName}`,
+    );
+}
+
+interface EcsCapacityProviderRegistrationSignalInput {
+    readonly autoScalingGroupName: string;
+    readonly clusterName: string;
+    readonly waitHandleUrl: string;
+}
+
+function addEcsCapacityProviderRegistrationSignal(
+    autoScalingGroup: autoscaling.AutoScalingGroup,
+    input: EcsCapacityProviderRegistrationSignalInput,
+): void {
+    const stack = Stack.of(autoScalingGroup);
+    const scriptPath = '/usr/local/sbin/connection-path-proxy-capacity-provider-signal';
+    const unitName = 'connection-path-proxy-capacity-provider-signal.service';
+    autoScalingGroup.addUserData(
+        `cat >${scriptPath} <<'CONNECTION_PATH_PROXY_CAPACITY_PROVIDER_SIGNAL'`,
+        '#!/bin/bash',
+        'set -euo pipefail',
+        `wait_handle_url='${input.waitHandleUrl}'`,
+        'imds_token="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -X PUT -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\" http://169.254.169.254/latest/api/token)"',
+        'instance_id="$(curl --noproxy \"*\" -fsS --retry 5 --retry-delay 1 -H \"X-aws-ec2-metadata-token: $imds_token\" http://169.254.169.254/latest/meta-data/instance-id)"',
+        'signal_wait_condition() {',
+        '  local status="$1" reason="$2" data="${3:-}" payload',
+        '  payload="$(jq -cn --arg status "$status" --arg reason "$reason" --arg unique_id "$instance_id" --arg data "$data" \'{Status:$status,Reason:$reason,UniqueId:$unique_id,Data:$data}\')"',
+        '  curl --noproxy "*" -fsS --retry 5 --retry-delay 1 -X PUT -H "Content-Type:" --data-binary "$payload" "$wait_handle_url" >/dev/null',
+        '}',
+        'trap \'signal_wait_condition FAILURE "capacity provider registration readiness failed" || true\' ERR',
+        'container_instance_arn=""',
+        'for attempt in $(seq 1 150); do',
+        '  container_instance_arn="$(curl -fsS --max-time 2 http://127.0.0.1:51678/v1/metadata | jq -r \'.ContainerInstanceArn // empty\' 2>/dev/null || true)"',
+        '  test -z "$container_instance_arn" || break',
+        '  sleep 2',
+        'done',
+        'test -n "$container_instance_arn"',
+        'expected_asg_arn=""',
+        'for attempt in $(seq 1 60); do',
+        `  expected_asg_arn="$(aws autoscaling describe-auto-scaling-groups --region ${stack.region} --auto-scaling-group-names ${input.autoScalingGroupName} --query 'AutoScalingGroups[0].AutoScalingGroupARN' --output text 2>/dev/null || true)"`,
+        '  if test -n "$expected_asg_arn" && test "$expected_asg_arn" != None; then break; fi',
+        '  sleep 2',
+        'done',
+        'test -n "$expected_asg_arn"',
+        'test "$expected_asg_arn" != None',
+        'registration_ready=false',
+        'capacity_provider_name=""',
+        'for attempt in $(seq 1 300); do',
+        `  capacity_provider_name="$(aws ecs describe-container-instances --region ${stack.region} --cluster ${input.clusterName} --container-instances "$container_instance_arn" --query 'containerInstances[0].capacityProviderName' --output text 2>/dev/null || true)"`,
+        '  if test -n "$capacity_provider_name" && test "$capacity_provider_name" != None; then',
+        `    provider_asg_arn="$(aws ecs describe-capacity-providers --region ${stack.region} --capacity-providers "$capacity_provider_name" --query 'capacityProviders[0].autoScalingGroupProvider.autoScalingGroupArn' --output text 2>/dev/null || true)"`,
+        '    if test "$provider_asg_arn" = "$expected_asg_arn"; then registration_ready=true; break; fi',
+        '  fi',
+        '  sleep 2',
+        'done',
+        'test "$registration_ready" = true',
+        'signal_wait_condition SUCCESS "exact capacity provider registration is API-visible" "$capacity_provider_name"',
+        'trap - ERR',
+        'CONNECTION_PATH_PROXY_CAPACITY_PROVIDER_SIGNAL',
+        `chmod 0755 ${scriptPath}`,
+        `cat >/etc/systemd/system/${unitName} <<'CONNECTION_PATH_PROXY_CAPACITY_PROVIDER_SIGNAL_UNIT'`,
+        '[Unit]',
+        'Description=Signal exact ECS capacity provider registration to CloudFormation',
+        'Wants=ecs.service',
+        'After=ecs.service connection-path-proxy-cfn-signal.service',
+        '',
+        '[Service]',
+        'Type=oneshot',
+        `ExecStart=${scriptPath}`,
+        'RemainAfterExit=yes',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+        'CONNECTION_PATH_PROXY_CAPACITY_PROVIDER_SIGNAL_UNIT',
+        'systemctl daemon-reload',
+        `systemctl enable ${unitName}`,
+        `systemctl start --no-block ${unitName}`,
+    );
+}
+
+function ecsTasksPrincipal(scope: Construct): iam.ServicePrincipal {
+    const stack = Stack.of(scope);
+    return new iam.ServicePrincipal('ecs-tasks.amazonaws.com', {
+        conditions: {
+            ArnLike: {
+                'aws:SourceArn': stack.formatArn({ service: 'ecs', resource: '*' }),
+            },
+            StringEquals: {
+                'aws:SourceAccount': stack.account,
+            },
+        },
+    });
+}
+
+function createCollectorInstanceRole(scope: Construct): iam.Role {
+    return createSsmInstanceRole(scope, 'CollectorInstanceRole', {
+        roleName: COLLECTOR_INSTANCE_ROLE_NAME,
+        description: 'Perf phase 1 ECS collector host role with SSM access.',
+        includeEcsInstancePolicy: true,
+    });
+}
+
+function createLoadGenerator(
+    scope: Construct,
+    network: Phase1Network,
+    config: Phase1Config,
+    evidenceBucket?: s3.IBucket,
+): LoadGenerator {
+    const instanceRole = createSsmInstanceRole(scope, 'LoadGeneratorInstanceRole', {
+        roleName: LOAD_GENERATOR_INSTANCE_ROLE_NAME,
+        description: 'Perf phase 1 oha load generator role with SSM access.',
+        includeEcsInstancePolicy: false,
+    });
+    if (isPathEvidenceMode(config.experimentMode)) {
+        if (!evidenceBucket) throw new Error('TCP/ALB diagnosis requires its session evidence bucket.');
+        const evidenceSubdirectory = config.experimentMode === 'admission-scaleout-capacity'
+            ? 'generator-evidence'
+            : 'diagnostics';
+        instanceRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [evidenceBucket.arnForObjects(`${config.sessionId}/${config.runId}/${evidenceSubdirectory}/*`)],
+        }));
+		if (['tcp-alb-path-diagnosis', 'protocol-crossover'].includes(config.experimentMode)) {
+			instanceRole.addToPolicy(new iam.PolicyStatement({
+				actions: ['s3:GetObject'],
+				resources: [evidenceBucket.arnForObjects(`${config.sessionId}/${config.runId}/tooling/reference-driver*`)],
+			}));
+		}
+    }
+    const createGroup = (id: string, name: string, count: number, subnets?: readonly ec2.ISubnet[]) => {
+        const autoScalingGroup = new autoscaling.AutoScalingGroup(scope, id, {
+        vpc: network.vpc,
+        vpcSubnets: subnets ? { subnets: [...subnets] } : { subnetGroupName: 'public' },
+        autoScalingGroupName: name,
+        minCapacity: count,
+        maxCapacity: count,
+        ignoreUnmodifiedSizeProperties: false,
+        instanceType: new ec2.InstanceType(LOAD_GENERATOR_INSTANCE_TYPE),
+        machineImage: ecs.EcsOptimizedImage.amazonLinux2023(),
+        requireImdsv2: true,
+        role: instanceRole,
+        securityGroup: network.loadGeneratorSecurityGroup,
+        associatePublicIpAddress: true,
+        instanceMonitoring: autoscaling.Monitoring.DETAILED,
+        minHealthyPercentage: 0,
+        maxHealthyPercentage: 100,
+        updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+            minInstancesInService: 0,
+            maxBatchSize: 1,
+            pauseTime: Duration.seconds(0),
+            waitOnResourceSignals: false,
+        }),
+        });
+        Tags.of(autoScalingGroup).add('Name', name, { applyToLaunchedInstances: true });
+		// Protocol crossover installs the much larger H1/H2/H3 reference worker
+		// from the run-owned evidence bucket after boot. Embedding it here exceeds
+		// EC2's 16,384-byte decoded user-data limit and duplicates that pinned SSM
+		// installation path.
+		addLoadGeneratorUserData(autoScalingGroup, config.experimentMode === 'tcp-alb-path-diagnosis');
+        return autoScalingGroup;
+    };
+
+    const groups = isPathEvidenceMode(config.experimentMode)
+        ? ['ap-northeast-2a', 'ap-northeast-2c'].map((availabilityZone) => {
+            const subnet = network.publicSubnets.find((candidate) => candidate.availabilityZone === availabilityZone);
+            if (!subnet) throw new Error(`Missing required public subnet in ${availabilityZone}.`);
+            const suffix = availabilityZone.slice(-2);
+            const group = createGroup(
+                `LoadGeneratorAutoScalingGroup${suffix.toUpperCase()}`,
+                `${LOAD_GENERATOR_ASG_NAME}-${suffix}`,
+                config.loadGeneratorCount / 2,
+                [subnet],
+            );
+            Tags.of(group).add('GeneratorAvailabilityZone', availabilityZone, { applyToLaunchedInstances: true });
+            return group;
+        })
+        : [createGroup('LoadGeneratorAutoScalingGroup', LOAD_GENERATOR_ASG_NAME, config.loadGeneratorCount)];
+
+    return {
+        autoScalingGroupNames: groups.map((group) => group.autoScalingGroupName),
+        instanceRoleArn: instanceRole.roleArn,
+    };
+}
+
+function createTcpAlbDiagnostics(
+    scope: Construct,
+    config: Phase1Config,
+    network: Phase1Network,
+): TcpAlbDiagnostics {
+    if (!isPathEvidenceMode(config.experimentMode)) return {};
+    const stack = Stack.of(scope);
+    const logGroup = new logs.LogGroup(scope, 'VpcFlowLogGroup', {
+        logGroupName: `/loop-ad/perf-phase1/tcp-alb-path/${config.runId}/vpc-flow`,
+        retention: logs.RetentionDays.ONE_DAY,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const role = new iam.Role(scope, 'VpcFlowLogRole', {
+        assumedBy: new iam.ServicePrincipal('vpc-flow-logs.amazonaws.com', {
+            conditions: {
+                StringEquals: { 'aws:SourceAccount': stack.account },
+                ArnLike: {
+                    'aws:SourceArn': stack.formatArn({
+                        service: 'ec2',
+                        resource: 'vpc-flow-log',
+                        resourceName: '*',
+                    }),
+                },
+            },
+        }),
+        description: 'Run-scoped VPC Flow Logs delivery role for Phase 1 TCP/ALB diagnosis.',
+    });
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams'],
+        resources: [`${logGroup.logGroupArn}:*`],
+    }));
+    role.addToPolicy(new iam.PolicyStatement({
+        actions: ['logs:DescribeLogGroups'],
+        resources: ['*'],
+    }));
+    const flowLog = new ec2.FlowLog(scope, 'VpcFlowLog', {
+        resourceType: ec2.FlowLogResourceType.fromVpc(network.vpc),
+        destination: ec2.FlowLogDestination.toCloudWatchLogs(logGroup, role),
+        maxAggregationInterval: ec2.FlowLogMaxAggregationInterval.ONE_MINUTE,
+        trafficType: ec2.FlowLogTrafficType.ALL,
+        logFormat: [
+            ec2.LogFormat.VERSION, ec2.LogFormat.ACCOUNT_ID, ec2.LogFormat.INSTANCE_ID,
+            ec2.LogFormat.INTERFACE_ID, ec2.LogFormat.SUBNET_ID, ec2.LogFormat.AZ_ID,
+            ec2.LogFormat.SRC_ADDR, ec2.LogFormat.DST_ADDR, ec2.LogFormat.SRC_PORT,
+            ec2.LogFormat.DST_PORT, ec2.LogFormat.PROTOCOL, ec2.LogFormat.ACTION,
+            ec2.LogFormat.FLOW_DIRECTION, ec2.LogFormat.TCP_FLAGS, ec2.LogFormat.PACKETS,
+            ec2.LogFormat.BYTES, ec2.LogFormat.START_TIMESTAMP, ec2.LogFormat.END_TIMESTAMP,
+            ec2.LogFormat.LOG_STATUS,
+        ],
+    });
+    flowLog.node.addDependency(logGroup);
+    return { flowLogId: flowLog.flowLogId, flowLogGroupName: logGroup.logGroupName, flowLogRoleArn: role.roleArn };
+}
+
+interface SsmRoleInput {
+    readonly roleName: string;
+    readonly description: string;
+    readonly includeEcsInstancePolicy: boolean;
+}
+
+function createSsmInstanceRole(scope: Construct, id: string, input: SsmRoleInput): iam.Role {
+    const role = new iam.Role(scope, id, {
+        roleName: input.roleName,
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+        description: input.description,
+    });
+    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+    if (input.includeEcsInstancePolicy) {
+        role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonEC2ContainerServiceforEC2Role'));
+    }
+    return role;
+}
+
+interface CollectorLoadBalancerInput {
+    readonly config: Phase1Config;
+    readonly network: Phase1Network;
+    readonly service: ecs.Ec2Service;
+}
+
+interface CollectorLoadBalancer {
+    readonly dnsName: string;
+    readonly targetBaseUrl: string;
+    readonly targetGroupArn: string;
+    readonly loadBalancerKind: Phase1LoadBalancerKind;
+    readonly frontendProtocol: 'HTTP' | 'HTTPS' | 'QUIC';
+    readonly targetProtocolVersion: Phase1AlbTargetProtocolVersion | 'TCP' | 'QUIC';
+    readonly accessLogBucketName?: string;
+    readonly accessLogPrefix?: string;
+    readonly accessLogTestObjectKey?: string;
+    readonly evidenceBucket?: s3.IBucket;
+    readonly connectionPaths?: ConnectionPathTopologies;
+}
+
+interface ConnectionPathTopologies {
+    readonly albDnsName: string;
+    readonly albTargetGroupArn: string;
+    readonly directNlbDnsName: string;
+    readonly directTargetGroupArn: string;
+    readonly proxyNlbDnsName: string;
+    readonly proxyTargetGroupArn: string;
+    readonly proxyAutoScalingGroupNames: readonly string[];
+    readonly proxyImage: string;
+    readonly proxyInstanceType: string;
+	readonly proxyProfile: Phase1HAProxyProfile;
+	readonly proxyLoggingPolicy: Phase1Config['haproxyLoggingPolicy'];
+	readonly proxyThreadMode: Phase1Config['haproxyThreadMode'];
+	readonly proxyConfigSha256: string;
+    readonly proxyStatsPort: number;
+    readonly cloudMapServiceName: string;
+}
+
+export function applyConnectionPathHAProxyProfile(baseConfig: string, profile: Phase1HAProxyProfile): string {
+	if (profile === 'baseline-full') return baseConfig;
+	let config = replaceExactlyOnce(baseConfig,
+		'  log stdout format raw local0\n',
+		'  log stdout format raw sample 1:1000 local0\n  log stdout format raw local1 err\n');
+	config = replaceExactlyOnce(config, '  option httplog\n', '  option httplog\n  option log-separate-errors\n');
+	config = replaceExactlyOnce(config,
+		'  default_backend collectors\n',
+		'  acl error_status status 400:599\n  http-after-response set-log-level err if error_status\n  default_backend collectors\n');
+	config = replaceExactlyOnce(config, '  nbthread 4\n', '');
+	return config;
+}
+
+function replaceExactlyOnce(value: string, search: string, replacement: string): string {
+	if (value.split(search).length !== 2) throw new Error(`HAProxy profile anchor must occur exactly once: ${JSON.stringify(search.trim())}`);
+	return value.replace(search, replacement);
+}
+
+function createCollectorLoadBalancer(scope: Construct, input: CollectorLoadBalancerInput): CollectorLoadBalancer {
+    const accessLogPrefix = `${input.config.sessionId}/${input.config.runId}`;
+    const accessLogBucket = ['alb-warmup', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(input.config.experimentMode)
+        ? new s3.Bucket(scope, 'AlbAccessLogBucket', {
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            versioned: false,
+            autoDeleteObjects: input.config.experimentMode === 'connection-path-crossover',
+            removalPolicy: RemovalPolicy.DESTROY,
+        })
+        : undefined;
+    if (input.config.experimentMode === 'connection-path-crossover') {
+        if (!accessLogBucket) throw new Error('connection-path-crossover requires an evidence bucket.');
+        return createConnectionPathTopologies(scope, input, accessLogBucket, accessLogPrefix);
+    }
+    if (input.config.experimentMode === 'protocol-crossover' && input.config.loadBalancerKind === 'nlb') {
+        const nlb = new elbv2.NetworkLoadBalancer(scope, 'NetworkLoadBalancer', {
+            vpc: input.network.vpc,
+            vpcSubnets: { subnetGroupName: 'public' },
+            internetFacing: false,
+			disableSecurityGroups: true,
+			loadBalancerName: input.config.nlbListenerProtocol === 'quic' ? 'perf-p1-protocol-n3' : 'perf-p1-protocol-n2',
+            crossZoneEnabled: false,
+        });
+		if (input.config.nlbListenerProtocol === 'quic') {
+				const targetGroup = new elbv2.CfnTargetGroup(scope, 'CollectorQuicTargetGroup', {
+					name: 'perf-p1-protocol-quic', vpcId: input.network.vpc.vpcId,
+					port: COLLECTOR_PROTOCOL_TLS_PORT, protocol: 'QUIC', targetType: 'instance',
+					healthCheckEnabled: true, healthCheckProtocol: 'TCP', healthCheckPort: COLLECTOR_PORT.toString(),
+				healthCheckIntervalSeconds: 10, healthCheckTimeoutSeconds: 5,
+				healthyThresholdCount: 2, unhealthyThresholdCount: 2,
+			});
+			new elbv2.CfnListener(scope, 'QuicListener', {
+				loadBalancerArn: nlb.loadBalancerArn, port: 443, protocol: 'QUIC',
+				defaultActions: [{ type: 'forward', targetGroupArn: targetGroup.ref }],
+			});
+			return {
+				dnsName: nlb.loadBalancerDnsName, targetBaseUrl: `https://${nlb.loadBalancerDnsName}`,
+				targetGroupArn: targetGroup.ref, loadBalancerKind: 'nlb', frontendProtocol: 'QUIC', targetProtocolVersion: 'QUIC',
+				accessLogBucketName: accessLogBucket?.bucketName, accessLogPrefix: accessLogBucket ? accessLogPrefix : undefined,
+				evidenceBucket: accessLogBucket,
+			};
+		}
+        const targetGroup = new elbv2.NetworkTargetGroup(scope, 'CollectorNetworkTargetGroup', {
+            vpc: input.network.vpc,
+            targetGroupName: 'perf-p1-protocol-tcp',
+			port: COLLECTOR_PROTOCOL_TLS_PORT,
+            protocol: elbv2.Protocol.TCP,
+            targetType: elbv2.TargetType.INSTANCE,
+            deregistrationDelay: Duration.seconds(20),
+            healthCheck: {
+				port: COLLECTOR_PORT.toString(), path: '/health', protocol: elbv2.Protocol.HTTP, healthyHttpCodes: '200',
+                interval: Duration.seconds(10), timeout: Duration.seconds(5),
+                healthyThresholdCount: 2, unhealthyThresholdCount: 2,
+            },
+        });
+		targetGroup.addTarget(input.service.loadBalancerTarget({ containerName: 'collector', containerPort: COLLECTOR_PROTOCOL_TLS_PORT }));
+		nlb.addListener('TcpListener', {
+            port: 443,
+			protocol: elbv2.Protocol.TCP,
+            defaultTargetGroups: [targetGroup],
+        });
+        return {
+            dnsName: nlb.loadBalancerDnsName,
+            targetBaseUrl: `https://${nlb.loadBalancerDnsName}`,
+            targetGroupArn: targetGroup.targetGroupArn,
+			loadBalancerKind: 'nlb', frontendProtocol: 'HTTPS', targetProtocolVersion: 'TCP',
+            accessLogBucketName: accessLogBucket?.bucketName,
+            accessLogPrefix: accessLogBucket ? accessLogPrefix : undefined,
+            evidenceBucket: accessLogBucket,
+        };
+    }
+
+    const alb = new elbv2.ApplicationLoadBalancer(scope, 'ApplicationLoadBalancer', {
+        vpc: input.network.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        internetFacing: false,
+        securityGroup: input.network.albSecurityGroup,
+        loadBalancerName: 'perf-phase1-loop-ad-alb',
+        idleTimeout: Duration.seconds(60),
+    });
+    if (accessLogBucket) {
+        const stack = Stack.of(scope);
+        const deliveryPolicy = accessLogBucket.addToResourcePolicy(new iam.PolicyStatement({
+            sid: 'AllowSessionAlbAccessLogDelivery',
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com')],
+            actions: ['s3:PutObject'],
+            resources: [`${accessLogBucket.bucketArn}/${accessLogPrefix}/AWSLogs/${stack.account}/*`],
+            conditions: {
+                StringEquals: { 'aws:SourceAccount': stack.account },
+                ArnLike: {
+                    'aws:SourceArn': stack.formatArn({
+                        service: 'elasticloadbalancing',
+                        resource: 'loadbalancer',
+                        resourceName: '*',
+                    }),
+                },
+            },
+        }));
+        if (!deliveryPolicy.statementAdded || !deliveryPolicy.policyDependable) {
+            throw new Error('Unable to attach the session-scoped ALB access-log delivery policy.');
+        }
+        alb.setAttribute('access_logs.s3.enabled', 'true');
+        alb.setAttribute('access_logs.s3.bucket', accessLogBucket.bucketName);
+        alb.setAttribute('access_logs.s3.prefix', accessLogPrefix);
+        alb.node.addDependency(deliveryPolicy.policyDependable);
+    }
+    const usesHttps = input.config.experimentMode === 'protocol-crossover';
+    if (usesHttps && !input.config.certificateArn) throw new Error('protocol-crossover ALB requires a certificate ARN.');
+    const listener = alb.addListener(usesHttps ? 'HttpsListener' : 'HttpListener', {
+        port: usesHttps ? 443 : 80,
+        protocol: usesHttps ? elbv2.ApplicationProtocol.HTTPS : elbv2.ApplicationProtocol.HTTP,
+        ...(usesHttps ? {
+            certificates: [acm.Certificate.fromCertificateArn(scope, 'AlbCertificate', input.config.certificateArn!)],
+            sslPolicy: elbv2.SslPolicy.RECOMMENDED_TLS,
+        } : {}),
+        open: false,
+        defaultAction: elbv2.ListenerAction.fixedResponse(404, {
+            contentType: 'text/plain',
+            messageBody: 'No phase 1 route is registered.',
+        }),
+    });
+    const targetGroup = new elbv2.ApplicationTargetGroup(scope, 'CollectorTargetGroup', {
+        vpc: input.network.vpc,
+        targetGroupName: input.config.experimentMode === 'protocol-crossover'
+            ? `perf-p1-protocol-${input.config.albTargetProtocolVersion.toLowerCase()}`
+            : 'perf-phase1-loop-ad-collector',
+        port: COLLECTOR_PORT,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        protocolVersion: input.config.albTargetProtocolVersion === 'HTTP2'
+            ? elbv2.ApplicationProtocolVersion.HTTP2
+            : elbv2.ApplicationProtocolVersion.HTTP1,
+        targetType: elbv2.TargetType.INSTANCE,
+        deregistrationDelay: Duration.seconds(20),
+        healthCheck: {
+            path: '/health',
+            protocol: elbv2.Protocol.HTTP,
+            healthyHttpCodes: '200',
+            interval: Duration.seconds(10),
+            timeout: Duration.seconds(5),
+            healthyThresholdCount: 2,
+            unhealthyThresholdCount: 2,
+        },
+    });
+    targetGroup.addTarget(input.service.loadBalancerTarget({
+        containerName: 'collector',
+        containerPort: COLLECTOR_PORT,
+    }));
+    listener.addTargetGroups('CollectorIngestRoutes', {
+        priority: 10,
+        conditions: [
+			elbv2.ListenerCondition.pathPatterns(['/', '/events']),
+            elbv2.ListenerCondition.httpRequestMethods(['POST', 'OPTIONS']),
+        ],
+        targetGroups: [targetGroup],
+    });
+	if (isPathEvidenceMode(input.config.experimentMode)) {
+		listener.addTargetGroups('CollectorDiagnosticRoutes', {
+			priority: 11,
+			conditions: [
+				elbv2.ListenerCondition.pathPatterns(['/__collector_control', '/__delay_control', '/__decode_control', '/__batch_control']),
+				elbv2.ListenerCondition.httpRequestMethods(['POST']),
+			],
+			targetGroups: [targetGroup],
+		});
+	}
+    if (isPathEvidenceMode(input.config.experimentMode)) {
+        listener.addAction('GeneratorControlRoute', {
+            priority: 5,
+            conditions: [
+                elbv2.ListenerCondition.pathPatterns(['/__generator_control']),
+                elbv2.ListenerCondition.httpRequestMethods(['POST']),
+            ],
+            action: elbv2.ListenerAction.fixedResponse(202, {
+                contentType: 'text/plain',
+                messageBody: 'generator control accepted',
+            }),
+        });
+    }
+
+    const targetBaseUrl = `${usesHttps ? 'https' : 'http'}://${alb.loadBalancerDnsName}`;
+    return {
+        dnsName: alb.loadBalancerDnsName,
+        targetBaseUrl,
+        targetGroupArn: targetGroup.targetGroupArn,
+        loadBalancerKind: 'alb',
+        frontendProtocol: usesHttps ? 'HTTPS' : 'HTTP',
+        targetProtocolVersion: input.config.albTargetProtocolVersion,
+        accessLogBucketName: accessLogBucket?.bucketName,
+        accessLogPrefix: accessLogBucket ? accessLogPrefix : undefined,
+        accessLogTestObjectKey: accessLogBucket
+            ? `${accessLogPrefix}/AWSLogs/${Stack.of(scope).account}/ELBAccessLogTestFile`
+            : undefined,
+        evidenceBucket: accessLogBucket,
+    };
+}
+
+function createConnectionPathTopologies(
+    scope: Construct,
+    input: CollectorLoadBalancerInput,
+    accessLogBucket: s3.Bucket,
+    accessLogPrefix: string,
+): CollectorLoadBalancer {
+    if (!input.config.certificateArn || !input.config.protocolTlsSecretArn || !input.network.proxySecurityGroup) {
+        throw new Error('connection-path-crossover requires ACM, protocol TLS secret, and proxy security group configuration.');
+    }
+    const stack = Stack.of(scope);
+    const deliveryPolicy = accessLogBucket.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'AllowConnectionPathAlbAccessLogDelivery',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com')],
+        actions: ['s3:PutObject'],
+        resources: [`${accessLogBucket.bucketArn}/${accessLogPrefix}/AWSLogs/${stack.account}/*`],
+        conditions: {
+            StringEquals: { 'aws:SourceAccount': stack.account },
+            ArnLike: { 'aws:SourceArn': stack.formatArn({ service: 'elasticloadbalancing', resource: 'loadbalancer', resourceName: '*' }) },
+        },
+    }));
+    if (!deliveryPolicy.statementAdded || !deliveryPolicy.policyDependable) throw new Error('Unable to attach connection-path ALB log policy.');
+
+    const alb = new elbv2.ApplicationLoadBalancer(scope, 'ConnectionPathAlb', {
+        vpc: input.network.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        internetFacing: false,
+        securityGroup: input.network.albSecurityGroup,
+        loadBalancerName: 'perf-p1-conn-alb',
+        idleTimeout: Duration.seconds(330),
+    });
+    alb.setAttribute('access_logs.s3.enabled', 'true');
+    alb.setAttribute('access_logs.s3.bucket', accessLogBucket.bucketName);
+    alb.setAttribute('access_logs.s3.prefix', accessLogPrefix);
+    alb.node.addDependency(deliveryPolicy.policyDependable);
+    const albListener = alb.addListener('ConnectionPathHttpsListener', {
+        port: 443,
+        protocol: elbv2.ApplicationProtocol.HTTPS,
+        certificates: [acm.Certificate.fromCertificateArn(scope, 'ConnectionPathAlbCertificate', input.config.certificateArn)],
+        sslPolicy: elbv2.SslPolicy.RECOMMENDED_TLS,
+        open: false,
+        defaultAction: elbv2.ListenerAction.fixedResponse(404, { contentType: 'text/plain', messageBody: 'No connection-path route is registered.' }),
+    });
+    const albTargetGroup = new elbv2.ApplicationTargetGroup(scope, 'ConnectionPathAlbTargetGroup', {
+        vpc: input.network.vpc,
+        targetGroupName: 'perf-p1-conn-alb-h2',
+        port: COLLECTOR_PORT,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        protocolVersion: elbv2.ApplicationProtocolVersion.HTTP2,
+        targetType: elbv2.TargetType.INSTANCE,
+        deregistrationDelay: Duration.seconds(20),
+        healthCheck: {
+            path: '/health', protocol: elbv2.Protocol.HTTP, healthyHttpCodes: '200',
+            interval: Duration.seconds(10), timeout: Duration.seconds(5), healthyThresholdCount: 2, unhealthyThresholdCount: 2,
+        },
+    });
+    albTargetGroup.setAttribute('load_balancing.algorithm.type', 'round_robin');
+    albTargetGroup.addTarget(input.service.loadBalancerTarget({ containerName: 'collector', containerPort: COLLECTOR_PORT }));
+    albListener.addAction('ConnectionPathFixedControl', {
+        priority: 5,
+        conditions: [elbv2.ListenerCondition.pathPatterns(['/__generator_control']), elbv2.ListenerCondition.httpRequestMethods(['POST'])],
+        action: elbv2.ListenerAction.fixedResponse(202, { contentType: 'text/plain', messageBody: 'generator control accepted' }),
+    });
+    albListener.addTargetGroups('ConnectionPathActualEvents', {
+        priority: 10,
+        conditions: [elbv2.ListenerCondition.pathPatterns(['/events']), elbv2.ListenerCondition.httpRequestMethods(['POST', 'OPTIONS'])],
+        targetGroups: [albTargetGroup],
+    });
+
+    const directNlb = new elbv2.NetworkLoadBalancer(scope, 'ConnectionPathDirectNlb', {
+        vpc: input.network.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        internetFacing: false,
+        disableSecurityGroups: true,
+        loadBalancerName: 'perf-p1-conn-direct',
+        crossZoneEnabled: true,
+    });
+    const directTargetGroup = new elbv2.NetworkTargetGroup(scope, 'ConnectionPathDirectTargetGroup', {
+        vpc: input.network.vpc,
+        targetGroupName: 'perf-p1-conn-direct',
+        port: COLLECTOR_PROTOCOL_TLS_PORT,
+        protocol: elbv2.Protocol.TCP,
+        targetType: elbv2.TargetType.INSTANCE,
+        deregistrationDelay: Duration.seconds(20),
+        healthCheck: {
+            port: COLLECTOR_PROTOCOL_TLS_PORT.toString(), protocol: elbv2.Protocol.TCP,
+            interval: Duration.seconds(10), timeout: Duration.seconds(5), healthyThresholdCount: 2, unhealthyThresholdCount: 2,
+        },
+    });
+    directTargetGroup.setAttribute('preserve_client_ip.enabled', 'true');
+    directTargetGroup.addTarget(input.service.loadBalancerTarget({ containerName: 'collector', containerPort: COLLECTOR_PROTOCOL_TLS_PORT }));
+    directNlb.addListener('ConnectionPathDirectListener', { port: 443, protocol: elbv2.Protocol.TCP, defaultTargetGroups: [directTargetGroup] });
+
+    const protocolTLSSecret = secretsmanager.Secret.fromSecretCompleteArn(scope, 'ConnectionPathProxyTlsSecret', input.config.protocolTlsSecretArn);
+    const proxyRole = createSsmInstanceRole(scope, 'ConnectionPathProxyInstanceRole', {
+        roleName: 'loop-ad-perf-phase1-connection-path-proxy',
+        description: 'Dedicated HAProxy connection-path fleet role.',
+        includeEcsInstancePolicy: true,
+    });
+    proxyRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [accessLogBucket.arnForObjects(`${input.config.sessionId}/${input.config.runId}/proxy-evidence/*`)],
+    }));
+    proxyRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: ['autoscaling:DescribeAutoScalingGroups', 'ecs:DescribeCapacityProviders', 'ecs:DescribeContainerInstances'],
+        resources: ['*'],
+    }));
+	const proxyBaseConfig = readFileSync(join(__dirname, '..', 'performance-tests', 'phase1-kinesis', 'haproxy-connection-path.cfg'), 'utf8');
+	const proxyConfig = applyConnectionPathHAProxyProfile(proxyBaseConfig, input.config.haproxyProfile);
+    const proxyConfigBase64 = Buffer.from(proxyConfig, 'utf8').toString('base64');
+	const proxyConfigSha256 = createHash('sha256').update(proxyConfig).digest('hex');
+    const proxyCluster = new ecs.Cluster(scope, 'ConnectionPathProxyCluster', {
+        vpc: input.network.vpc,
+        clusterName: 'perf-p1-conn-proxy',
+        containerInsightsV2: ecs.ContainerInsights.ENABLED,
+    });
+    const proxyLogGroup = new logs.LogGroup(scope, 'ConnectionPathProxyLogGroup', {
+        logGroupName: '/loop-ad/perf-phase1/connection-path/haproxy',
+        retention: logs.RetentionDays.ONE_DAY,
+        removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const proxyTaskDefinition = new ecs.Ec2TaskDefinition(scope, 'ConnectionPathProxyTaskDefinition', {
+        family: 'perf-p1-conn-proxy',
+        networkMode: ecs.NetworkMode.HOST,
+    });
+    const proxyContainer = proxyTaskDefinition.addContainer('ConnectionPathProxyContainer', {
+        containerName: 'haproxy',
+        image: ecs.ContainerImage.fromRegistry(HAPROXY_IMAGE),
+        memoryReservationMiB: 256,
+        essential: true,
+        logging: ecs.LogDrivers.awsLogs({ logGroup: proxyLogGroup, streamPrefix: 'haproxy' }),
+        environment: { HAPROXY_CONFIG_BASE64: proxyConfigBase64 },
+        secrets: {
+            TLS_CERTIFICATE_PEM: ecs.Secret.fromSecretsManager(protocolTLSSecret, 'certificate_pem'),
+            TLS_PRIVATE_KEY_PEM: ecs.Secret.fromSecretsManager(protocolTLSSecret, 'private_key_pem'),
+        },
+        command: ['/bin/sh', '-ec', 'umask 077; mkdir -p /tmp/haproxy-secrets; printf "%s\n%s\n" "$TLS_CERTIFICATE_PEM" "$TLS_PRIVATE_KEY_PEM" > /tmp/haproxy-secrets/haproxy.pem; printf "%s" "$HAPROXY_CONFIG_BASE64" | base64 -d > /tmp/haproxy.cfg; exec haproxy -W -db -f /tmp/haproxy.cfg'],
+        ulimits: [{ name: ecs.UlimitName.NOFILE, softLimit: 200_000, hardLimit: 200_000 }],
+    });
+    proxyContainer.addPortMappings(
+        { containerPort: HAPROXY_PORT, hostPort: HAPROXY_PORT, protocol: ecs.Protocol.TCP },
+        { containerPort: HAPROXY_STATS_PORT, hostPort: HAPROXY_STATS_PORT, protocol: ecs.Protocol.TCP },
+    );
+    protocolTLSSecret.grantRead(proxyTaskDefinition.executionRole!);
+    const proxyFleets = ['ap-northeast-2a', 'ap-northeast-2c'].map((availabilityZone, index) => {
+        const subnet = input.network.publicSubnets.find((candidate) => candidate.availabilityZone === availabilityZone);
+        if (!subnet) throw new Error(`Missing run-owned public subnet in ${availabilityZone}.`);
+        const suffix = index === 0 ? '2a' : '2c';
+        const autoScalingGroupName = `perf-p1-conn-proxy-${suffix}`;
+        const capacityProviderRegistrationHandle = new CfnWaitConditionHandle(scope, `ConnectionPathProxyCapacityProviderRegistrationHandle${suffix}`);
+        const group = new autoscaling.AutoScalingGroup(scope, `ConnectionPathProxyAutoScalingGroup${suffix}`, {
+            vpc: input.network.vpc,
+            vpcSubnets: { subnets: [subnet] },
+            autoScalingGroupName,
+            minCapacity: 1,
+            maxCapacity: 1,
+            ignoreUnmodifiedSizeProperties: false,
+			instanceType: new ec2.InstanceType(input.config.haproxyInstanceType),
+            machineImage: ecs.EcsOptimizedImage.amazonLinux2023(),
+            requireImdsv2: true,
+            role: proxyRole,
+            securityGroup: input.network.proxySecurityGroup!,
+            associatePublicIpAddress: true,
+            instanceMonitoring: autoscaling.Monitoring.DETAILED,
+            signals: autoscaling.Signals.waitForAll({ timeout: Duration.minutes(10) }),
+        });
+        Tags.of(group).add('Name', `perf-p1-conn-proxy-${suffix}`, { applyToLaunchedInstances: true });
+        group.addUserData(
+            'set -euo pipefail',
+            'dnf install -y jq awscli-2 iproute procps-ng',
+            `printf '%s\n' 'ECS_CLUSTER=${proxyCluster.clusterName}' >> /etc/ecs/ecs.config`,
+            'sysctl -w net.core.somaxconn=65535 net.ipv4.ip_local_port_range="1024 65535"',
+        );
+        const capacityProvider = new ecs.AsgCapacityProvider(scope, `ConnectionPathProxyCapacityProvider${suffix}`, {
+            autoScalingGroup: group,
+            enableManagedScaling: false,
+            enableManagedTerminationProtection: false,
+        });
+        (proxyCluster as unknown as {
+            addAutoScalingGroup(
+                autoScalingGroup: autoscaling.AutoScalingGroup,
+                options: { readonly taskDrainTime: Duration },
+            ): void;
+        }).addAutoScalingGroup(group, { taskDrainTime: Duration.seconds(0) });
+        addEcsReadinessSignal(group, 'connection-path-proxy');
+        addEcsCapacityProviderRegistrationSignal(group, {
+            autoScalingGroupName,
+            clusterName: proxyCluster.clusterName,
+            waitHandleUrl: capacityProviderRegistrationHandle.ref,
+        });
+        return { group, capacityProvider, capacityProviderRegistrationHandle, suffix };
+    });
+    const capacityProviderResources = proxyFleets.map(({ capacityProvider }) => capacityProvider.node.findAll().find((child) => (
+        child instanceof ecs.CfnCapacityProvider
+    )));
+    if (!capacityProviderResources.every((resource) => resource instanceof ecs.CfnCapacityProvider)) {
+        throw new Error('Missing proxy capacity-provider resource.');
+    }
+    const capacityProviderAssociation = new ecs.CfnClusterCapacityProviderAssociations(scope, 'ConnectionPathProxyClusterCapacityProviders', {
+        cluster: proxyCluster.clusterName,
+        capacityProviders: proxyFleets.map(({ capacityProvider }) => capacityProvider.capacityProviderName),
+        defaultCapacityProviderStrategy: [],
+    });
+    for (const resource of capacityProviderResources) {
+        capacityProviderAssociation.addDependency(resource as ecs.CfnCapacityProvider);
+    }
+    const capacityProviderRegistrationConditions = proxyFleets.map(({ capacityProviderRegistrationHandle, suffix }) => {
+        const condition = new CfnWaitCondition(scope, `ConnectionPathProxyCapacityProviderRegistration${suffix}`, {
+            count: 1,
+            handle: capacityProviderRegistrationHandle.ref,
+            timeout: '600',
+        });
+        condition.addDependency(capacityProviderAssociation);
+        return { condition, suffix };
+    });
+    const proxyServices = proxyFleets.map(({ capacityProvider, suffix }) => {
+        const service = new ecs.Ec2Service(scope, `ConnectionPathProxyService${suffix}`, {
+            cluster: proxyCluster,
+            serviceName: `perf-p1-conn-proxy-${suffix}`,
+            taskDefinition: proxyTaskDefinition,
+            desiredCount: 1,
+            capacityProviderStrategies: [{ capacityProvider: capacityProvider.capacityProviderName, weight: 1 }],
+            placementConstraints: [ecs.PlacementConstraint.distinctInstances()],
+            minHealthyPercent: 0,
+            maxHealthyPercent: 100,
+            circuitBreaker: { rollback: true },
+            healthCheckGracePeriod: Duration.seconds(30),
+            enableECSManagedTags: true,
+            propagateTags: ecs.PropagatedTagSource.SERVICE,
+        });
+        service.node.addDependency(capacityProviderAssociation);
+        service.node.addDependency(capacityProviderRegistrationConditions.find((item) => item.suffix === suffix)!.condition);
+        return service;
+    });
+    const proxyAutoScalingGroups = proxyFleets.map((fleet) => fleet.group);
+
+    const proxyNlb = new elbv2.NetworkLoadBalancer(scope, 'ConnectionPathProxyNlb', {
+        vpc: input.network.vpc,
+        vpcSubnets: { subnetGroupName: 'public' },
+        internetFacing: false,
+        disableSecurityGroups: true,
+        loadBalancerName: 'perf-p1-conn-proxy',
+        crossZoneEnabled: true,
+    });
+    const proxyTargetGroup = new elbv2.NetworkTargetGroup(scope, 'ConnectionPathProxyTargetGroup', {
+        vpc: input.network.vpc,
+        targetGroupName: 'perf-p1-conn-proxy',
+        port: HAPROXY_PORT,
+        protocol: elbv2.Protocol.TCP,
+        targetType: elbv2.TargetType.INSTANCE,
+        deregistrationDelay: Duration.seconds(20),
+        healthCheck: {
+            port: HAPROXY_PORT.toString(), protocol: elbv2.Protocol.TCP,
+            interval: Duration.seconds(10), timeout: Duration.seconds(5), healthyThresholdCount: 2, unhealthyThresholdCount: 2,
+        },
+    });
+    proxyTargetGroup.setAttribute('preserve_client_ip.enabled', 'true');
+    for (const service of proxyServices) {
+        proxyTargetGroup.addTarget(service.loadBalancerTarget({ containerName: 'haproxy', containerPort: HAPROXY_PORT }));
+    }
+    proxyNlb.addListener('ConnectionPathProxyListener', { port: 443, protocol: elbv2.Protocol.TCP, defaultTargetGroups: [proxyTargetGroup] });
+
+    return {
+        dnsName: proxyNlb.loadBalancerDnsName,
+        targetBaseUrl: `https://${proxyNlb.loadBalancerDnsName}`,
+        targetGroupArn: proxyTargetGroup.targetGroupArn,
+        loadBalancerKind: 'nlb',
+        frontendProtocol: 'HTTPS',
+        targetProtocolVersion: 'TCP',
+        accessLogBucketName: accessLogBucket.bucketName,
+        accessLogPrefix,
+        accessLogTestObjectKey: `${accessLogPrefix}/AWSLogs/${stack.account}/ELBAccessLogTestFile`,
+        evidenceBucket: accessLogBucket,
+        connectionPaths: {
+            albDnsName: alb.loadBalancerDnsName,
+            albTargetGroupArn: albTargetGroup.targetGroupArn,
+            directNlbDnsName: directNlb.loadBalancerDnsName,
+            directTargetGroupArn: directTargetGroup.targetGroupArn,
+            proxyNlbDnsName: proxyNlb.loadBalancerDnsName,
+            proxyTargetGroupArn: proxyTargetGroup.targetGroupArn,
+            proxyAutoScalingGroupNames: proxyAutoScalingGroups.map((group) => group.autoScalingGroupName),
+            proxyImage: HAPROXY_IMAGE,
+			proxyInstanceType: input.config.haproxyInstanceType,
+			proxyProfile: input.config.haproxyProfile,
+			proxyLoggingPolicy: input.config.haproxyLoggingPolicy,
+			proxyThreadMode: input.config.haproxyThreadMode,
+			proxyConfigSha256,
+            proxyStatsPort: HAPROXY_STATS_PORT,
+            cloudMapServiceName: '_collector._tcp.connection-path.internal',
+        },
+    };
+}
+
+interface Phase1RunConfiguration {
+    readonly config: Phase1Config;
+    readonly network: Phase1Network;
+    readonly stream: kinesis.IStream;
+    readonly collector: CollectorService;
+    readonly loadGenerator: LoadGenerator;
+    readonly target: CollectorLoadBalancer;
+    readonly diagnostics: TcpAlbDiagnostics;
+}
+
+function outputPhase1RunConfiguration(scope: Construct, input: Phase1RunConfiguration): void {
+    const region = Stack.of(scope).region;
+    const requiredVcpus = input.config.collectorCount * input.config.collectorVcpusPerInstance +
+        input.config.loadGeneratorCount * LOAD_GENERATOR_VCPUS +
+		(input.config.experimentMode === 'connection-path-crossover' ? 2 * input.config.haproxyVcpusPerInstance : 0);
+    const collectorTotalVcpus = input.config.collectorCount * input.config.collectorVcpusPerInstance;
+    const collectorTotalMemoryGib = input.config.collectorCount * input.config.collectorMemoryGibPerInstance;
+    const outputs: Record<string, { value: string; description: string }> = {
+        Phase1ExperimentMode: {
+            value: input.config.experimentMode,
+            description: 'Separate comparison or capacity contract selected for this stack.',
+        },
+        Phase1RunId: {
+            value: input.config.runId,
+            description: 'Run ID tagged on every phase 1 stack resource.',
+        },
+        Phase1ComparisonSessionId: {
+            value: input.config.sessionId,
+            description: 'Comparison session ID shared by the stream, runs, and images.',
+        },
+        Phase1Candidate: {
+            value: input.config.candidate,
+            description: 'Producer candidate selected for this run-scoped stack.',
+        },
+        Phase1CollectorCount: {
+            value: input.config.collectorCount.toString(),
+            description: 'Exact collector host and ECS desired task count for this run.',
+        },
+        Phase1LoadGeneratorCount: {
+            value: input.config.loadGeneratorCount.toString(),
+            description: 'Exact c6in.large load-generator node count for this run.',
+        },
+        Phase1RequiredOnDemandVcpus: {
+            value: requiredVcpus.toString(),
+            description: 'On-Demand Standard vCPUs required by collector hosts and load generators.',
+        },
+        Phase1CollectorImageTag: {
+            value: input.config.collectorImageTag,
+            description: 'Immutable collector ECR tag selected from the experimental commit.',
+        },
+        Phase1CollectorSha: {
+            value: input.config.collectorSha,
+            description: 'Full collector commit SHA represented by the ECR image tag.',
+        },
+        Phase1CollectorImageDigest: {
+            value: input.config.collectorImageDigest,
+            description: 'Immutable ECR manifest digest referenced directly by the ECS task definition.',
+        },
+        Phase1KinesisMaxConnections: {
+            value: input.config.kinesisMaxConnections.toString(),
+            description: 'Independent per-process Kinesis HTTP connection pool limit for this run.',
+        },
+        Phase1ApplicationMaxInFlight: {
+            value: input.config.applicationMaxInFlight.toString(),
+            description: 'Application admission limit, independently configured from the Kinesis SDK HTTP connection pool.',
+        },
+        Phase1CollectorInstanceType: {
+            value: input.config.collectorInstanceType,
+            description: 'Exact collector EC2 instance type selected by the capacity profile.',
+        },
+        Phase1CollectorTotalVcpus: {
+            value: collectorTotalVcpus.toString(),
+            description: 'Total collector vCPU capacity across the exact-size ASG.',
+        },
+        Phase1CollectorTotalMemoryGiB: {
+            value: collectorTotalMemoryGib.toString(),
+            description: 'Total collector memory capacity across the exact-size ASG.',
+        },
+        Phase1TargetBaseUrl: {
+            value: input.target.targetBaseUrl,
+            description: 'Default event-ingress base URL available from the load generator host.',
+        },
+        Phase1LoadBalancerDnsName: {
+            value: input.target.dnsName,
+            description: 'Default event-ingress load balancer DNS name.',
+        },
+        Phase1TargetGroupArn: {
+            value: input.target.targetGroupArn,
+            description: 'Default event-ingress target group used for health and request-count evidence.',
+        },
+        Phase1LoadBalancerKind: {
+            value: input.target.loadBalancerKind,
+            description: 'Application or network load balancer selected for the protocol crossover.',
+        },
+        Phase1FrontendProtocol: {
+            value: input.target.frontendProtocol,
+            description: 'Client-facing listener protocol.',
+        },
+        Phase1TargetProtocolVersion: {
+            value: input.target.targetProtocolVersion,
+            description: 'ALB target protocol version or NLB TCP forwarding mode.',
+        },
+        Phase1KinesisStreamName: {
+            value: input.stream.streamName,
+            description: 'Provisioned Kinesis stream receiving one final-ACK record per accepted event.',
+        },
+        Phase1KinesisStreamArn: {
+            value: input.stream.streamArn,
+            description: 'Exact Kinesis resource authorized in the collector task role.',
+        },
+        Phase1CollectorClusterName: {
+            value: input.collector.clusterName,
+            description: 'ECS cluster containing collector hosts.',
+        },
+        Phase1CollectorServiceName: {
+            value: input.collector.serviceName,
+            description: 'ECS collector service name.',
+        },
+        Phase1CollectorAutoScalingGroupName: {
+            value: input.collector.autoScalingGroupName,
+            description: 'Exact-size collector Auto Scaling group.',
+        },
+        Phase1CollectorTaskRoleArn: {
+            value: input.collector.taskRoleArn,
+            description: 'Collector runtime role limited to PutRecord on the test stream.',
+        },
+        Phase1CollectorExecutionRoleArn: {
+            value: input.collector.executionRoleArn,
+            description: 'Separate ECS execution role for image pulls and logs.',
+        },
+        Phase1CollectorLogGroupName: {
+            value: input.collector.logGroupName,
+            description: 'One-day-retention collector log group.',
+        },
+        Phase1LoadGeneratorAutoScalingGroupName: {
+            value: Fn.join(',', [...input.loadGenerator.autoScalingGroupNames]),
+            description: 'Exact-size c6in.large oha load-generator Auto Scaling group names.',
+        },
+        Phase1LoadGeneratorInstanceRoleArn: {
+            value: input.loadGenerator.instanceRoleArn,
+            description: 'SSM role for the oha load generator host.',
+        },
+        Phase1PublicSubnetIds: {
+            value: input.network.publicSubnetIds,
+            description: 'Public subnet IDs used without NAT by the temporary test hosts.',
+        },
+        Phase1LoadGeneratorDescribeInstancesCommand: {
+            value: [
+                'aws ec2 describe-instances',
+                `--region ${region}`,
+                `--filters Name=tag:aws:autoscaling:groupName,Values=${input.loadGenerator.autoScalingGroupNames.join(',')} Name=instance-state-name,Values=running`,
+                "--query 'Reservations[].Instances[].InstanceId'",
+                '--output text',
+            ].join(' '),
+            description: 'Find the load generator instance before running an SSM command.',
+        },
+        Phase1LoadGeneratorSsmStartSessionCommand: {
+            value: `aws ssm start-session --region ${region} --target <instance-id>`,
+            description: 'Open an SSM shell on the load generator host.',
+        },
+        Phase1CollectorDebugCommand: {
+            value: `aws ssm send-command --region ${region} --document-name AWS-RunShellScript --targets Key=tag:Name,Values=${COLLECTOR_ASG_NAME} --parameters commands='curl -fsS http://127.0.0.1:${COLLECTOR_PORT}/debug/vars'`,
+            description: 'Collect per-host collector debug counters without routing debug endpoints through the ALB.',
+        },
+        Phase1OhaImage: {
+            value: OHA_IMAGE,
+            description: 'Pinned oha image used by the phase 1 host-side runner.',
+        },
+    };
+
+    if (input.config.capacityProfile) {
+        outputs.Phase1CapacityProfile = {
+            value: input.config.capacityProfile,
+            description: 'Admission/scale-out capacity profile A or B.',
+        };
+    }
+
+    if (input.target.connectionPaths) {
+        outputs.Phase1ConnectionPathDefault = { value: 'T3_NLB_HAPROXY', description: 'Mandatory default event path; collector scaling is discovered through Cloud Map SRV records.' };
+        outputs.Phase1ConnectionPathAlbDnsName = { value: input.target.connectionPaths.albDnsName, description: 'T0/T1 ALB DNS name.' };
+        outputs.Phase1ConnectionPathAlbTargetGroupArn = { value: input.target.connectionPaths.albTargetGroupArn, description: 'T1 HTTP/2 collector target group.' };
+        outputs.Phase1ConnectionPathDirectNlbDnsName = { value: input.target.connectionPaths.directNlbDnsName, description: 'T2 NLB direct TLS/H2 DNS name.' };
+        outputs.Phase1ConnectionPathDirectTargetGroupArn = { value: input.target.connectionPaths.directTargetGroupArn, description: 'T2 collector target group.' };
+        outputs.Phase1ConnectionPathProxyNlbDnsName = { value: input.target.connectionPaths.proxyNlbDnsName, description: 'T3 NLB to HAProxy DNS name.' };
+        outputs.Phase1ConnectionPathProxyTargetGroupArn = { value: input.target.connectionPaths.proxyTargetGroupArn, description: 'T3 dedicated HAProxy target group.' };
+        outputs.Phase1ConnectionPathProxyAutoScalingGroupNames = { value: Fn.join(',', [...input.target.connectionPaths.proxyAutoScalingGroupNames]), description: 'Two-AZ dedicated HAProxy ASGs.' };
+        outputs.Phase1ConnectionPathProxyImage = { value: input.target.connectionPaths.proxyImage, description: 'Pinned HAProxy image digest.' };
+        outputs.Phase1ConnectionPathProxyInstanceType = { value: input.target.connectionPaths.proxyInstanceType, description: 'Dedicated HAProxy instance type.' };
+		outputs.Phase1ConnectionPathProxyProfile = { value: input.target.connectionPaths.proxyProfile, description: 'Immutable E1/E2/E3 HAProxy experiment profile.' };
+		outputs.Phase1ConnectionPathProxyLoggingPolicy = { value: input.target.connectionPaths.proxyLoggingPolicy, description: 'HAProxy request logging policy.' };
+		outputs.Phase1ConnectionPathProxyThreadMode = { value: input.target.connectionPaths.proxyThreadMode, description: 'HAProxy explicit or automatic thread selection.' };
+		outputs.Phase1ConnectionPathProxyConfigSha256 = { value: input.target.connectionPaths.proxyConfigSha256, description: 'SHA-256 of the exact HAProxy configuration embedded in the task.' };
+		outputs.Phase1ConnectionPathProxyVcpusPerInstance = { value: input.config.haproxyVcpusPerInstance.toString(), description: 'vCPUs per dedicated HAProxy instance.' };
+        outputs.Phase1ConnectionPathProxyStatsPort = { value: input.target.connectionPaths.proxyStatsPort.toString(), description: 'HAProxy host-local stats and Prometheus port.' };
+        outputs.Phase1ConnectionPathCloudMapServiceName = { value: input.target.connectionPaths.cloudMapServiceName, description: 'Collector SRV name consumed directly by HAProxy.' };
+    }
+
+    if (input.diagnostics.flowLogId && input.diagnostics.flowLogGroupName && input.diagnostics.flowLogRoleArn) {
+        outputs.Phase1VpcFlowLogId = {
+            value: input.diagnostics.flowLogId,
+            description: 'Run-scoped one-minute VPC Flow Log ID.',
+        };
+        outputs.Phase1VpcFlowLogGroupName = {
+            value: input.diagnostics.flowLogGroupName,
+            description: 'Run-scoped VPC Flow Log group.',
+        };
+        outputs.Phase1VpcFlowLogRoleArn = {
+            value: input.diagnostics.flowLogRoleArn,
+            description: 'Least-privilege VPC Flow Logs delivery role.',
+        };
+    }
+
+    if (input.target.accessLogBucketName && input.target.accessLogPrefix && input.target.accessLogTestObjectKey) {
+        outputs.Phase1AlbAccessLogBucketName = {
+            value: input.target.accessLogBucketName,
+            description: 'Session-owned S3 bucket receiving immutable raw ALB access-log gzip objects.',
+        };
+        outputs.Phase1AlbAccessLogPrefix = {
+            value: input.target.accessLogPrefix,
+            description: 'Exact session and run-scoped ALB access-log prefix.',
+        };
+        outputs.Phase1AlbAccessLogTestObjectKey = {
+            value: input.target.accessLogTestObjectKey,
+            description: 'Expected ELBAccessLogTestFile object used to verify delivery permissions.',
+        };
+    }
+
+    for (const [id, output] of Object.entries(outputs)) {
+        new CfnOutput(scope, id, output);
+    }
+}
+
+export function addLoadGeneratorUserData(autoScalingGroup: autoscaling.AutoScalingGroup, includeReferenceDriver = false): void {
+	const workerCommands = embeddedLoadGeneratorTools(includeReferenceDriver);
+    autoScalingGroup.addUserData(
+        'cat <<EOF >/etc/sysctl.d/99-loop-ad-load-generator.conf',
+        'net.ipv4.ip_local_port_range = 1024 65535',
+        'net.ipv4.tcp_tw_reuse = 1',
+        'EOF',
+        'sysctl --system',
+        'systemctl enable --now docker',
+        'cat <<EOF >/etc/security/limits.d/99-loop-ad-load-generator.conf',
+        '* soft nofile 1048576',
+        '* hard nofile 1048576',
+        'root soft nofile 1048576',
+        'root hard nofile 1048576',
+        'EOF',
+        'dnf install -y jq awscli-2 ethtool iproute procps-ng tcpdump bind-utils openssl',
+        'mkdir -p /opt/loop-ad-phase1',
+        ...workerCommands,
+        `docker pull ${OHA_IMAGE}`,
+    );
+}
+
+export function addPhase7LoadGeneratorUserData(autoScalingGroup: autoscaling.AutoScalingGroup): void {
+    const directory = join(__dirname, '..', 'performance-tests', 'phase1-kinesis');
+    const worker = readFileSync(join(directory, 'run-ec2-oha-worker.sh'), 'utf8');
+    if (!worker.endsWith('\n')) {
+        throw new Error('Phase 7 embedded oha worker must end with LF.');
+    }
+    const secondStage = [
+        'set -euo pipefail',
+        'cat <<EOF >/etc/sysctl.d/99-loop-ad-load-generator.conf',
+        'net.ipv4.ip_local_port_range = 1024 65535',
+        'net.ipv4.tcp_tw_reuse = 1',
+        'EOF',
+        'sysctl --system',
+        'systemctl enable --now docker',
+        'cat <<EOF >/etc/security/limits.d/99-loop-ad-load-generator.conf',
+        '* soft nofile 1048576',
+        '* hard nofile 1048576',
+        'root soft nofile 1048576',
+        'root hard nofile 1048576',
+        'EOF',
+        'mkdir -p /opt/loop-ad-phase1',
+        `cat > /opt/loop-ad-phase1/run-ec2-oha-worker.sh <<'LOOPAD_OHA_WORKER'\n${worker}LOOPAD_OHA_WORKER`,
+        'chmod 0755 /opt/loop-ad-phase1/run-ec2-oha-worker.sh',
+        `docker pull ${OHA_IMAGE}`,
+        '',
+    ].join('\n');
+    const compressedBase64 = brotliCompressSync(Buffer.from(secondStage), {
+        params: {
+            [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+            [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
+            [zlibConstants.BROTLI_PARAM_SIZE_HINT]: Buffer.byteLength(secondStage),
+        },
+    }).toString('base64');
+
+    autoScalingGroup.addUserData(
+        'set -euo pipefail',
+        'dnf install -y brotli jq awscli-2 ethtool iproute procps-ng tcpdump bind-utils openssl',
+        `printf '%s' '${compressedBase64}'|base64 -d|brotli -d|bash`,
+    );
+}
+
+function embeddedLoadGeneratorTools(includeReferenceDriver: boolean): string[] {
+	const directory = join(__dirname, '..', 'performance-tests', 'phase1-kinesis');
+	const oha = readFileSync(join(directory, 'run-ec2-oha-worker.sh'), 'utf8');
+	const reference = includeReferenceDriver ? readFileSync(join(directory, 'run-ec2-reference-worker.sh'), 'utf8') : '';
+	const referenceInstaller = includeReferenceDriver
+		? `cat > /opt/loop-ad-phase1/run-ec2-reference-worker.sh <<'LOOPAD_REFERENCE_WORKER'\n${reference}LOOPAD_REFERENCE_WORKER\nchmod 0755 /opt/loop-ad-phase1/run-ec2-reference-worker.sh\n`
+		: '';
+	const installer = `#!/bin/bash\nset -euo pipefail\ncat > /opt/loop-ad-phase1/run-ec2-oha-worker.sh <<'LOOPAD_OHA_WORKER'\n${oha}LOOPAD_OHA_WORKER\nchmod 0755 /opt/loop-ad-phase1/run-ec2-oha-worker.sh\n${referenceInstaller}`;
+	const compressedBase64 = gzipSync(Buffer.from(installer), { level: 9 }).toString('base64');
+	return [
+		`printf '%s' '${compressedBase64}' | base64 -d | gzip -d > /tmp/install-loopad-load-tools.sh`,
+		'bash /tmp/install-loopad-load-tools.sh',
+		'rm -f /tmp/install-loopad-load-tools.sh',
+	];
+}
+
+function readPhase1Config(scope: Construct): Phase1Config {
+    const experimentMode = readExperimentMode(scope);
+    const collectorCount = experimentMode === 'connection-path-crossover'
+        ? readOptionalIntegerContext(scope, COLLECTOR_COUNT_CONTEXT_KEY, CONNECTION_PATH_DEFAULT_COLLECTOR_COUNT)
+        : readRequiredIntegerContext(scope, COLLECTOR_COUNT_CONTEXT_KEY);
+    const loadGeneratorCount = readOptionalIntegerContext(scope, LOAD_GENERATOR_COUNT_CONTEXT_KEY,
+        experimentMode === 'connection-path-crossover' ? CONNECTION_PATH_DEFAULT_LOAD_GENERATOR_COUNT : 1);
+    const collectorSha = readRequiredStringContext(scope, COLLECTOR_SHA_CONTEXT_KEY);
+    const collectorImageDigest = readRequiredStringContext(scope, COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY);
+    const kinesisMaxConnections = readRequiredIntegerContext(scope, KINESIS_MAX_CONNECTIONS_CONTEXT_KEY);
+    const applicationMaxInFlight = readOptionalIntegerContext(scope, APPLICATION_MAX_IN_FLIGHT_CONTEXT_KEY, 1024);
+    const rawCapacityProfile = scope.node.tryGetContext(CAPACITY_PROFILE_CONTEXT_KEY);
+    const runId = readRequiredStringContext(scope, RUN_ID_CONTEXT_KEY);
+    const sessionId = readPhase1SessionId(scope, experimentMode);
+    const candidate = readRequiredStringContext(scope, CANDIDATE_CONTEXT_KEY);
+    const rawCertificateArn = scope.node.tryGetContext(CERTIFICATE_ARN_CONTEXT_KEY);
+    const rawProtocolTlsSecretArn = scope.node.tryGetContext(PROTOCOL_TLS_SECRET_ARN_CONTEXT_KEY);
+    const rawLoadBalancerKind = scope.node.tryGetContext(LOAD_BALANCER_KIND_CONTEXT_KEY) ?? 'alb';
+    const rawNlbListenerProtocol = scope.node.tryGetContext(NLB_LISTENER_PROTOCOL_CONTEXT_KEY) ?? 'tcp';
+    const rawAlbTargetProtocolVersion = scope.node.tryGetContext(ALB_TARGET_PROTOCOL_VERSION_CONTEXT_KEY) ?? 'HTTP1';
+	const rawHAProxyProfile = scope.node.tryGetContext(HAPROXY_PROFILE_CONTEXT_KEY) ??
+		(experimentMode === 'connection-path-crossover' ? DEFAULT_CONNECTION_PATH_HAPROXY_PROFILE : 'baseline-full');
+
+    if (collectorCount < 1 || collectorCount > MAX_COLLECTOR_COUNT) {
+        throw new Error(`${COLLECTOR_COUNT_CONTEXT_KEY} must be an integer from 1 through 17.`);
+    }
+    const capacityProfile = experimentMode === 'admission-scaleout-capacity'
+        ? readCapacityProfile(rawCapacityProfile)
+        : undefined;
+    const collectorProfile = capacityProfile === 'B'
+        ? { count: 8, instanceType: 'c6i.large', vcpus: 2, memoryGib: 4 }
+        : { count: 4, instanceType: 'c6i.xlarge', vcpus: 4, memoryGib: 8 };
+    if (experimentMode === 'admission-scaleout-capacity' && collectorCount !== collectorProfile.count) {
+        throw new Error(`${COLLECTOR_COUNT_CONTEXT_KEY} must be exactly ${collectorProfile.count} in capacity profile ${capacityProfile}.`);
+    }
+    if (experimentMode === 'connection-path-crossover' && ![4, 6].includes(collectorCount)) {
+        throw new Error(`${COLLECTOR_COUNT_CONTEXT_KEY} must be 4 or 6 in connection-path-crossover mode.`);
+    }
+    if (experimentMode !== 'comparison' && experimentMode !== 'admission-scaleout-capacity' &&
+        experimentMode !== 'connection-path-crossover' && collectorCount !== 4) {
+        throw new Error(`${COLLECTOR_COUNT_CONTEXT_KEY} must be exactly 4 in capacity or scout mode.`);
+    }
+    if (experimentMode === 'capacity-oha12k' && ![1, 2, 4].includes(loadGeneratorCount)) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be 1, 2, or 4 in capacity-oha12k mode.`);
+    }
+    if (['generator-diagnosis', 'alb-warmup'].includes(experimentMode) && ![1, 2, 4].includes(loadGeneratorCount)) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be 1, 2, or 4 in generator-diagnosis mode.`);
+    }
+    if (experimentMode === 'tcp-alb-path-diagnosis' && loadGeneratorCount !== 4) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be exactly 4 in tcp-alb-path-diagnosis mode.`);
+    }
+    if (experimentMode === 'admission-scaleout-capacity' && loadGeneratorCount !== 4) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be exactly 4 in admission-scaleout-capacity mode.`);
+    }
+    if (experimentMode === 'protocol-crossover' && loadGeneratorCount !== 4) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be exactly 4 in protocol-crossover mode.`);
+    }
+    if (experimentMode === 'connection-path-crossover' && ![4, 8].includes(loadGeneratorCount)) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must be 4 or 8 in connection-path-crossover mode.`);
+    }
+    if (!['capacity-oha12k', 'generator-diagnosis', 'alb-warmup', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && loadGeneratorCount !== 1) {
+        throw new Error(`${LOAD_GENERATOR_COUNT_CONTEXT_KEY} must remain 1 outside capacity-oha12k mode.`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(collectorSha)) {
+        throw new Error(`${COLLECTOR_SHA_CONTEXT_KEY} must be a full lowercase 40-character Git SHA.`);
+    }
+    if (!/^sha256:[0-9a-f]{64}$/.test(collectorImageDigest)) {
+        throw new Error(`${COLLECTOR_IMAGE_DIGEST_CONTEXT_KEY} must be a lowercase sha256 image digest.`);
+    }
+    if (kinesisMaxConnections < 1 || kinesisMaxConnections > 65_536) {
+        throw new Error(`${KINESIS_MAX_CONNECTIONS_CONTEXT_KEY} must be an integer from 1 through 65536.`);
+    }
+    if (applicationMaxInFlight < 1 || applicationMaxInFlight > 65_536) {
+        throw new Error(`${APPLICATION_MAX_IN_FLIGHT_CONTEXT_KEY} must be an integer from 1 through 65536.`);
+    }
+	if (['tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && applicationMaxInFlight !== 2048) {
+		throw new Error(`${APPLICATION_MAX_IN_FLIGHT_CONTEXT_KEY} must be exactly 2048 in diagnostic capacity modes.`);
+    }
+	if (['tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && kinesisMaxConnections !== 1024) {
+		throw new Error(`${KINESIS_MAX_CONNECTIONS_CONTEXT_KEY} must remain exactly 1024 in diagnostic capacity modes.`);
+    }
+    if (!/^run_[0-9]{8}_[0-9]{6}_[a-z0-9][a-z0-9_-]{0,31}$/.test(runId)) {
+        throw new Error(`${RUN_ID_CONTEXT_KEY} must match run_YYYYMMDD_HHMMSS_<label> using lowercase letters, numbers, hyphens, or underscores.`);
+    }
+    if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) {
+        throw new Error(`${CANDIDATE_CONTEXT_KEY} must be one of go-sync, go-batch, or java-kpl.`);
+    }
+    if (!['alb', 'nlb'].includes(rawLoadBalancerKind)) {
+        throw new Error(`${LOAD_BALANCER_KIND_CONTEXT_KEY} must be alb or nlb.`);
+    }
+    if (!['tcp', 'quic'].includes(rawNlbListenerProtocol)) {
+        throw new Error(`${NLB_LISTENER_PROTOCOL_CONTEXT_KEY} must be tcp or quic.`);
+    }
+    if (!['HTTP1', 'HTTP2'].includes(rawAlbTargetProtocolVersion)) {
+        throw new Error(`${ALB_TARGET_PROTOCOL_VERSION_CONTEXT_KEY} must be HTTP1 or HTTP2.`);
+    }
+	if (!['baseline-full', 'sampled-202', 'sampled-202-capacity'].includes(rawHAProxyProfile)) {
+		throw new Error(`${HAPROXY_PROFILE_CONTEXT_KEY} must be baseline-full, sampled-202, or sampled-202-capacity.`);
+	}
+	if (experimentMode !== 'connection-path-crossover' && rawHAProxyProfile !== 'baseline-full') {
+		throw new Error(`${HAPROXY_PROFILE_CONTEXT_KEY} may change only in connection-path-crossover mode.`);
+	}
+	const haproxyProfile = rawHAProxyProfile as Phase1HAProxyProfile;
+	const haproxyInstanceType = haproxyProfile === 'sampled-202-capacity' ? HAPROXY_CAPACITY_INSTANCE_TYPE : HAPROXY_BASELINE_INSTANCE_TYPE;
+	const haproxyVcpusPerInstance = haproxyProfile === 'sampled-202-capacity' ? 8 : 4;
+	const haproxyLoggingPolicy = haproxyProfile === 'baseline-full' ? 'full' : 'normal-202-deterministic-0.1-percent';
+	const haproxyThreadMode = haproxyProfile === 'baseline-full' ? 'explicit-4' : 'automatic';
+    const certificateArn = typeof rawCertificateArn === 'string' ? rawCertificateArn.trim() : undefined;
+    const protocolTlsSecretArn = typeof rawProtocolTlsSecretArn === 'string' ? rawProtocolTlsSecretArn.trim() : undefined;
+    if (['protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && (!certificateArn || !/^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate\/[0-9a-f-]+$/.test(certificateArn))) {
+        throw new Error(`${CERTIFICATE_ARN_CONTEXT_KEY} must be a valid regional ACM certificate ARN in TLS crossover modes.`);
+    }
+    if (['protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && (!protocolTlsSecretArn || !/^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$/.test(protocolTlsSecretArn))) {
+        throw new Error(`${PROTOCOL_TLS_SECRET_ARN_CONTEXT_KEY} must be a valid regional Secrets Manager ARN in TLS crossover modes.`);
+    }
+    if (!['protocol-crossover', 'connection-path-crossover'].includes(experimentMode) && (rawLoadBalancerKind !== 'alb' || rawAlbTargetProtocolVersion !== 'HTTP1')) {
+        throw new Error('load balancer protocol contexts may only change in protocol-crossover mode.');
+    }
+    if (rawLoadBalancerKind === 'nlb' && rawAlbTargetProtocolVersion !== 'HTTP1') {
+		throw new Error('NLB crossover must keep phase1AlbTargetProtocolVersion=HTTP1.');
+    }
+	if (rawLoadBalancerKind === 'alb' && rawNlbListenerProtocol !== 'tcp') {
+		throw new Error('phase1NlbListenerProtocol may be quic only when phase1LoadBalancerKind=nlb.');
+	}
+
+    return {
+        experimentMode,
+        collectorCount,
+        loadGeneratorCount,
+        collectorSha,
+        collectorImageTag: experimentMode !== 'comparison'
+            ? experimentMode === 'alb-warmup'
+                ? `${runId}-${candidate}-${collectorSha}`
+                : `${sessionId}-${candidate}-${collectorSha}`
+            : `phase1-compare-${candidate}-${collectorSha}`,
+        collectorImageDigest,
+        kinesisMaxConnections,
+        applicationMaxInFlight,
+        capacityProfile,
+        collectorInstanceType: capacityProfile ? collectorProfile.instanceType : DEFAULT_COLLECTOR_INSTANCE_TYPE,
+        collectorVcpusPerInstance: capacityProfile ? collectorProfile.vcpus : DEFAULT_COLLECTOR_VCPUS_PER_INSTANCE,
+        collectorMemoryGibPerInstance: capacityProfile ? collectorProfile.memoryGib : DEFAULT_COLLECTOR_MEMORY_GIB_PER_INSTANCE,
+        runId,
+        sessionId,
+        candidate: candidate as Phase1Candidate,
+        certificateArn,
+        protocolTlsSecretArn,
+        loadBalancerKind: rawLoadBalancerKind as Phase1LoadBalancerKind,
+        nlbListenerProtocol: rawNlbListenerProtocol as Phase1NlbListenerProtocol,
+        albTargetProtocolVersion: rawAlbTargetProtocolVersion as Phase1AlbTargetProtocolVersion,
+		haproxyProfile,
+		haproxyInstanceType,
+		haproxyVcpusPerInstance,
+		haproxyLoggingPolicy,
+		haproxyThreadMode,
+    };
+}
+
+function readExperimentMode(scope: Construct): Phase1ExperimentMode {
+    const raw = scope.node.tryGetContext(EXPERIMENT_MODE_CONTEXT_KEY);
+    const mode = raw === undefined ? 'comparison' : raw;
+    if (!['comparison', 'capacity', 'scout', 'capacity-oha12k', 'generator-diagnosis', 'alb-warmup', 'tcp-alb-path-diagnosis', 'admission-scaleout-capacity', 'protocol-crossover', 'connection-path-crossover'].includes(mode)) {
+        throw new Error(`${EXPERIMENT_MODE_CONTEXT_KEY} has an unsupported experiment mode.`);
+    }
+    return mode;
+}
+
+function readKinesisShardCount(scope: Construct, experimentMode: Phase1ExperimentMode): number {
+    const fallback = experimentMode === 'connection-path-crossover'
+        ? CONNECTION_PATH_KINESIS_SHARD_COUNT
+        : DEFAULT_KINESIS_SHARD_COUNT;
+    const shardCount = readOptionalIntegerContext(scope, KINESIS_SHARD_COUNT_CONTEXT_KEY, fallback);
+    if (shardCount < 1 || shardCount > 10_000) {
+        throw new Error(`${KINESIS_SHARD_COUNT_CONTEXT_KEY} must be an integer from 1 through 10000.`);
+    }
+    return shardCount;
+}
+
+function readPhase1SessionId(scope: Construct, experimentMode: Phase1ExperimentMode): string {
+    const sessionId = readRequiredStringContext(scope, SESSION_ID_CONTEXT_KEY);
+    const valid = experimentMode === 'admission-scaleout-capacity'
+        ? /^phase1-kinesis-admission-scaleout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'connection-path-crossover'
+        ? /^phase1-kinesis-connection-path-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'protocol-crossover'
+        ? /^phase1-kinesis-protocol-crossover-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'tcp-alb-path-diagnosis'
+        ? /^phase1-kinesis-tcp-alb-path-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'alb-warmup'
+        ? /^phase1-kinesis-alb-warmup-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'generator-diagnosis'
+        ? /^phase1-kinesis-generator-diagnosis-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'capacity-oha12k'
+        ? /^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'capacity'
+        ? /^phase1-capacity-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+        : experimentMode === 'scout'
+            ? /^phase1-capacity-scout-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)
+            : /^phase1-compare-[0-9]{8}-[0-9]{6}z$/.test(sessionId);
+    if (!valid) {
+        const expected = experimentMode === 'admission-scaleout-capacity'
+            ? 'phase1-kinesis-admission-scaleout-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'connection-path-crossover'
+            ? 'phase1-kinesis-connection-path-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'protocol-crossover'
+            ? 'phase1-kinesis-protocol-crossover-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'tcp-alb-path-diagnosis'
+            ? 'phase1-kinesis-tcp-alb-path-diagnosis-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'alb-warmup'
+            ? 'phase1-kinesis-alb-warmup-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'generator-diagnosis'
+            ? 'phase1-kinesis-generator-diagnosis-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'capacity-oha12k'
+            ? 'phase1-capacity-oha12k-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'capacity'
+            ? 'phase1-capacity-YYYYMMDDTHHMMSSZ'
+            : experimentMode === 'scout'
+                ? 'phase1-capacity-scout-YYYYMMDDTHHMMSSZ'
+                : 'phase1-compare-YYYYMMDD-HHMMSSz';
+        throw new Error(`${SESSION_ID_CONTEXT_KEY} must match ${expected} in ${experimentMode} mode.`);
+    }
+    return sessionId;
+}
+
+function addCapacityOwnershipTags(
+    scope: Construct,
+    experimentMode: Phase1ExperimentMode,
+    sessionId: string,
+    runId: string,
+): void {
+    if (experimentMode === 'comparison') return;
+    Tags.of(scope).add('SessionId', sessionId);
+    Tags.of(scope).add('RunId', runId);
+    Tags.of(scope).add('Phase', experimentMode === 'scout'
+        ? 'phase1-capacity-scout'
+        : experimentMode === 'capacity-oha12k' ? 'phase1-capacity-oha12k'
+            : experimentMode === 'generator-diagnosis' ? 'phase1-generator-diagnosis'
+                : experimentMode === 'alb-warmup' ? 'phase1-alb-warmup'
+                    : experimentMode === 'tcp-alb-path-diagnosis' ? 'phase1-tcp-alb-path-diagnosis'
+                        : experimentMode === 'admission-scaleout-capacity' ? 'phase1-admission-scaleout-capacity'
+                            : experimentMode === 'protocol-crossover' ? 'phase1-protocol-crossover'
+                                : experimentMode === 'connection-path-crossover' ? 'phase1-connection-path-crossover' : 'phase1-capacity');
+    Tags.of(scope).add('ManagedBy', 'codex');
+    Tags.of(scope).add('Owner', 'loop-ad');
+}
+
+function readCapacityProfile(value: unknown): Phase1CapacityProfile {
+    if (value !== 'A' && value !== 'B') {
+        throw new Error(`${CAPACITY_PROFILE_CONTEXT_KEY} must be A or B in admission-scaleout-capacity mode.`);
+    }
+    return value;
+}
+
+function isPathEvidenceMode(mode: Phase1ExperimentMode): boolean {
+    return mode === 'tcp-alb-path-diagnosis' || mode === 'admission-scaleout-capacity' || mode === 'protocol-crossover' || mode === 'connection-path-crossover';
+}
+
+function candidateKinesisActions(candidate: Phase1Candidate): string[] {
+    if (candidate === 'go-sync') {
+        return ['kinesis:PutRecord'];
+    }
+    if (candidate === 'go-batch') {
+        return ['kinesis:PutRecords'];
+    }
+    return ['kinesis:ListShards', 'kinesis:PutRecords'];
+}
+
+function candidateHealthCheck(candidate: Phase1Candidate): string[] {
+    const url = `http://127.0.0.1:${COLLECTOR_PORT}/health`;
+    if (candidate === 'java-kpl') {
+        return ['CMD-SHELL', `curl --fail --silent --show-error --max-time 2 ${url} >/dev/null || exit 1`];
+    }
+    return ['CMD-SHELL', `/usr/local/bin/loop-ad_event_collector -healthcheck ${url} || exit 1`];
+}
+
+function readRequiredStringContext(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.trim() === '') {
+        throw new Error(`${key} is required and must be a non-empty string.`);
+    }
+    return value.trim();
+}
+
+function readRequiredIntegerContext(scope: Construct, key: string): number {
+    const value = scope.node.tryGetContext(key);
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isInteger(parsed)) {
+        throw new Error(`${key} is required and must be an integer.`);
+    }
+    return parsed;
+}
+
+function readOptionalIntegerContext(scope: Construct, key: string, fallback: number): number {
+    const value = scope.node.tryGetContext(key);
+    if (value === undefined) return fallback;
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isInteger(parsed)) throw new Error(`${key} must be an integer.`);
+    return parsed;
+}

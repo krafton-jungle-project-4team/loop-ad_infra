@@ -1,0 +1,213 @@
+name: loopad-phase7-local
+
+x-collector: &collector
+  platform: linux/arm64
+  build:
+    context: ${PHASE7_COLLECTOR_CONTEXT:?PHASE7_COLLECTOR_CONTEXT is required}
+    dockerfile: Dockerfile
+  environment:
+    LOOPAD_ENV: phase7-local
+    LOOPAD_SERVICE_ID: event-collector
+    PORT: "8080"
+    AWS_REGION: ap-northeast-2
+    AWS_ACCESS_KEY_ID: local-test
+    AWS_SECRET_ACCESS_KEY: local-test
+    AWS_EC2_METADATA_DISABLED: "true"
+    AWS_ENDPOINT_URL_KINESIS: http://localstack:4566
+    LOOPAD_KINESIS_STREAM_NAME: phase7-local-events
+    LOOPAD_KINESIS_PRODUCER: go-batch
+    LOOPAD_KINESIS_REQUEST_TIMEOUT: 5s
+    LOOPAD_KINESIS_MAX_CONNECTIONS: "256"
+    # LocalStack is API-call bound. A wider local-only window preserves the
+    # final-ACK contract while allowing records to reach PutRecords in batches.
+    LOOPAD_KINESIS_BATCH_WINDOW: 250ms
+    LOOPAD_KINESIS_MAX_RECORDS: "100"
+    LOOPAD_KINESIS_INPUT_QUEUE: "2048"
+    LOOPAD_KINESIS_SENDER_QUEUE: "32"
+    LOOPAD_KINESIS_SENDER_COUNT: "4"
+    LOOPAD_KINESIS_MAX_ATTEMPTS: "4"
+    LOOPAD_KINESIS_RETRY_BACKOFF: 5ms
+    LOOPAD_KINESIS_MAX_RETRY_BACKOFF: 25ms
+    LOOPAD_KINESIS_SHUTDOWN_TIMEOUT: 5s
+    LOOPAD_MAX_INFLIGHT_REQUESTS: "4096"
+  depends_on:
+    localstack:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+    interval: 2s
+    timeout: 2s
+    retries: 60
+    start_period: 5s
+  labels:
+    loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+  networks: [isolated]
+
+x-consumer: &consumer
+  platform: linux/arm64
+  build:
+    context: ${PHASE7_INFRA_ROOT:?PHASE7_INFRA_ROOT is required}
+    dockerfile: performance-tests/phase4-clickhouse/consumer/Dockerfile
+  environment:
+    AWS_REGION: ap-northeast-2
+    AWS_ACCESS_KEY_ID: local-test
+    AWS_SECRET_ACCESS_KEY: local-test
+    AWS_EC2_METADATA_DISABLED: "true"
+    RUN_ID: ${PHASE7_RUN_ID:?PHASE7_RUN_ID is required}
+    METRIC_NAMESPACE: LoopAd/Phase7Local
+    KINESIS_STREAM_NAME: phase7-local-events
+    KINESIS_STREAM_ARN: arn:aws:kinesis:ap-northeast-2:000000000000:stream/phase7-local-events
+    KCL_APPLICATION_NAME: phase7-local-consumer
+    KCL_LEASE_TABLE_NAME: phase7-local-leases
+    KCL_WORKER_METRICS_TABLE_NAME: phase7-local-workers
+    KCL_COORDINATOR_STATE_TABLE_NAME: phase7-local-coordinator
+    CLICKHOUSE_DATABASE: loopad
+    CLICKHOUSE_HTTP_URL: http://clickhouse:8123
+    CLICKHOUSE_SECRET_ARN: phase7-local-clickhouse
+    FAILURE_BUCKET: phase7-local-failures
+    FAILURE_PREFIX: failures/${PHASE7_RUN_ID:?PHASE7_RUN_ID is required}/
+    PHASE7_LOCAL_MODE: "true"
+    PHASE7_KINESIS_ENDPOINT_URL: http://localstack:4566
+    PHASE7_DYNAMODB_ENDPOINT_URL: http://localstack:4566
+    PHASE7_CLOUDWATCH_ENDPOINT_URL: http://localstack:4566
+    PHASE7_SECRETSMANAGER_ENDPOINT_URL: http://localstack:4566
+    PHASE7_S3_ENDPOINT_URL: http://localstack:4566
+  depends_on:
+    clickhouse:
+      condition: service_healthy
+    localstack:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "test -f /tmp/loopad-phase4-ready"]
+    interval: 2s
+    timeout: 2s
+    retries: 90
+    start_period: 10s
+  labels:
+    loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+  networks: [isolated]
+
+services:
+  localstack:
+    image: localstack/localstack:3.8.1
+    mem_limit: 5g
+    environment:
+      AWS_DEFAULT_REGION: ap-northeast-2
+      DEBUG: "0"
+      LS_LOG: warn
+      EAGER_SERVICE_LOADING: "1"
+      NODE_OPTIONS: --max-old-space-size=4096
+      SERVICES: kinesis,dynamodb,cloudwatch,secretsmanager,s3
+      S3_SKIP_SIGNATURE_VALIDATION: "1"
+    ports:
+      - "127.0.0.1:${PHASE7_LOCALSTACK_PORT:-14567}:4566"
+    tmpfs:
+      - /var/lib/localstack
+    volumes:
+      - ./localstack-init.sh:/etc/localstack/init/ready.d/phase7-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/phase7-init-complete && curl -fsS http://127.0.0.1:4566/_localstack/health | grep -q '\"kinesis\"'"]
+      interval: 2s
+      timeout: 2s
+      retries: 90
+      start_period: 10s
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+    networks: [isolated]
+
+  clickhouse:
+    image: clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797
+    platform: linux/arm64
+    mem_limit: 8g
+    environment:
+      CLICKHOUSE_DB: loopad
+      CLICKHOUSE_USER: loopad_local
+      CLICKHOUSE_PASSWORD: local-only-not-a-secret
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "127.0.0.1:${PHASE7_CLICKHOUSE_PORT:-18127}:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ../../assets/clickhouse/phase4-schema.sql:/docker-entrypoint-initdb.d/phase4-schema.sql:ro
+      - ./clickhouse-config/memory.xml:/etc/clickhouse-server/config.d/phase7-memory.xml:ro
+      - ../../assets/clickhouse/phase4-async-insert-log.xml:/etc/clickhouse-server/config.d/phase4-async-insert-log.xml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user loopad_local --password local-only-not-a-secret --query 'SELECT 1'"]
+      interval: 2s
+      timeout: 2s
+      retries: 90
+      start_period: 10s
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+    networks: [isolated]
+
+  collector-1:
+    <<: *collector
+  collector-2:
+    <<: *collector
+  collector-3:
+    <<: *collector
+  collector-4:
+    <<: *collector
+
+  haproxy:
+    image: haproxy:3.2.4-alpine@sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d
+    ports:
+      - "127.0.0.1:${PHASE7_HAPROXY_PORT:-18080}:8080"
+      - "127.0.0.1:${PHASE7_HAPROXY_STATS_PORT:-18404}:8404"
+    volumes:
+      - ./haproxy-local.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      collector-1: {condition: service_healthy}
+      collector-2: {condition: service_healthy}
+      collector-3: {condition: service_healthy}
+      collector-4: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+    networks: [isolated]
+
+  consumer-1:
+    <<: *consumer
+  consumer-2:
+    <<: *consumer
+
+  archive-worker:
+    image: localstack/localstack:3.8.1
+    entrypoint: ["sh", "-c"]
+    command: ["trap : TERM INT; sleep infinity & wait"]
+    working_dir: /work/phase6
+    environment:
+      AWS_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: local-test
+      AWS_SECRET_ACCESS_KEY: local-test
+      AWS_EC2_METADATA_DISABLED: "true"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ../phase6-archive:/work/phase6:ro
+      - ${LOCAL_RUN_DIR:?LOCAL_RUN_DIR is required}:/work/run
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+    networks: [isolated]
+
+networks:
+  isolated:
+    driver: bridge
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}
+
+volumes:
+  clickhouse-data:
+    labels:
+      loopad.local_session_id: ${LOCAL_SESSION_ID:?LOCAL_SESSION_ID is required}

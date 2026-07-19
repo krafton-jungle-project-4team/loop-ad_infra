@@ -1,0 +1,105 @@
+import * as logs from 'aws-cdk-lib/aws-logs';
+import type { Construct } from 'constructs';
+
+export const PHASE4_ECS_RUN_ID_CONTEXT_KEY = 'phase4RunId';
+export const PHASE4_ECS_SESSION_ID_CONTEXT_KEY = 'phase4SessionId';
+export const PHASE4_ECS_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY = 'phase4ConsumerImageDigest';
+export const PHASE4_ECS_AMI_ID_CONTEXT_KEY = 'phase4EcsAmiId';
+export const PHASE4_ECS_CLICKHOUSE_AMI_ID_CONTEXT_KEY = 'phase4ClickHouseAmiId';
+
+export const PHASE4_ECS_REGION = 'ap-northeast-2';
+export const PHASE4_ECS_AVAILABILITY_ZONE = 'ap-northeast-2a';
+export const PHASE4_ECS_VPC_CIDR = '10.45.0.0/16';
+
+export const PHASE4_ECS_KINESIS_SHARD_COUNT = 120;
+export const PHASE4_ECS_KINESIS_RETENTION_HOURS = 24;
+export const PHASE4_ECS_KCL_VERSION = '3.4.3';
+
+export const PHASE4_ECS_HOST_INSTANCE_TYPE = 'c7g.large';
+export const PHASE4_ECS_HOST_COUNT = 2;
+export const PHASE4_ECS_PRODUCER_INSTANCE_TYPE = 'c7g.2xlarge';
+export const PHASE4_ECS_TASK_COUNT = 2;
+export const PHASE4_ECS_TASK_CPU = 1_024;
+export const PHASE4_ECS_TASK_MEMORY_MIB = 2_048;
+export const PHASE4_ECS_TASK_STOP_TIMEOUT_SECONDS = 120;
+
+export const PHASE4_ECS_CLICKHOUSE_DATABASE = 'loopad';
+export const PHASE4_ECS_CLICKHOUSE_HTTP_PORT = 8_123;
+export const PHASE4_ECS_CLICKHOUSE_IMAGE =
+    'clickhouse/clickhouse-server@sha256:93f557eb9258198d5c52d723287a33a2697cd76900d85cecc0b307cd6293a797';
+export const PHASE4_ECS_CLICKHOUSE_INSTANCE_TYPE = 'r7g.2xlarge';
+export const PHASE4_ECS_CLICKHOUSE_VOLUME_GIB = 500;
+export const PHASE4_ECS_CLICKHOUSE_VOLUME_IOPS = 3_000;
+export const PHASE4_ECS_CLICKHOUSE_VOLUME_THROUGHPUT_MIBPS = 500;
+
+export const PHASE4_ECS_METRIC_NAMESPACE = 'LoopAd/Phase4';
+export const PHASE4_ECS_LOG_RETENTION = logs.RetentionDays.ONE_WEEK;
+export const PHASE4_ECS_ARCHIVE_PREFIX = 'loopad/events/';
+
+export interface PerfPhase4ClickHouseEcsConfig {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly consumerImageDigest: string;
+    readonly ecsAmiId: string;
+    readonly clickHouseAmiId: string;
+    readonly repositoryName: string;
+}
+
+export function readPerfPhase4ClickHouseEcsConfig(
+    scope: Construct,
+): PerfPhase4ClickHouseEcsConfig {
+    const runId = readContextString(scope, PHASE4_ECS_RUN_ID_CONTEXT_KEY);
+    const sessionId = readContextString(scope, PHASE4_ECS_SESSION_ID_CONTEXT_KEY);
+    const consumerImageDigest = readContextString(
+        scope,
+        PHASE4_ECS_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY,
+    );
+    const ecsAmiId = readContextString(scope, PHASE4_ECS_AMI_ID_CONTEXT_KEY);
+    const clickHouseAmiId = readContextString(
+        scope,
+        PHASE4_ECS_CLICKHOUSE_AMI_ID_CONTEXT_KEY,
+    );
+
+    if (!/^run_\d{8}_\d{6}_phase4_clickhouse_ecs$/.test(runId)) {
+        throw new Error(
+            `${PHASE4_ECS_RUN_ID_CONTEXT_KEY} must match ` +
+            'run_YYYYMMDD_HHMMSS_phase4_clickhouse_ecs.',
+        );
+    }
+    if (!/^phase4-clickhouse-ecs-\d{8}T\d{6}Z$/.test(sessionId)) {
+        throw new Error(
+            `${PHASE4_ECS_SESSION_ID_CONTEXT_KEY} must match ` +
+            'phase4-clickhouse-ecs-YYYYMMDDTHHMMSSZ.',
+        );
+    }
+    if (!/^sha256:[0-9a-f]{64}$/.test(consumerImageDigest)) {
+        throw new Error(
+            `${PHASE4_ECS_CONSUMER_IMAGE_DIGEST_CONTEXT_KEY} must be a sha256 digest.`,
+        );
+    }
+    for (const [key, value] of [
+        [PHASE4_ECS_AMI_ID_CONTEXT_KEY, ecsAmiId],
+        [PHASE4_ECS_CLICKHOUSE_AMI_ID_CONTEXT_KEY, clickHouseAmiId],
+    ] as const) {
+        if (!/^ami-[0-9a-f]{8,17}$/.test(value)) {
+            throw new Error(`${key} must be an exact AMI ID.`);
+        }
+    }
+
+    return {
+        runId,
+        sessionId,
+        consumerImageDigest,
+        ecsAmiId,
+        clickHouseAmiId,
+        repositoryName: `loop-ad/perf-phase4-clickhouse/${runId}`,
+    };
+}
+
+function readContextString(scope: Construct, key: string): string {
+    const value = scope.node.tryGetContext(key);
+    if (typeof value !== 'string' || value.trim() !== value || value.length === 0) {
+        throw new Error(`Missing or invalid CDK context "${key}".`);
+    }
+    return value;
+}

@@ -1,0 +1,169 @@
+{
+  "attemptType": "aws-integration",
+  "cleanup": {
+    "attempts": {
+      "immutableRunnerCleanup": 1,
+      "immutableRunnerInventory": 1,
+      "postFinalReadonlyInventory": 1
+    },
+    "deadline": "2026-07-19T00:25:05.488731Z",
+    "deadlineBreached": false,
+    "evidence": [
+      {
+        "path": "performance-tests/run_20260718_210703_phase7_2_aws_integration/cleanup-inventory.json",
+        "sha256": "5325d040cfb7b76216bca135b2e121f7bf854f68cf3c3b3837e95a6283afc715"
+      },
+      {
+        "path": "performance-tests/run_20260718_210703_phase7_2_aws_integration/cleanup-verification.json",
+        "sha256": "de85426e06aecaf7fb9bc91b049027aa1fce783c864f1d6ec71afa98a94357f9"
+      },
+      {
+        "path": "performance-tests/run_20260718_210703_phase7_2_aws_integration/post-final-readonly-inventory.json",
+        "sha256": "9e94b461ccd9673091120f58057f70d04dfb943bd966cee49135360e4eda3fd0"
+      }
+    ],
+    "finalAuthoritativeInventory": {
+      "allServiceClassCountsZero": true,
+      "nonzeroServiceClassCount": 0,
+      "serviceClassCount": 35,
+      "serviceInventoryZero": true,
+      "taggingApiAuthoritative": false,
+      "taggingApiResidualArns": [],
+      "taggingApiResidualsZero": true
+    },
+    "finishedAt": "2026-07-18T22:12:07.210371Z",
+    "startToAuthoritativeZeroSeconds": "1621.721640"
+  },
+  "cost": {
+    "activeEpochAccruedUpperBoundUsdAfterAttempt": "12.000000",
+    "campaignChargedUpperBoundUsd": "12.000000",
+    "chargedUpperBoundUsd": "6.000000",
+    "costExplorerEvidencePath": "performance-tests/phase7_2-stabilization/attempt-14-cost-explorer-20260718.json",
+    "costExplorerEvidenceSha256": "b967f7ccaa31cf9e34ad7456ab1b1d345a9163923cc670193e9a7d13fe6df8f9",
+    "lifetimeChargedUpperBoundUsdAfterAttempt": "83.000000",
+    "maximumIncludingCleanupUsd": "50.870718",
+    "measuredCostEstimated": true,
+    "measuredCostUsd": "0.000000",
+    "modeledFailurePathUpperBoundUsd": "5.439662",
+    "plannedOperationalUpperBoundUsd": "33.870718",
+    "reconciliationPath": "performance-tests/phase7_2-stabilization/attempt-14-cost-reconciliation.json",
+    "reconciliationSha256": "85dbe408834e7285c1e59a5b772db48ce6119503c3b3e044fbd7e28ac03cd34e"
+  },
+  "evidenceCommit": "adc21d1d8a517d474a3e4105f0cfe775454bf868",
+  "evidencePaths": {
+    "awsAttempt": "performance-tests/run_20260718_210703_phase7_2_aws_integration",
+    "deploymentReadiness": "performance-tests/run_20260718_210703_phase7_2_deployment_readiness",
+    "localHandoff": "performance-tests/run_20260718_205704_phase7_1_local_integration/local-handoff.json"
+  },
+  "failure": {
+    "diagnosis": "The Phase 7 JavaScript hostname-shape validator required an internal- DNS prefix, but live exact ELBv2 verification proved the returned prefixless DNS name belonged to the run-owned Scheme=internal network load balancer. Warmup stopped before any worker or traffic start.",
+    "diagnosisEvidencePath": "performance-tests/run_20260718_210703_phase7_2_aws_integration/evidence/warmup-failure-diagnosis.json",
+    "diagnosisEvidenceSha256": "e3e1c424a1c98e5fc7dc14c029df27824911d0f0f47df8a58f49c5a3419aa074",
+    "firstFailingGate": "warmup",
+    "rawAwsError": "None. AWS deployment and exact live ELBv2 verification passed; the local orchestrator rejected the returned DNS shape before traffic start.",
+    "rawEvidencePath": "performance-tests/run_20260718_210703_phase7_2_aws_integration/evidence/control/warmup.attempt-1.stderr.log.gz",
+    "rawEvidenceSha256": "2662c5d146a23daee2a3991f211de52ada545fd81d3c84ed8b38c570e7a88e50",
+    "rawUncompressedSha256": "1bd25c80944cb813a457090c9506072730d499e8fee9286abf6738060b09adec",
+    "runnerError": "Error: unexpected Phase 7 protocol NLB DNS name; RuntimeError: warmup orchestration failed"
+  },
+  "fix": {
+    "applied": "Allow both exact AWS-emitted Phase 7 proxy NLB hostname forms, with and without the internal- prefix, while retaining the exact proxy name, 11-digit stamp, lowercase hash and Seoul ELB suffix. Keep authoritative internal scheme and run ownership in live deployment verification.",
+    "fixCommit": "112d4c03cfcd90192fd7b0a1fa55e77949d01ef9",
+    "verification": {
+      "build": "passed",
+      "cfnLintAcceptedE1022": 8,
+      "cfnLintAcceptedW3005": 3,
+      "cfnLintUnexpectedFindings": 0,
+      "focusedConnectionPathTests": 59,
+      "focusedDeploymentVerifierTests": 13,
+      "focusedDiagnosticTests": 10,
+      "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+      "nodeTests": 27,
+      "phase7JestTests": 14,
+      "pythonTests": 140,
+      "status": "passed"
+    },
+    "verificationCommit": "77fc47848c38aa60c089d177b840f491b1f441dc",
+    "verificationPath": "performance-tests/phase7_2-stabilization/attempt-14-fix-verification.json",
+    "verificationSha256": "ac9fdffd7be63bc6c072356561f2eb7cc2ad34282518d03993b4f8277bd2380c"
+  },
+  "gitCommit": "ac1d7372a308f934dfe1dbb7e52400dd452e50b3",
+  "imageDigests": {
+    "archive": "sha256:d06231e90d2c593395cbcbee1b6e6a6930a35650851bbf8d4a021901b4ea4ce0",
+    "collector": "sha256:ac2e96e69768492f4c7ea65a7bfa362d08315387348fc9712f6a2fe26d498260",
+    "consumer": "sha256:6c7ab17fee58adfba6b5d4a41bc4d7aa5afdba2d94499ba3fd87d068bf98eaf5"
+  },
+  "imageSourceHashes": {
+    "archive": "18760639bb283fff3dd6722fe5ccb6765c8bec72bb3c7351a321f823d166a17e",
+    "collectorGitArchive": "c2ee042fe1789d58badef869bab9cc855b670170a9c4ec4436eb0dc502ad675e",
+    "collectorGitTree": "4140abd310172b48787ae029a3444ad946b612e3",
+    "consumer": "1382a7fd9ac7e08ba5a3edfaeb9b699fde3e3ef8ba898847513e1f444a34d9e8"
+  },
+  "immutableInputHashes": {
+    "absentPreflight": "cf74d8d1b1fb85e6a87f892da6719d15a70d349c30092fd05deb5cd3c3f654b7",
+    "commandSeal": "b40d6ea16ffdf9c78ed3a04c3557facdb1eee3e83772ad60c26d1ba29b81d779",
+    "commandSet": "18949d97dbc2c601f1f8cd16aa74e9726fa07ce80b51cedccb72890f331f5fc3",
+    "costModel": "491366398a4745628763a2b9c4f470e1a946580c0c7093b6c77d6e330ebc46e5",
+    "identityContract": "0ff010747027be78c97dc5b7b40f9ddc7b11c7476ea50835ae5b027aa5b49575",
+    "imageManifest": "3d23b2c2e64a676e2ce94e595cd4f313e451ea4f4061e00a1e72882658c099a2",
+    "localHandoff": "255455d633c4497cbc5c9bd4f2a4cb97e70d690d71d4401207d6ed757104eb1d",
+    "preparedPreflight": "449a46de00f2788924deb2b2d0ee2c64bbf35c0e6b7ce073364de34e9592ce27",
+    "runtimeTemplate": "99f5ecbf9167d2c8ad8460cac0a164e4cd2eb0843b20282eda20e1e59f13673c"
+  },
+  "implementationTreeSha256": "a04f33785c737fd8bf1cda878c21d0a5f172d980155a9ee1fff09491deccd26f",
+  "ordinal": 14,
+  "paidWindow": {
+    "cleanupDeadline": "2026-07-19T00:25:05.488731Z",
+    "elapsedSeconds": "1621.721640",
+    "endedAt": "2026-07-18T22:12:07.210371Z",
+    "hardDeadline": "2026-07-19T00:45:05.488731Z",
+    "startedAt": "2026-07-18T21:45:05.488731Z"
+  },
+  "phase5": "skipped",
+  "previousEntrySha256": "43d78d108367ca16cef3bc1e06dd19612e6e01d2979f57baf22548d0c3847b38",
+  "readinessCommit": "69f92a2a3862024ecf6cefe403f5df10faaf0124",
+  "runId": "run_20260718_210703_phase7_integration",
+  "runnerFinalVerdict": "failed",
+  "runtimeControlCommit": "44b977c4dddc56a6fede93560f09b1d1a8627e64",
+  "sealedCommandSetSha256": "18949d97dbc2c601f1f8cd16aa74e9726fa07ce80b51cedccb72890f331f5fc3",
+  "sessionId": "phase7-integration-20260718T210703Z",
+  "stageAttemptCounts": {
+    "archive": 0,
+    "cleanup": 1,
+    "collect": 0,
+    "correctness": 1,
+    "deploy": 1,
+    "drainValidate": 0,
+    "evaluate": 1,
+    "imagePrep": 1,
+    "imageStackDeploy": 1,
+    "inventory": 1,
+    "score": 0,
+    "seed": 1,
+    "verify": 1,
+    "warmup": 1
+  },
+  "terminalEvidenceHashes": {
+    "cleanupInventory": "5325d040cfb7b76216bca135b2e121f7bf854f68cf3c3b3837e95a6283afc715",
+    "cleanupVerification": "de85426e06aecaf7fb9bc91b049027aa1fce783c864f1d6ec71afa98a94357f9",
+    "commands": "c715756d56e193c6484bc81dfbf0f0c51336b7e8bfdbf778ac34fe323f3b63bb",
+    "correctness": "a40f1f0702e50ced264d28700306e25d23c0867d018d20e349c89b27867127ce",
+    "correctnessHttpReceipt": "a152183fbd61104b9862ca9e3d078534dee9b4eac0b28a8b1e38c7efd7a042dc",
+    "costReconciliation": "85dbe408834e7285c1e59a5b772db48ce6119503c3b3e044fbd7e28ac03cd34e",
+    "costStatus": "931701a60262bd91183c62fd81ae6063e1b6d62df22d9fb98ec0f9f3114ca948",
+    "deploymentVerification": "b247d95b6a7bb05a3f8bf0a0f3b5a7b3f1bee7d90fcedc57b9ae16a13a5a2854",
+    "diagnosis": "e3e1c424a1c98e5fc7dc14c029df27824911d0f0f47df8a58f49c5a3419aa074",
+    "failures": "0d73591ad9af0bbe6bdc8892150058f88d6a31db8eddbe1de92401b700dc258d",
+    "finalEvaluation": "646e51c13f85190223f7fabfa94be5577cd9d1b1eeb15a18375e189292441075",
+    "finalEvidenceStatus": "b8b59565bc9273023f0ef8c4409646861be5c29e92311fd7a6a2f67216286b5c",
+    "fixVerification": "ac9fdffd7be63bc6c072356561f2eb7cc2ad34282518d03993b4f8277bd2380c",
+    "improvementBacklog": "833b8378c429c87efc23ec49e11ef9297ce89e2caa7ae741d8ffb2b7d1b67fcd",
+    "infra": "4044585cca67dc26704e4491d985d1efcce5ac8345566e9ffd97f0b6805dd77e",
+    "postFinalReadonlyInventory": "9e94b461ccd9673091120f58057f70d04dfb943bd966cee49135360e4eda3fd0",
+    "report": "cd669a67d8a23b44ef8cb7d09295f09d59697cf94a80256fb68c35a383a6c4f5",
+    "run": "aacf8864e3807e4258de02d737e57321baabe4b2085e2dc3830e1271ed408d67",
+    "seed": "bdaf5bbb2d11568c06e9ffc3b87772cee1790bd23a91a4ae46c510edd3c111a2"
+  },
+  "verdict": "failed",
+  "entrySha256": "35272344eacbb7ce9bb92c00871cca14f5c87a6c0de7aada6157465c72f60880"
+}

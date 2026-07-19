@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260717_055837_phase6_clickhouse_s3_archive",
+  "phase": "phase6",
+  "category": "experiment",
+  "executedAt": "2026-07-17T05:58:37",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "aws",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "awsServiceApiCallCountScope",
+      "value": "Not enumerated: explicit commands are recorded, while CDK and instance-runtime SDK calls are intentionally not guessed.",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "attemptCount",
+      "value": 1,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "completed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "completed",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "passed",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "awsServiceApiCallCountScope",
+      "value": "Not enumerated: explicit commands are recorded, while CDK and instance-runtime SDK calls are intentionally not guessed.",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "attemptCount",
+      "value": 1,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json"
+    },
+    {
+      "name": "sampleCount",
+      "value": 322,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "hostCpuP95Percent",
+      "value": 24.36438,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "hostCpuPeakPercent",
+      "value": 29.69138,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "hostMemoryP95Percent",
+      "value": 6.903885,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "hostMemoryPeakPercent",
+      "value": 9.084234,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "containerCpuP95Percent",
+      "value": 202.899,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "containerCpuPeakPercent",
+      "value": 258.95,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "containerMemoryP95Percent",
+      "value": 73.3385,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "containerMemoryPeakPercent",
+      "value": 94.1,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "containerMemoryNote",
+      "value": "Informational. The AWS acceptance gate is host CPU/memory p95 below 70%; the fixed 5 GiB container is separately guarded by zero OOM/restart.",
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "restartCount",
+      "value": 0,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "oomCount",
+      "value": 0,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "archiveFailureCount",
+      "value": 0,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "gates.hostCpuP95Below70Percent",
+      "value": true,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "gates.hostMemoryP95Below70Percent",
+      "value": true,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    },
+    {
+      "name": "passed",
+      "value": true,
+      "source": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "passed",
+  "costStatus": "passed",
+  "cleanupStatus": "passed",
+  "conclusion": "passed",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260717_055837_phase6_clickhouse_s3_archive"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/cleanup-verification.json",
+      "bytes": 2462,
+      "sha256": "b3205e1f310d8bc7f0b25ceaaa88fbc94cf77320b7bae0c9b08a6acabbec2e38"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/commands.md",
+      "bytes": 3291,
+      "sha256": "648bba5faf0a7be66fb677385dce2680dcd3d217e92351c9190fa32bc4d26db6"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/correctness-summary.json",
+      "bytes": 1272,
+      "sha256": "e6075db123c554834f0b74c1010d95cf9ac7a4892ae90f9b25af8a3d4c6a8337"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/cost-ledger.json",
+      "bytes": 1069,
+      "sha256": "8defa976c2a31f820fe1c710c313134944e5b20cf2fc24df2192719c37263fff"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/cost-upper-bound.json",
+      "bytes": 919,
+      "sha256": "107cd8d6a56bf3609452803acda58f589117a8188100288d53279431b8bf5a5a"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/infra.md",
+      "bytes": 2530,
+      "sha256": "7477d7b57ce75458ba3a16fb77c03fa4ae79cfb6feeb2ffe7caf3c9873beea4d"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/metrics-summary.json",
+      "bytes": 999,
+      "sha256": "3f24ad5da9ba0b791695e3ed07674ca32c65a88fd033ea8bdf3071e3a237535a"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/report.md",
+      "bytes": 3995,
+      "sha256": "4b17409674e552284819fc48241d12be9e9b990438bed33fc8335ea758611b66"
+    },
+    {
+      "path": "run_20260717_055837_phase6_clickhouse_s3_archive/run.json",
+      "bytes": 1405,
+      "sha256": "8cbc0fbcb2d064a7f94bb7df30c9ddf680bb03207ac47e0b15f1b47bcac62440"
+    }
+  ]
+}

@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260709_210700_phase0_alb_50k_precomputed",
+  "phase": "phase0",
+  "category": "experiment",
+  "executedAt": "2026-07-09T21:07:00",
+  "purpose": "개선된 precomputed payload 기반 Artillery 부하 생성으로 Phase 0 ALB fixed-response 한계와 Fargate 생성기 한계를 확인한다.",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "result.target50kRps",
+      "value": "not_achieved",
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "unknown",
+  "rawStatus": "not_recorded",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "result.target50kRps",
+      "value": "not_achieved",
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/run.json"
+    },
+    {
+      "name": "quota.fargateSpotVcpu",
+      "value": 30,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "quota.fargateOnDemandVcpu",
+      "value": 30,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "quota.existingDevOnDemandVcpu",
+      "value": 1.75,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[0].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[0].configuredAggregateRps",
+      "value": 50000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[1].configuredWorkerCpu",
+      "value": 1,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[1].configuredAggregateRps",
+      "value": 50000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[1].observedMaxRequestRatePerSecond",
+      "value": 19467,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[1].observedRequests",
+      "value": 824713,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[2].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[2].configuredAggregateRps",
+      "value": 17500,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[3].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[3].configuredAggregateRps",
+      "value": 10000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[3].observedMaxRequestRatePerSecond",
+      "value": 10069,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[3].observedRequests",
+      "value": 445789,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[4].configuredWorkerCpu",
+      "value": 1,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[4].configuredAggregateRps",
+      "value": 50000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[4].observedMaxRequestRatePerSecond",
+      "value": 21771,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[4].observedRequests",
+      "value": 778807,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[5].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[5].configuredAggregateRps",
+      "value": 17500,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[6].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[6].configuredAggregateRps",
+      "value": 15000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[6].observedMaxRequestRatePerSecond",
+      "value": 15227,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[6].observedRequests",
+      "value": 448445,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[7].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[7].configuredAggregateRps",
+      "value": 5000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[7].observedMaxRequestRatePerSecond",
+      "value": 5066,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[7].observedRequests",
+      "value": 291419,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[8].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[8].configuredRampRps",
+      "value": "100 to 2000",
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[8].observedMaxRequestRatePerSecond",
+      "value": 455,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[8].observedRequests",
+      "value": 16887,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].configuredWorkerCpu",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].configuredRampRps",
+      "value": "100 to 2000",
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].aggregateRequestRatePerSecond",
+      "value": 772,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].observedRequests",
+      "value": 243000,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].responseTimeP95Ms",
+      "value": 4,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    },
+    {
+      "name": "attempts[9].responseTimeP99Ms",
+      "value": 10.1,
+      "source": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "unknown",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260709_210700_phase0_alb_50k_precomputed"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/artifacts.md",
+      "bytes": 1777,
+      "sha256": "22330d4c86f575e8b3acd91699367d9f987afe5827f0457bc3895d2228b165b9"
+    },
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/commands.md",
+      "bytes": 6210,
+      "sha256": "88f9431fcafbc8da965947c2d8d480a764ddb7ee207ec495d9d21e9f82bf6b53"
+    },
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/infra.md",
+      "bytes": 1260,
+      "sha256": "d4e3b89e1173d2a59fd36d54466136bdaada6b68b175b28c24d155d16849e899"
+    },
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/metrics-summary.json",
+      "bytes": 5559,
+      "sha256": "f35c08d465385426471858b818f419553c2a510394956fd9f3d98be3891f91c0"
+    },
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/report.md",
+      "bytes": 2046,
+      "sha256": "8e782d7ede587cec3be22d18e809cccc9bd4a748a9f5853c12920ebc38a97470"
+    },
+    {
+      "path": "run_20260709_210700_phase0_alb_50k_precomputed/run.json",
+      "bytes": 1514,
+      "sha256": "8a0f392cafb2a5263c823c89447897a19d8706b062cdb8ba58b660b267963d5c"
+    }
+  ]
+}

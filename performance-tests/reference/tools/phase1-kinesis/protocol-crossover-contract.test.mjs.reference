@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import { buildProtocolCrossoverPlan } from './protocol-crossover-contract.mjs';
+import { isRunScopedProtocolLoadBalancerUrl } from './protocol-load-balancer-url.mjs';
+
+test('all protocol paths preserve independent device-owned physical connections', () => {
+    const plan = buildProtocolCrossoverPlan();
+    assert.deepEqual(Object.keys(plan.paths), ['A0', 'A1', 'A2', 'N2', 'N3']);
+    for (const path of Object.values(plan.paths)) {
+        assert.equal(path.logicalDevices, 12_000);
+        assert.equal(path.physicalConnections, 12_000);
+        assert.equal(path.streamsPerConnection, 1);
+        assert.equal(path.crossDeviceMultiplexing, 0);
+    }
+    assert.deepEqual(plan.connectionCardinality, [12_000, 30_000, 60_000]);
+    assert.equal(plan.driverContract.tlsCertificateVerificationRequired, true);
+    assert.equal(plan.driverContract.protocolFallbacksAllowed, 0);
+});
+
+test('worker and invoker enforce verified H1 H2 H3 device-isolated evidence', () => {
+    const invoke = readFileSync(new URL('./invoke-reference-driver.mjs', import.meta.url), 'utf8');
+    const worker = readFileSync(new URL('./run-ec2-reference-worker.sh', import.meta.url), 'utf8');
+    const referenceDriver = readFileSync(new URL('./reference-driver/main.go', import.meta.url), 'utf8');
+    const correctness = readFileSync(new URL('./verify-actual-kinesis-correctness.mjs', import.meta.url), 'utf8');
+    assert.match(invoke, /--protocol/);
+    assert.match(invoke, /--ca-certificate/);
+    assert.match(worker, /observed_physical_connections/);
+    assert.match(referenceDriver, /cross_device_reuse_violations/);
+    assert.match(referenceDriver, /max_concurrent_streams_per_connection/);
+    assert.match(referenceDriver, /tls_verification.*required/);
+    assert.match(referenceDriver, /protocol_fallbacks/);
+    assert.doesNotMatch(referenceDriver, /InsecureSkipVerify/);
+    assert.match(correctness, /--cacert/);
+    assert.match(correctness, /--connect-to/);
+    assert.doesNotMatch(correctness, /--insecure/);
+    assert.match(worker, /jq -e \.valid/);
+    assert.match(worker, /trap cleanup_raw_capture EXIT/);
+});
+
+test('ALB log collector accepts protocol crossover run ownership', () => {
+    const collector = readFileSync(new URL('./collect-alb-access-logs.mjs', import.meta.url), 'utf8');
+    const joiner = readFileSync(new URL('./join-request-traces-alb.mjs', import.meta.url), 'utf8');
+    assert.match(collector, /protocol-crossover/);
+    assert.match(joiner, /createReadStream/);
+    assert.match(joiner, /selectedStageComplete/);
+});
+
+test('update preflight accepts only CloudFormation stable update states', () => {
+    const preflight = readFileSync(new URL('./preflight.mjs', import.meta.url), 'utf8');
+    assert.match(preflight, /UPDATE_SAFE_STACK_STATUSES = \['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE'\]/);
+    assert.match(preflight, /UPDATE_SAFE_STACK_STATUSES\.includes\(stack\.status\)/);
+});
+
+test('deployment verifier treats ALB access-log controls as ALB-only', () => {
+    const verifier = readFileSync(new URL('./verify-protocol-crossover-deployment.mjs', import.meta.url), 'utf8');
+    assert.match(verifier, /const encryption = bucket \?/);
+    assert.match(verifier, /bucketControls: loadBalancerKind === 'nlb'/);
+});
+
+test('reference invoker accepts only the run-scoped ALB and N2/N3 DNS forms', () => {
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('https://internal-perf-phase1-loop-ad-alb-123456.ap-northeast-2.elb.amazonaws.com'), true);
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('https://perf-p1-protocol-n2-f4abf3612caf38a8.elb.ap-northeast-2.amazonaws.com'), true);
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('https://perf-p1-protocol-n3-0123456789abcdef.elb.ap-northeast-2.amazonaws.com'), true);
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('http://perf-p1-protocol-n2-f4abf3612caf38a8.elb.ap-northeast-2.amazonaws.com'), false);
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('https://unowned-nlb.example.com'), false);
+    assert.equal(isRunScopedProtocolLoadBalancerUrl('https://perf-p1-protocol-n4-0123456789abcdef.elb.ap-northeast-2.amazonaws.com'), false);
+});
+
+test('QUIC target group omits attributes unsupported by the ELBv2 QUIC API', () => {
+    const stack = readFileSync(new URL('../../src/perf-phase1-kinesis-stack.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(stack, /protocol: 'QUIC'[\s\S]{0,240}targetGroupAttributes/);
+});
+
+test('preflight and cleanup cover both NLB variants and every protocol target group', () => {
+    const preflight = readFileSync(new URL('./preflight.mjs', import.meta.url), 'utf8');
+    const cleanup = readFileSync(new URL('./verify-cleanup.mjs', import.meta.url), 'utf8');
+    for (const name of ['perf-p1-protocol-n2', 'perf-p1-protocol-n3']) {
+        assert.match(preflight, new RegExp(name));
+        assert.match(cleanup, new RegExp(name));
+    }
+    assert.match(preflight, /expectedLoadBalancerNames = experimentMode === 'protocol-crossover' \? NLB_NAMES/);
+    for (const name of ['perf-p1-protocol-tcp', 'perf-p1-protocol-quic']) {
+        assert.match(preflight, new RegExp(name));
+        assert.match(cleanup, new RegExp(name));
+    }
+});

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 16,
+  "runId": "run_20260719_020156_phase7_integration",
+  "sessionId": "phase7-integration-20260719T020156Z",
+  "diagnosedAt": "2026-07-19T03:23:05Z",
+  "firstFailingGate": "warmup-orchestration",
+  "terminalHardStopStage": "warmup",
+  "surfacedError": "node-08 oha invocation failed with 1; RuntimeError: warmup orchestration failed",
+  "rawAwsCliError": "Connect timeout on endpoint URL: https://ssm.ap-northeast-2.amazonaws.com/",
+  "observerFailures": {
+    "count": 8,
+    "connectTimeoutNodes": ["node-01", "node-02", "node-04", "node-07", "node-08"],
+    "readTimeoutNodes": ["node-03", "node-05", "node-06"]
+  },
+  "remoteReconciliation": {
+    "exactCommandCount": 8,
+    "successCount": 8,
+    "responseCodeZeroCount": 8,
+    "terminalVerifiedCount": 8,
+    "workerCleanupCompleteCount": 8
+  },
+  "diagnosis": "All eight SSM load commands were submitted exactly once. The local polling helper retried only OAuth2 rate-limit errors, so simultaneous transient SSM endpoint connect/read timeouts terminated every local observer. Promise.all surfaced node 08 first. Later exact-command reconciliation proved all remote commands successful and stopped. This is a local control-plane observation retry defect, not an observed workload failure.",
+  "acceptanceImpact": "Worker artifacts and the aggregate warmup summary were not recovered. Throughput, response, transport and latency acceptance are untrustworthy; Attempt 15 fixes remain inconclusive.",
+  "fixDirection": "Keep SendCommand one-shot. Add absolute-deadline bounded backoff and jitter only to read-only GetCommandInvocation and exact S3-to-local artifact recovery; fail identity, credentials, authorization and validation errors immediately and persist transient retry evidence.",
+  "evidence": [
+    {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/control/warmup.attempt-1.stderr.log",
+      "sha256": "eab20ae61baeeacb54e722968ce4a76bb15c7002596ae83b4d0c431d6f65e3d1"
+    },
+    {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/warmup/ssm-command-reconciliation.json",
+      "sha256": "bcc0c8348606f9e19bd156d3891e3345d229037f190798d55566010f7d79c442"
+    },
+    {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/evidence/warmup/cancellation-evidence.json",
+      "sha256": "609d410b8642122903cfd749476da38545863be83ea35d5e3a6db7b90655e3bf"
+    },
+    {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/cleanup-verification.json",
+      "sha256": "6714577736f6811763f55ba826e16677e1b05c6c185d148412d53fec19fe8b58"
+    }
+  ]
+}

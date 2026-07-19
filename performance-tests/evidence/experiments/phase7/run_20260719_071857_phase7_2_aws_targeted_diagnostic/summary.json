@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260719_071857_phase7_2_aws_targeted_diagnostic",
+  "phase": "phase7",
+  "category": "diagnostic",
+  "executedAt": "2026-07-19T07:18:57",
+  "purpose": "not_recorded",
+  "hypothesis": "not_recorded",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "maximumIncludingTargetedStrictAndCleanupUsd",
+      "value": "59.870718",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "blocked",
+  "rawStatus": "initialized-pre-paid-boundary",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "account",
+      "value": "742711170910",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "chargedOperationalUpperBoundUsd",
+      "value": "5",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "activeEpochPriorUpperBoundUsd",
+      "value": "16",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "maximumIncludingTargetedStrictAndCleanupUsd",
+      "value": "59.870718",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    },
+    {
+      "name": "status",
+      "value": "initialized-pre-paid-boundary",
+      "source": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "not_recorded",
+  "cleanupStatus": "failed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase7-20260719-071857"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260719_071857_phase7_2_aws_targeted_diagnostic"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/cleanup-verification.json",
+      "bytes": 3082,
+      "sha256": "1329d7e80e211a50f6fdac65dfcd48a924e2c58bd01500248245939f6717565c"
+    },
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/commands.md",
+      "bytes": 1132,
+      "sha256": "7dc44563701a801938d762f9ff59d00770809974ff775d7686d4d2eca7fa61ab"
+    },
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/infra.md",
+      "bytes": 621,
+      "sha256": "40ddbdbf345029467ccd481344d653c96acdb7d9ede61c2ac0a3e1608e963b95"
+    },
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/report.json",
+      "bytes": 1415,
+      "sha256": "9363c0497a5b433783555f3e64b4df62eb249e389923d3265a52102ef9f43836"
+    },
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/report.md",
+      "bytes": 272,
+      "sha256": "1e5807434d8174c0774e7a4fecdb00bc77c3e76b2ea2d3d79c11ca209e3c8cc4"
+    },
+    {
+      "path": "run_20260719_071857_phase7_2_aws_targeted_diagnostic/run.json",
+      "bytes": 1240,
+      "sha256": "9a206a85a21fc2857f8d15e6afd3a422a937b30f0c9430c6c6a0d328e4daea76"
+    }
+  ]
+}

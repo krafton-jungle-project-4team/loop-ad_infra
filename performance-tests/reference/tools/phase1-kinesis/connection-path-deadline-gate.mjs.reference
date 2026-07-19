@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+export function evaluateConnectionPathDeadlineGate({ now, newWorkEnd, hardDeadline, action, costModel }) {
+    for (const [name, value] of Object.entries({ now, newWorkEnd, hardDeadline })) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+            throw new Error(`${name} must be an absolute ISO-8601 timestamp`);
+        }
+    }
+    if (!['deploy', 'stage', 'evidence-export', 'cleanup', 'residual-verification'].includes(action)) throw new Error('unsupported action');
+    const nowMs = Date.parse(now);
+    const newWorkEndMs = Date.parse(newWorkEnd);
+    const hardDeadlineMs = Date.parse(hardDeadline);
+    if (hardDeadlineMs - newWorkEndMs < 30 * 60 * 1000) throw new Error('hard deadline must preserve at least 30 minutes after new-work end for cleanup');
+    if (!costModel?.budget || typeof costModel.budget !== 'object') throw new Error('cost model budget is required');
+    const { hardCapUsd, newDeployAccruedStopUsd } = costModel.budget;
+    if (!Number.isFinite(hardCapUsd) || hardCapUsd <= 0 || !Number.isFinite(newDeployAccruedStopUsd) || newDeployAccruedStopUsd <= 0 || newDeployAccruedStopUsd >= hardCapUsd) {
+        throw new Error('cost model budget thresholds are invalid');
+    }
+    const isNewWork = action === 'deploy' || action === 'stage';
+    const isResidualOnly = action === 'evidence-export' || action === 'cleanup' || action === 'residual-verification';
+    const checks = {
+        beforeRelevantDeadline: isNewWork ? nowMs < newWorkEndMs : isResidualOnly && nowMs < hardDeadlineMs,
+        accruedBelowDeployStop: !isNewWork || costModel.budget.accruedUpperBoundUsd < newDeployAccruedStopUsd,
+        projectedPlusReserveBelowCap: !isNewWork || costModel.budget.projectedPlusReserveUsd < hardCapUsd,
+        cleanupReserveAtLeastFive: costModel.budget.cleanupReserveUsd >= 5,
+        costModelMayStart: !isNewWork || costModel.budget.mayStart === true,
+    };
+    return {
+        evaluatedAt: now,
+        action,
+        deadlines: { newWorkEnd, hardDeadline },
+        cost: {
+            accruedUpperBoundUsd: costModel.budget.accruedUpperBoundUsd,
+            projectedPlusReserveUsd: costModel.budget.projectedPlusReserveUsd,
+            cleanupReserveUsd: costModel.budget.cleanupReserveUsd,
+            hardCapUsd,
+            newDeployAccruedStopUsd,
+        },
+        checks,
+        allowed: Object.values(checks).every(Boolean),
+    };
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const costModel = JSON.parse(readFileSync(requiredOption('--cost-model'), 'utf8'));
+    const result = evaluateConnectionPathDeadlineGate({
+        now: requiredOption('--now'),
+        newWorkEnd: requiredOption('--new-work-end'),
+        hardDeadline: requiredOption('--hard-deadline'),
+        action: requiredOption('--action'),
+        costModel,
+    });
+    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    const output = optionValue('--output');
+    if (output) writeFileSync(output, serialized, 'utf8');
+    process.stdout.write(serialized);
+    if (!result.allowed) process.exitCode = 2;
+}
+
+function optionValue(name) { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }

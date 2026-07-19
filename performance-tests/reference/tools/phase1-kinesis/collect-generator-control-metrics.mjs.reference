@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const fullName = requiredOption('--load-balancer-full-name');
+const start = requiredOption('--start-time');
+const end = requiredOption('--end-time');
+const output = requiredOption('--output');
+const definitions = {
+    requestCount: ['RequestCount', 'Sum'], fixedResponseCount: ['HTTP_Fixed_Response_Count', 'Sum'],
+    rejectedConnectionCount: ['RejectedConnectionCount', 'Sum'], elb4xx: ['HTTPCode_ELB_4XX_Count', 'Sum'],
+    elb5xx: ['HTTPCode_ELB_5XX_Count', 'Sum'], activeConnections: ['ActiveConnectionCount', 'Maximum'],
+    newConnections: ['NewConnectionCount', 'Sum'], processedBytes: ['ProcessedBytes', 'Sum'],
+};
+const raw = {};
+for (const [key, [metricName, statistics]] of Object.entries(definitions)) {
+    raw[key] = aws(['cloudwatch', 'get-metric-statistics', '--region', REGION, '--namespace', 'AWS/ApplicationELB',
+        '--metric-name', metricName, '--dimensions', `Name=LoadBalancer,Value=${fullName}`,
+        '--start-time', start, '--end-time', end, '--period', '60', '--statistics', statistics]);
+}
+const value = (key) => (raw[key].Datapoints ?? []).reduce((sum, point) => sum + Number(point.Sum ?? point.Maximum ?? 0), 0);
+const result = { collectedAt: new Date().toISOString(), loadBalancerFullName: fullName, startTime: start, endTime: end,
+    requestCount: value('requestCount'), fixedResponseCount: value('fixedResponseCount'),
+    rejectedConnectionCount: value('rejectedConnectionCount'), elb4xx: value('elb4xx'), elb5xx: value('elb5xx'),
+    activeConnectionsMaximum: Math.max(0, ...(raw.activeConnections.Datapoints ?? []).map((point) => Number(point.Maximum ?? 0))),
+    newConnectionCount: value('newConnections'), processedBytes: value('processedBytes'), raw };
+writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+function aws(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8' })); }
+function requiredOption(name) { const index = process.argv.indexOf(name); const value = index < 0 ? undefined : process.argv[index + 1]; if (!value) throw new Error(`${name} required`); return value; }

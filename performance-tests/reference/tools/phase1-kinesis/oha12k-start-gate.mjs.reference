@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const REGION = 'ap-northeast-2';
+const STREAM_NAME = 'perf-phase1-loop-ad-events';
+const START_DEADLINE_SECONDS = 100 * 60;
+const CLEANUP_DEADLINE_SECONDS = 110 * 60;
+const HARD_STREAM_LIFETIME_SECONDS = 120 * 60;
+const minimumWorkSeconds = { topology: 600, candidate: 900, stage: 300, cleanup: 0 };
+
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const action = requiredOption('--action');
+const outputPath = optionValue('--output');
+const now = new Date(optionValue('--now') ?? Date.now());
+const estimatedWorkSeconds = integerOption('--estimated-work-seconds', minimumWorkSeconds[action]);
+if (!/^phase1-capacity-oha12k-[0-9]{8}T[0-9]{6}Z$/.test(sessionId)) throw new Error('invalid --session-id');
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid --candidate');
+if (!Object.hasOwn(minimumWorkSeconds, action)) throw new Error('invalid --action');
+if (!Number.isFinite(now.getTime())) throw new Error('invalid --now');
+
+const fixturePath = optionValue('--stream-fixture');
+const stream = fixturePath ? JSON.parse(readFileSync(fixturePath, 'utf8')) : readStream();
+const creation = new Date(stream.summary.StreamCreationTimestamp);
+const ageSeconds = (now.getTime() - creation.getTime()) / 1_000;
+const projectedFinishAgeSeconds = ageSeconds + estimatedWorkSeconds;
+const ownershipSafe = tagsMatch(stream.tags, {
+    Project: 'loop-ad', Environment: 'perf-phase1-kinesis', ResourceScope: 'shared-test-session',
+    ComparisonSessionId: sessionId, SessionId: sessionId, RunId: sessionId,
+    Phase: 'phase1-capacity-oha12k', ManagedBy: 'codex', Owner: 'loop-ad',
+});
+const streamHealthy = stream.summary.StreamStatus === 'ACTIVE' &&
+    stream.summary.OpenShardCount === 80 && stream.summary.RetentionPeriodHours === 24;
+let cost = null;
+if (action !== 'cleanup') {
+    const accrued = JSON.parse(readFileSync(requiredOption('--accrued-cost'), 'utf8'));
+    const projected = JSON.parse(readFileSync(requiredOption('--projected-cost'), 'utf8'));
+    const modeledAccruedUsd = accrued.projectedCumulativeUpperBoundUsd ?? accrued.runUpperBoundUsd;
+    cost = {
+        modeledAccruedUsd,
+        projectedTotalUsd: projected.projectedCumulativeUpperBoundUsd,
+        belowNewRunStop: Number.isFinite(modeledAccruedUsd) && modeledAccruedUsd < 18,
+        belowHardLimit: Number.isFinite(projected.projectedCumulativeUpperBoundUsd) && projected.projectedCumulativeUpperBoundUsd < 20,
+    };
+}
+const checks = {
+    ownershipSafe,
+    streamHealthy,
+    nonNegativeStreamAge: ageSeconds >= 0,
+    streamBelowHardLifetime: ageSeconds < HARD_STREAM_LIFETIME_SECONDS,
+    cleanupDeadlineNotPassed: action === 'cleanup' || ageSeconds < CLEANUP_DEADLINE_SECONDS,
+    startWindowOpen: action === 'cleanup' || ageSeconds < START_DEADLINE_SECONDS,
+    conservativeEstimateProvided: action === 'cleanup' || estimatedWorkSeconds >= minimumWorkSeconds[action],
+    projectedFinishBeforeCleanup: action === 'cleanup' || projectedFinishAgeSeconds <= CLEANUP_DEADLINE_SECONDS,
+    accruedBelowNewRunStop: action === 'cleanup' || cost.belowNewRunStop,
+    projectedBelowHardLimit: action === 'cleanup' || cost.belowHardLimit,
+};
+const result = {
+    checkedAt: now.toISOString(), action, sessionId, candidate,
+    stream: { name: STREAM_NAME, creationTimestamp: creation.toISOString(), ageSeconds,
+        ageMinutes: ageSeconds / 60, projectedFinishAgeSeconds, projectedFinishAgeMinutes: projectedFinishAgeSeconds / 60,
+        startDeadlineSeconds: START_DEADLINE_SECONDS, cleanupDeadlineSeconds: CLEANUP_DEADLINE_SECONDS,
+        hardLifetimeSeconds: HARD_STREAM_LIFETIME_SECONDS, cleanupRequired: ageSeconds >= CLEANUP_DEADLINE_SECONDS,
+        hardExpired: ageSeconds >= HARD_STREAM_LIFETIME_SECONDS },
+    estimate: { estimatedWorkSeconds, minimumWorkSeconds: minimumWorkSeconds[action] },
+    cost, checks, passed: Object.values(checks).every(Boolean),
+};
+const serialized = `${JSON.stringify(result, null, 2)}\n`;
+if (outputPath) writeFileSync(outputPath, serialized, 'utf8');
+process.stdout.write(serialized);
+if (!result.passed) process.exitCode = 2;
+
+function readStream() {
+    const summary = awsJson(['kinesis', 'describe-stream-summary', '--region', REGION, '--stream-name', STREAM_NAME]).StreamDescriptionSummary;
+    const tags = awsJson(['kinesis', 'list-tags-for-stream', '--region', REGION, '--stream-name', STREAM_NAME]).Tags ?? [];
+    return { summary, tags };
+}
+function tagsMatch(tags, expected) { const actual = Object.fromEntries((tags ?? []).map((tag) => [tag.Key, tag.Value])); return Object.entries(expected).every(([key, value]) => actual[key] === value); }
+function awsJson(args) { return JSON.parse(execFileSync('aws', [...args, '--output', 'json', '--no-cli-pager'], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })); }
+function requiredOption(name) { const value = optionValue(name); if (!value) throw new Error(`${name} is required`); return value; }
+function optionValue(name) { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
+function integerOption(name, fallback) { const raw = optionValue(name); const value = raw === undefined ? fallback : Number(raw); if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`); return value; }

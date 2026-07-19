@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import test from 'node:test';
+
+const script = new URL('./tcp-alb-diagnosis-start-gate.mjs', import.meta.url).pathname;
+const sessionId = 'phase1-kinesis-tcp-alb-path-diagnosis-20260713T050507Z';
+
+test('absolute time and independent cost limits pass only with cleanup reserve protected', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tcp-alb-gate-'));
+    const session = join(dir, 'session.json');
+    const accrued = join(dir, 'accrued.json');
+    const projected = join(dir, 'projected.json');
+    writeFileSync(session, JSON.stringify({ sessionId, region: 'ap-northeast-2', hardLimits: {
+        newWorkDeadlineUtc: '2026-07-13T09:30:00Z', hardDeadlineUtc: '2026-07-13T10:00:00Z' } }));
+    writeFileSync(accrued, JSON.stringify({ projectedCumulativeUpperBoundUsd: 10 }));
+    writeFileSync(projected, JSON.stringify({ projectedCumulativeUpperBoundUsd: 20 }));
+    const args = ['--session-id', sessionId, '--session', session, '--action', 'stage',
+        '--estimated-work-seconds', '300', '--now', '2026-07-13T08:00:00Z',
+        '--accrued-cost', accrued, '--projected-cost', projected];
+    const passed = JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: 'utf8' }));
+    assert.equal(passed.passed, true);
+    writeFileSync(projected, JSON.stringify({ projectedCumulativeUpperBoundUsd: 27 }));
+    assert.equal(spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' }).status, 2);
+});
+
+test('new work closes at 18:30 KST while cleanup remains allowed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tcp-alb-gate-'));
+    const session = join(dir, 'session.json');
+    writeFileSync(session, JSON.stringify({ sessionId, region: 'ap-northeast-2', hardLimits: {
+        newWorkDeadlineUtc: '2026-07-13T09:30:00Z', hardDeadlineUtc: '2026-07-13T10:00:00Z' } }));
+    const blocked = spawnSync(process.execPath, [script, '--session-id', sessionId, '--session', session,
+        '--action', 'stage', '--now', '2026-07-13T09:30:00Z'], { encoding: 'utf8' });
+    assert.notEqual(blocked.status, 0);
+    const cleanup = JSON.parse(execFileSync(process.execPath, [script, '--session-id', sessionId, '--session', session,
+        '--action', 'cleanup', '--now', '2026-07-13T10:30:00Z'], { encoding: 'utf8' }));
+    assert.equal(cleanup.passed, true);
+});
+
+test('selects the earlier deploy cutoff and later stage cutoff when both are explicit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tcp-alb-gate-split-'));
+    const session = join(dir, 'session.json');
+    const accrued = join(dir, 'accrued.json');
+    const projected = join(dir, 'projected.json');
+    writeFileSync(session, JSON.stringify({ sessionId, region: 'ap-northeast-2', hardLimits: {
+        newDeployDeadlineUtc: '2026-07-13T18:30:00Z', newStageDeadlineUtc: '2026-07-13T19:30:00Z',
+        newWorkDeadlineUtc: '2026-07-13T19:30:00Z', hardDeadlineUtc: '2026-07-13T21:00:00Z' } }));
+    writeFileSync(accrued, JSON.stringify({ projectedCumulativeUpperBoundUsd: 1 }));
+    writeFileSync(projected, JSON.stringify({ projectedCumulativeUpperBoundUsd: 2 }));
+    const common = ['--session-id', sessionId, '--session', session, '--now', '2026-07-13T18:45:00Z', '--accrued-cost', accrued, '--projected-cost', projected];
+    assert.equal(spawnSync(process.execPath, [script, ...common, '--action', 'deploy', '--estimated-work-seconds', '1200']).status, 2);
+    const stage = JSON.parse(execFileSync(process.execPath, [script, ...common, '--action', 'stage', '--estimated-work-seconds', '300'], { encoding: 'utf8' }));
+    assert.equal(stage.passed, true);
+    assert.equal(stage.deadlines.selectedField, 'newStageDeadlineUtc');
+});

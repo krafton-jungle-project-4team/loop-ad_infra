@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 12,
+  "generatedAt": "2026-07-18T19:14:19Z",
+  "failure": {
+    "stage": "verify",
+    "diagnosis": "HAProxy 3.2.4 emitted 50,342 bytes of Prometheus metrics, but SSM StandardOutputContent returned only 24,000 bytes. The required aggregated backend metric began at byte 31,042, so the verifier observed a truncated document rather than a failed backend.",
+    "evidencePath": "performance-tests/run_20260718_175720_phase7_2_aws_integration/evidence/verify-haproxy-ssm-truncation.json",
+    "evidenceSha256": "3ba2ffbb07ff1d77aed29f51ce08bb611bf27fa9ecc6ae2e29197e13b25745f2"
+  },
+  "fix": {
+    "description": "Filter the HAProxy metrics stream on the remote host to the three metric families consumed by verification and score accounting before SSM captures stdout.",
+    "commit": "a5af5edfbe0517dd17172d0ed870bfae3d95a796",
+    "source": {
+      "path": "performance-tests/phase7-integration/aws/runtime_observability.py",
+      "sha256": "a511e0f5f58c42ea9ad59a4d8308af4e1cead873f2218e51d7256ab96fcf655c"
+    },
+    "regressionTest": {
+      "path": "performance-tests/phase7-integration/tests/test_runtime_observability.py",
+      "sha256": "d43bb3eb886cb5adad01d463e391f9ff5cc307e453e1611afdf0fd0e1221e036",
+      "fixtureBytesBeforeRequiredMetricGreaterThan": 24000,
+      "requiredMetricAbsentFromFirstBytes": 24000,
+      "remoteFilterRunsBeforeSsmCapture": true,
+      "selectedOutputBelowSsmLimit": true
+    }
+  },
+  "verification": {
+    "focusedRuntimeObservabilityTests": 11,
+    "phase7JestTests": 14,
+    "nodeTests": 27,
+    "pythonTests": 139,
+    "build": "passed",
+    "exactContextSynth": {
+      "status": "passed",
+      "templateSha256": "0eb0c066182bab00ef574aa3b6fc3a82a7c0ebab69a0d12c1ccf6969ff32c818",
+      "byteIdenticalToAttempt12SealedTemplate": true,
+      "noLookups": true,
+      "strict": true
+    },
+    "repositoryTemplateValidation": {
+      "status": "passed",
+      "taskDefinitionsChecked": 5,
+      "healthChecksChecked": 4,
+      "schemaGuardRetries": 10
+    },
+    "decodedUserData": {
+      "status": "passed",
+      "ec2LimitBytes": 16384,
+      "loadGeneratorMarginLimitBytes": 15360,
+      "maximumDecodedBytes": 15224,
+      "loadGeneratorRemainingMarginBytes": 136,
+      "launchTemplateCount": 5
+    },
+    "cfnLint": {
+      "version": "1.53.0",
+      "rawExitCode": 6,
+      "acceptedAssemblyOnlyE1022": 8,
+      "acceptedRedundantDependencyW3005": 3,
+      "unexpectedFindings": 0,
+      "status": "passed"
+    }
+  },
+  "freshPhase71HandoffRequiredBeforeNextAwsAttempt": true,
+  "status": "passed"
+}

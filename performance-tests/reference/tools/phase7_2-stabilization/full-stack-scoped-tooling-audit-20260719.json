@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "recordType": "phase7-2-read-only-tooling-audit",
+  "recordedAt": "2026-07-19T12:32:30Z",
+  "scope": "active no-new-50k composite policy and Phase 8 handoff integrity",
+  "awsRequests": 0,
+  "findings": [
+    {
+      "findingId": "strict-paid-cli-policy-bypass",
+      "priority": "P1",
+      "diagnosis": "The legacy strict preflight, image preparation and runner new-work paths did not require the active composite policy or a new certification budget authorization, so they could start work that the current user policy explicitly disabled.",
+      "fix": "Fail-close strict handoff preflight/image preparation. The legacy runner unconditionally rejects initialization and every NEW_WORK stage under the current composite policy, independent of persisted preflight contents; cleanup remains available.",
+      "verification": "Focused regression uses a missing-or-attacker-controlled attemptType and proves policy rejection happens before process spawn while cleanup is still admitted.",
+      "status": "fixed-awaiting-implementation-commit"
+    },
+    {
+      "findingId": "composite-handoff-missing-external-anchors",
+      "priority": "P1",
+      "diagnosis": "The composite builder validated the ledger's internal hash chain but did not compare Attempt 17 or the fresh scoped head to their immutable entry artifacts and did not rebind the fresh source seal, policy, commit, Git tree, implementation tree and image source closures.",
+      "fix": "Require exact Attempt 17 entry artifact equality, exact fresh runtime campaign-ledger-entry equality, source-seal revalidation and exact commit/tree/closure bindings before Phase 8 handoff construction.",
+      "verification": "Focused regression rejects rewritten entry and source bindings and accepts exact external anchors.",
+      "status": "fixed-awaiting-implementation-commit"
+    }
+  ],
+  "summary": {
+    "p0": 0,
+    "p1": 2,
+    "fixed": 2,
+    "focusedPythonTestsPassed": 60,
+    "focusedPythonTestsFailed": 0,
+    "reAuditAt": "2026-07-19T12:39:32Z",
+    "remainingP0": 0,
+    "remainingP1": 0
+  }
+}

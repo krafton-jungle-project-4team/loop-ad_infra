@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "attemptOrdinal": 16,
+  "runId": "run_20260719_020156_phase7_integration",
+  "sessionId": "phase7-integration-20260719T020156Z",
+  "reconciledAt": "2026-07-19T03:23:05Z",
+  "paidRuntime": {
+    "imagePreparationStartedAt": "2026-07-19T02:14:53.066Z",
+    "deployStartedAt": "2026-07-19T02:39:01.221086Z",
+    "runtimeDeployCompletedAt": "2026-07-19T02:52:55.843783Z",
+    "verifyCompletedAt": "2026-07-19T02:53:38.682722Z",
+    "correctnessCompletedAt": "2026-07-19T02:55:28.893821Z",
+    "seedCompletedAt": "2026-07-19T02:55:57.954328Z",
+    "warmupFailedAt": "2026-07-19T03:01:23.839279Z",
+    "cleanupFinishedAt": "2026-07-19T03:15:52.484649Z",
+    "authoritativeCleanupZeroAt": "2026-07-19T03:16:11.077Z",
+    "postFinalZeroConfirmedAt": "2026-07-19T03:21:44.490Z",
+    "runtimeStartToAuthoritativeZeroSeconds": "2229.856",
+    "imageStartToAuthoritativeZeroSeconds": "3678.011"
+  },
+  "costExplorer": {
+    "evidencePath": "performance-tests/phase7_2-stabilization/attempt-16-cost-explorer-20260719.json",
+    "evidenceSha256": "222d5cc22e082069a398f9ac75c55d1ed5106772a48c1def8bd13e559738106f",
+    "observedUnblendedCostUsd": "0.000000",
+    "estimated": true,
+    "warning": "The current-day result is estimated and delayed; zero is not treated as a zero-cost attempt."
+  },
+  "priceEvidence": {
+    "path": "performance-tests/run_20260719_020156_phase7_2_deployment_readiness/prices-final.json",
+    "sha256": "0ea9eb30e4f63546d4312173af451ba6e67c1f69236f43b36455692e29d23f87",
+    "asOf": "2026-07-19T02:26:47.957Z",
+    "region": "ap-northeast-2"
+  },
+  "modeledFailurePath": {
+    "billableRuntimeDurationCeilingSeconds": 3600,
+    "actualRuntimeDurationBelowCeiling": true,
+    "executedWork": {
+      "correctnessRequests": 1002,
+      "replacementRequests": 900,
+      "warmupRequestedRequests": 9000000,
+      "scoreStarted": false,
+      "archiveStarted": false
+    },
+    "components": [
+      {"name": "EC2 fixed fleet", "costUsd": "3.369200", "formula": "(6*.192 + 2*.2562 + 8*.1281 + 2*.0816 + 1*.5168)*1"},
+      {"name": "Kinesis provisioned shards", "costUsd": "2.220000", "formula": "120*1*.0185"},
+      {"name": "Kinesis PUT payload units", "costUsd": "0.183639", "formula": "9001902*.0000000204"},
+      {"name": "three Network Load Balancers", "costUsd": "0.067500", "formula": "3*1*.0225"},
+      {"name": "NLB capacity allowance", "costUsd": "0.600000", "formula": "100*1*.006"},
+      {"name": "single NAT gateway", "costUsd": "0.059000", "formula": "1*.059"},
+      {"name": "NAT processed data allowance", "costUsd": "0.590000", "formula": "10*.059"},
+      {"name": "NAT gateway public IPv4 address", "costUsd": "0.005000", "formula": "1*.005"},
+      {"name": "gp3 capacity", "costUsd": "0.129929", "formula": "1040*(1/730)*.0912"},
+      {"name": "gp3 extra throughput", "costUsd": "0.023425", "formula": "(375/1024)*(1/730)*46.6944"},
+      {"name": "Secrets Manager storage", "costUsd": "0.013151", "formula": "(24/730)*.4"},
+      {"name": "Secrets Manager API", "costUsd": "0.010000", "formula": "2000*.000005"},
+      {"name": "CloudWatch custom metrics", "costUsd": "0.246575", "formula": "600*(1/730)*.3"},
+      {"name": "CloudWatch log ingestion allowance", "costUsd": "3.800000", "formula": "5*.76"},
+      {"name": "CloudWatch log storage allowance", "costUsd": "0.005162", "formula": "5*(24/730)*.0314"},
+      {"name": "CloudWatch GetMetricData allowance", "costUsd": "1.000000", "formula": "100000*.00001"},
+      {"name": "ECR image storage", "costUsd": "0.009863", "formula": "3*(24/730)*.1"},
+      {"name": "DynamoDB on-demand reads", "costUsd": "0.271000", "formula": "2000000*.0000001355"},
+      {"name": "DynamoDB on-demand writes", "costUsd": "0.680000", "formula": "1000000*.00000068"},
+      {"name": "DynamoDB storage", "costUsd": "0.002670", "formula": ".3*(24/730)*.27075"},
+      {"name": "S3 standard storage", "costUsd": "0.004932", "formula": "6*(24/730)*.025"},
+      {"name": "S3 write/list requests", "costUsd": "0.045000", "formula": "10000*.0000045"},
+      {"name": "S3 read requests", "costUsd": "0.010500", "formula": "30000*.00000035"},
+      {"name": "Cost Explorer query", "costUsd": "0.010000", "formula": "1*.01"},
+      {"name": "evidence and transfer reserve", "costUsd": "1.500000", "formula": "1.5"},
+      {"name": "failure-path and delayed metering reserve", "costUsd": "0.500000", "formula": ".5"}
+    ],
+    "rawTotalUsd": "15.356544828197",
+    "upperBoundUsd": "15.356545",
+    "roundingNote": "The runtime fleet existed for less than one hour, but per-second and hourly resources retain a one-hour ceiling. Full warmup request, 5 GiB log, NLCU, NAT, DynamoDB and CloudWatch control allowances remain. Score and archive request costs are excluded because neither stage started. Storage retains a full-day allowance."
+  },
+  "roundingPolicy": "Charge 16.000000 USD to the active epoch by rounding the 15.356545 USD failure-path upper bound upward while retaining delayed-billing margin.",
+  "chargedUpperBoundUsd": "16.000000",
+  "budgetBeforeAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-15",
+    "activeEpochAccruedUpperBoundUsd": "0.000000",
+    "lifetimeChargedUpperBoundUsd": "99.000000"
+  },
+  "budgetAfterAttempt": {
+    "epochId": "phase7-2-reset-20260719-after-attempt-15",
+    "activeEpochAccruedUpperBoundUsd": "16.000000",
+    "lifetimeChargedUpperBoundUsd": "115.000000",
+    "hardCapUsd": "60.000000",
+    "newPaidWorkStopUsd": "55.000000",
+    "cleanupReserveUsd": "5.000000",
+    "lifetimeValueInformationalOnly": true
+  },
+  "nextFullAttemptGate": {
+    "priorActiveEpochAccruedUpperBoundUsd": "16.000000",
+    "nextAttemptOperationalUpperBoundUsd": "33.870718",
+    "activeEpochOperationalMaximumUsd": "49.870718",
+    "cleanupReserveUsd": "5.000000",
+    "maximumIncludingCleanupUsd": "54.870718",
+    "newWorkStopUsd": "55.000000",
+    "hardCapUsd": "60.000000",
+    "remainingMarginUsd": "5.129282",
+    "remainingHardCapUsd": "44.000000",
+    "remainingOperationalBeforeReserveUsd": "39.000000",
+    "passed": true,
+    "authorization": "One next full attempt is authorized only after the focused fix, fresh exact-source handoff, fresh prices and absent/prepared preflights pass."
+  },
+  "sourceEvidence": {
+    "cleanupInventory": {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/cleanup-inventory.json",
+      "sha256": "7a7c7216b4b542abc7fe915ee5edaa4d607e112a89c5139c38707a5e5890568d"
+    },
+    "cleanupVerification": {
+      "path": "performance-tests/run_20260719_020156_phase7_2_aws_integration/cleanup-verification.json",
+      "sha256": "6714577736f6811763f55ba826e16677e1b05c6c185d148412d53fec19fe8b58"
+    },
+    "diagnosis": {
+      "path": "performance-tests/phase7_2-stabilization/attempt-16-ssm-observation-failure-diagnosis.json",
+      "sha256": "76d5e0851ef50e2687f1346eaf4e85df15abe5c51351869d25c9f410124508f0"
+    }
+  }
+}

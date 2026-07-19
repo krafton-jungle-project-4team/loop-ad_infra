@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 1,
+  "runId": "run_20260711_015921_phase1_kinesis_2c_10k_retry2",
+  "phase": "phase1",
+  "category": "diagnostic",
+  "executedAt": "2026-07-11T01:59:21",
+  "purpose": "not_recorded",
+  "hypothesis": "Two ECS-optimized Amazon Linux 2023 c6i.xlarge collectors sustain 10,000 RPS for 60 seconds through the synchronous one-event/one-PutRecord path within all exploration acceptance gates after readiness signaling is moved after ECS registration.",
+  "topology": "not_recorded",
+  "majorSettings": [
+    {
+      "name": "collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    }
+  ],
+  "sourceRevision": "not_recorded",
+  "status": "failed",
+  "rawStatus": "failed",
+  "validity": "unknown",
+  "keyMetrics": [
+    {
+      "name": "status",
+      "value": "failed",
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "previousCumulativeUpperBoundUsd",
+      "value": 25.178589509158133,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.appliedVcpus",
+      "value": 80,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.existingUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.goalOwnedRunningOrPendingVcpus",
+      "value": 0,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedRunningOrPendingVcpus",
+      "value": 4,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[0].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].count",
+      "value": 1,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].vcpusPerInstance",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.observedUsageByType[1].totalVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.ignoredNonStandardInstanceCount",
+      "value": 0,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.loadGeneratorVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.safetyReserveVcpus",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.collectorVcpusPerHost",
+      "value": 4,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.availableCollectorVcpus",
+      "value": 72,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "quota.maxSafeCollectorCount",
+      "value": 17,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.verdict",
+      "value": "failed",
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.targetRps",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.durationSeconds",
+      "value": 60,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.requests.transportErrors",
+      "value": 0,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "result.evidence.preflightPassed",
+      "value": true,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.instanceCount",
+      "value": 3,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.requestsUpperBound",
+      "value": 600000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.detailedMetricCount",
+      "value": 30,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.inputs.previousUpperBoundUsd",
+      "value": 25.178589509158133,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.runUpperBoundUsd",
+      "value": 1.475150663013699,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.projectedCumulativeUpperBoundUsd",
+      "value": 26.653740172171833,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.hardLimitUsd",
+      "value": 50,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.preRunUpperBound.budget.optionalRunStopUsd",
+      "value": 45,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.instanceCount",
+      "value": 3,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.requestsUpperBound",
+      "value": 0,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.detailedMetricCount",
+      "value": 30,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.cloudWatchMetricsRequestedUpperBound",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.inputs.previousUpperBoundUsd",
+      "value": 25.178589509158133,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.components.costExplorerApi",
+      "value": 0.01,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.runUpperBoundUsd",
+      "value": 7.363249863013698,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.projectedCumulativeUpperBoundUsd",
+      "value": 32.54183937217183,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.hardLimitUsd",
+      "value": 50,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.realtimeEstimate.budget.optionalRunStopUsd",
+      "value": 45,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.costExplorer.relevantAccountCostUsd",
+      "value": 1.6965852880999999,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cost.costExplorer.apiChargeIncludedInRealtimeModelUsd",
+      "value": 0.01,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.status",
+      "value": "ACTIVE",
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cleanup.sharedStream.openShardCount",
+      "value": 80,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "cleanup.passed",
+      "value": true,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json"
+    },
+    {
+      "name": "verdict",
+      "value": "failed",
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    },
+    {
+      "name": "targetRps",
+      "value": 10000,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    },
+    {
+      "name": "durationSeconds",
+      "value": 60,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    },
+    {
+      "name": "collectorCount",
+      "value": 2,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    },
+    {
+      "name": "requests.transportErrors",
+      "value": 0,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    },
+    {
+      "name": "evidence.preflightPassed",
+      "value": true,
+      "source": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json"
+    }
+  ],
+  "correctnessStatus": "not_recorded",
+  "costStatus": "unknown",
+  "cleanupStatus": "passed",
+  "conclusion": "not_recorded",
+  "limitations": [
+    "not_recorded"
+  ],
+  "relatedIncidents": [
+    "incident-phase1-kinesis-2c-10k"
+  ],
+  "provenance": {
+    "snapshotId": "snapshot_20260719T200907Z",
+    "workspaceArchiveSha256": "773aae45e7ba300535741a79bccd503704d8bc4d4716dbb72e3f59206f808417",
+    "sourceHeadAtSnapshot": "304bfeb8bd0808797e28293b74a073d5c5e5ef11",
+    "sourcePaths": [
+      "run_20260711_015921_phase1_kinesis_2c_10k_retry2"
+    ]
+  },
+  "sourceEvidence": [
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/artifacts.md",
+      "bytes": 652,
+      "sha256": "d7f9b99cdd4f7a4ebdfbacd9f44ca0daafadf70cce227a02638f0ee850bd1458"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/cleanup-verification.json",
+      "bytes": 1020,
+      "sha256": "9ccadb7813f2396caa3ca37b3aca90bd14cfeb036d5ebe20537501405512703b"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/commands.md",
+      "bytes": 1474,
+      "sha256": "e2e5ad306b888cac14bcf8408b8fd2b2b126c39c2a1d3e37bec097139f618b5b"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/cost-explorer.json",
+      "bytes": 939,
+      "sha256": "cc06f3974078752e76f90a8b4afbbe739e58a82895650a2b8e17bb87afcb232f"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/cost-realtime.json",
+      "bytes": 1461,
+      "sha256": "e07abfa174e2c2000df5fafb6111e2b59cb00f8776c5945a10e1a4d364726383"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/cost-upper-bound.json",
+      "bytes": 1508,
+      "sha256": "530b1dc478da15cc204fd39fe5a1b2850152d82e2b15ab1d9e60b41661c5a6b4"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/cost.md",
+      "bytes": 488,
+      "sha256": "a14fc4724798b092eb3650ffdc257abd819296707f3137e51bd89905062b8069"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/infra.md",
+      "bytes": 882,
+      "sha256": "28f73e2d4354497fc30a7ba7561f24535321bbeccee83b5417deed6ccc2a0ca7"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/metrics-summary.json",
+      "bytes": 939,
+      "sha256": "3feb9ebdfaab643f4d300e911be45f5e9bf9fdbe052d8556ad93f4e376d215c9"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/report.md",
+      "bytes": 1163,
+      "sha256": "dfa8167b9c0d6ec1de4489661a1c10fe14208f4b1a6c1a40616452bd607ad98e"
+    },
+    {
+      "path": "run_20260711_015921_phase1_kinesis_2c_10k_retry2/run.json",
+      "bytes": 9834,
+      "sha256": "f613dae81f57c459850d0d974390c923ed788de27cbe126c3d497d47d8689d00"
+    }
+  ]
+}

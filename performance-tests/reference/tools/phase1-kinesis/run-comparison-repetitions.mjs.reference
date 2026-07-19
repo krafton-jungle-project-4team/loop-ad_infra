@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const scripts = dirname(fileURLToPath(import.meta.url));
+const runDir = requiredOption('--run-dir');
+const runId = requiredOption('--run-id');
+const sessionId = requiredOption('--session-id');
+const candidate = requiredOption('--candidate');
+const loadGeneratorId = requiredOption('--load-generator-id');
+const targetBaseUrl = requiredOption('--target-base-url');
+const targetRps = requiredInteger('--target-rps');
+const accruedCost = requiredOption('--accrued-cost');
+const projectedCost = requiredOption('--projected-cost');
+const repetitions = integerOption('--repetitions', 10);
+const warmupSeconds = integerOption('--warmup-seconds', 30);
+const durationSeconds = integerOption('--duration-seconds', 60);
+const cooldownSeconds = integerOption('--cooldown-seconds', 15);
+const cloudWatchDelaySeconds = integerOption('--cloudwatch-delay-seconds', 150);
+if (!['go-sync', 'go-batch', 'java-kpl'].includes(candidate)) throw new Error('invalid candidate');
+if (repetitions !== 10) throw new Error('comparison contract requires exactly ten repetitions');
+
+mkdirSync(runDir, { recursive: true });
+const record = {
+    startedAt: new Date().toISOString(), runId, sessionId, candidate, targetRps,
+    warmupSeconds, durationSeconds, repetitions, cooldownSeconds, cloudWatchDelaySeconds,
+    commands: [],
+};
+writeRecord();
+
+gate('candidate', join(runDir, 'candidate-start-gate.json'));
+runNode('invoke-oha.mjs', [
+    '--instance-id', loadGeneratorId, '--target-base-url', targetBaseUrl,
+    '--run-id', runId, '--rps', `${targetRps}`, '--duration-seconds', `${warmupSeconds}`,
+    '--output-dir', join(runDir, 'warmup', 'load'),
+]);
+
+for (let index = 1; index <= repetitions; index++) {
+    const name = `repetition-${index.toString().padStart(2, '0')}`;
+    const directory = join(runDir, 'repetitions', name);
+    mkdirSync(directory, { recursive: true });
+    gate('repetition', join(directory, 'start-gate.json'));
+    runNode('collect-debug-vars.mjs', ['--expected-count', '1', '--candidate', candidate,
+        '--label', `${name}-pre`, '--output-dir', join(directory, 'debug-vars', 'pre-load')]);
+    runNode('collect-runtime-state.mjs', ['--candidate', candidate, '--label', `${name}-pre`,
+        '--output-dir', join(directory, 'runtime', 'pre-load')]);
+    runNode('invoke-oha.mjs', [
+        '--instance-id', loadGeneratorId, '--target-base-url', targetBaseUrl,
+        '--run-id', runId, '--rps', `${targetRps}`, '--duration-seconds', `${durationSeconds}`,
+        '--output-dir', join(directory, 'load'),
+    ]);
+    runNode('collect-debug-vars.mjs', ['--expected-count', '1', '--candidate', candidate,
+        '--label', `${name}-post`, '--output-dir', join(directory, 'debug-vars', 'post-load')]);
+    runNode('collect-runtime-state.mjs', ['--candidate', candidate, '--label', `${name}-post`,
+        '--output-dir', join(directory, 'runtime', 'post-load')]);
+    if (index < repetitions) await sleep(cooldownSeconds * 1_000);
+}
+
+await sleep(cloudWatchDelaySeconds * 1_000);
+for (let index = 1; index <= repetitions; index++) {
+    const name = `repetition-${index.toString().padStart(2, '0')}`;
+    const directory = join(runDir, 'repetitions', name);
+    const load = JSON.parse(readFileSync(join(directory, 'load', 'oha-summary.json'), 'utf8'));
+    runNode('collect-metrics.mjs', ['--start-time', load.startedAt, '--end-time', load.endedAt,
+        '--output-dir', join(directory, 'metrics')]);
+    runNode('collect-logs.mjs', ['--start-time', load.startedAt, '--end-time', load.endedAt,
+        '--output-dir', join(directory, 'logs')]);
+}
+runNode('summarize-comparison-candidate.mjs', [
+    '--candidate-dir', runDir, '--candidate', candidate, '--target-rps', `${targetRps}`,
+    '--duration-seconds', `${durationSeconds}`, '--expected-repetitions', `${repetitions}`,
+]);
+record.finishedAt = new Date().toISOString();
+record.completed = true;
+writeRecord();
+
+function gate(action, output) {
+    runNode('comparison-start-gate.mjs', [
+        '--session-id', sessionId, '--candidate', candidate, '--action', action,
+        '--accrued-cost', accruedCost, '--projected-cost', projectedCost, '--output', output,
+    ]);
+}
+
+function runNode(script, args) {
+    record.commands.push({ at: new Date().toISOString(), script, args });
+    writeRecord();
+    execFileSync('node', [join(scripts, script), ...args], { stdio: 'inherit' });
+}
+
+function writeRecord() {
+    writeFileSync(join(runDir, 'repetition-run-record.json'), `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
+function requiredInteger(name) {
+    const value = Number(requiredOption(name));
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be positive.`);
+    return value;
+}
+
+function integerOption(name, fallback) {
+    const index = process.argv.indexOf(name);
+    if (index < 0) return fallback;
+    const value = Number(process.argv[index + 1]);
+    if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be non-negative.`);
+    return value;
+}
+
+function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }

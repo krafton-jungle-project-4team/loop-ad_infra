@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { OHA12K_TOTAL_CONNECTIONS } from './oha-load-contract.mjs';
+
+export function aggregateOha12k({ manifest, nodes }) {
+    if (!manifest || !Array.isArray(manifest.nodes) || manifest.nodes.length === 0) {
+        throw new Error('manifest must contain nodes');
+    }
+    if (nodes.length !== manifest.nodes.length) throw new Error('node evidence count does not match manifest');
+    const exactRequestCountMode = manifest.completionMode === 'exact-request-count';
+    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+    const ordered = manifest.nodes.map((plan) => {
+        const evidence = byId.get(plan.nodeId);
+        if (!evidence) throw new Error(`missing evidence for ${plan.nodeId}`);
+        return aggregateNode(plan, evidence, manifest.durationSeconds, exactRequestCountMode);
+    });
+    const configuredConnections = sum(ordered, (node) => node.configuredConnections);
+    const offeredRps = sum(ordered, (node) => node.offeredRps);
+    const completedRequests = sum(ordered, (node) => node.completedRequests);
+    const attemptedRequests = sum(ordered, (node) => node.attemptedRequests);
+    const requestedRequests = exactRequestCountMode
+        ? sum(ordered, (node) => node.requestedRequests)
+        : null;
+    const transportErrors = sum(ordered, (node) => node.transportErrors);
+    const reports = nodes.flatMap(processReports);
+    const firstByteHistogram = mergedHistogram(reports.map((report) => report.firstByteHistogram));
+    const correctedHistogram = mergedHistogram(reports.map((report) => report.responseTimeHistogram));
+    const statusCodeDistribution = mergeDistributions(nodes.map((node) => node.summary.statusCodeDistribution));
+    const errorDistribution = mergeDistributions(nodes.map((node) => node.summary.errorDistribution));
+    const allowanceKeys = new Set(ordered.flatMap((node) => Object.keys(node.enaAllowanceDelta)));
+    const enaAllowanceDelta = Object.fromEntries([...allowanceKeys].sort().map((key) => [
+        key,
+        sum(ordered, (node) => node.enaAllowanceDelta[key] ?? 0),
+    ]));
+    const result = {
+        aggregatedAt: new Date().toISOString(),
+        experimentMode: manifest.experimentMode,
+        runId: manifest.runId,
+        nodeCount: ordered.length,
+        processesPerNode: manifest.processesPerNode ?? 1,
+        processCount: sum(ordered, (node) => node.processesPerNode),
+        targetRps: manifest.targetRps,
+        durationSeconds: manifest.durationSeconds,
+        completionMode: exactRequestCountMode ? 'exact-request-count' : 'duration',
+        requestedRequests,
+        startEpoch: manifest.startEpoch,
+        offeredRps,
+        actualRps: sum(ordered, (node) => node.actualRps),
+        completedRequests,
+        attemptedRequests,
+        transportErrors,
+        http202: statusCodeDistribution['202'] ?? 0,
+        http400: statusCodeDistribution['400'] ?? 0,
+        http413: statusCodeDistribution['413'] ?? 0,
+        http429: statusCodeDistribution['429'] ?? 0,
+        http5xx: Object.entries(statusCodeDistribution)
+            .filter(([code]) => code.startsWith('5'))
+            .reduce((total, [, count]) => total + count, 0),
+        configuredConnections,
+        observedConnections: {
+            maxOhaEstablishedSum: sum(ordered, (node) => node.connectionObservation.maxOhaEstablished),
+            maxTcpInuseSum: sum(ordered, (node) => node.connectionObservation.maxTcpInuse),
+        },
+        firstByteMs: {
+            average: weightedAverage(ordered, (node) => node.firstByteMs.average, (node) => node.completedRequests),
+            ...histogramQuantiles(firstByteHistogram),
+            worstNode: worstNodeQuantiles(ordered, 'firstByteMs'),
+        },
+        latencyCorrectedMs: {
+            ...histogramQuantiles(correctedHistogram),
+            worstNode: worstNodeQuantiles(ordered, 'latencyCorrectedMs'),
+        },
+        latencyMs: worstNodeQuantiles(ordered, 'latencyCorrectedMs'),
+        statusCodeDistribution,
+        errorDistribution,
+        enaAllowanceDelta,
+        nodes: ordered,
+        checks: {
+            expectedNodeCount: ordered.length === manifest.nodeCount,
+            exactTotalConnections: configuredConnections === OHA12K_TOTAL_CONNECTIONS,
+            exactOfferedRps: offeredRps === manifest.targetRps,
+            uniqueInstances: new Set(ordered.map((node) => node.instanceId)).size === ordered.length,
+            commonStartEpoch: ordered.every((node) => node.startEpoch === manifest.startEpoch),
+            commandsMatchManifest: ordered.every((node) => node.commandMatchesPlan),
+            exactProcessCount: sum(ordered, (node) => node.processesPerNode) ===
+                (manifest.processCount ?? manifest.nodeCount),
+            exactRequestedRequestCount: !exactRequestCountMode || (
+                requestedRequests === manifest.requestedRequests &&
+                requestedRequests === manifest.targetRps * manifest.durationSeconds
+            ),
+            attemptedRequestsMatchExactRequestCount: !exactRequestCountMode ||
+                attemptedRequests === requestedRequests,
+            durationDeadlineOptionAbsent: !exactRequestCountMode ||
+                ordered.every((node) => node.durationDeadlineOptionAbsent),
+        },
+    };
+    result.passed = Object.values(result.checks).every(Boolean);
+    return result;
+}
+
+function aggregateNode(plan, evidence, durationSeconds, exactRequestCountMode) {
+    const processEvidence = evidence.processes ?? [{
+        processId: 'process-01',
+        command: evidence.command,
+        summary: evidence.summary,
+        report: evidence.report,
+    }];
+    const processPlans = plan.processes ?? [{
+        processId: 'process-01',
+        connections: plan.connections,
+        offeredRps: plan.offeredRps,
+    }];
+    const connections = sum(processEvidence, (process) => numericArgument(process.command.arguments, '-c'));
+    const offeredRps = sum(processEvidence, (process) => numericArgument(process.command.arguments, '-q'));
+    const requestedRequests = exactRequestCountMode
+        ? sum(processEvidence, (process) => numericArgument(process.command.arguments, '-n'))
+        : null;
+    const telemetry = parseTelemetry(evidence.telemetryTsv);
+    return {
+        nodeId: plan.nodeId,
+        instanceId: plan.instanceId,
+        startedAt: evidence.summary.startedAt,
+        endedAt: evidence.summary.endedAt,
+        startEpoch: evidence.summary.startEpoch ?? plan.startEpoch,
+        processesPerNode: processEvidence.length,
+        offeredRps,
+        actualRps: evidence.summary.actualRps,
+        configuredConnections: connections,
+        completedRequests: evidence.summary.completedRequests,
+        attemptedRequests: evidence.summary.attemptedRequests,
+        requestedRequests,
+        transportErrors: evidence.summary.transportErrors,
+        firstByteMs: evidence.summary.firstByteMs,
+        latencyCorrectedMs: evidence.summary.latencyCorrectedMs,
+        connectionObservation: evidence.summary.connectionObservation,
+        processObservation: evidence.summary.processObservation,
+        limits: evidence.bootstrap,
+        socketTelemetry: maxima(telemetry, ['tcp_inuse', 'tcp_orphan', 'tcp_tw', 'tcp_alloc', 'oha_established', 'oha_syn_sent', 'oha_open_fds', 'conntrack_count']),
+        network: networkDelta(telemetry, durationSeconds),
+        enaAllowanceDelta: counterDelta(evidence.enaBefore, evidence.enaAfter),
+        processes: processEvidence.map((process) => ({
+            processId: process.processId,
+            offeredRps: numericArgument(process.command.arguments, '-q'),
+            actualRps: process.summary.actualRps,
+            configuredConnections: numericArgument(process.command.arguments, '-c'),
+            completedRequests: process.summary.completedRequests,
+            attemptedRequests: process.summary.attemptedRequests,
+            transportErrors: process.summary.transportErrors,
+            requestedRequests: exactRequestCountMode
+                ? numericArgument(process.command.arguments, '-n')
+                : null,
+            firstByteMs: process.summary.firstByteMs,
+            latencyCorrectedMs: process.summary.latencyCorrectedMs,
+        })),
+        durationDeadlineOptionAbsent: processEvidence.every((process) =>
+            !process.command.arguments.includes('-z')),
+        commandMatchesPlan: connections === plan.connections && offeredRps === plan.offeredRps &&
+            (!exactRequestCountMode || requestedRequests === sum(processPlans, (process) => process.requestedRequests)) &&
+            processEvidence.length === processPlans.length && processPlans.every((processPlan) => {
+                const process = processEvidence.find((candidate) => candidate.processId === processPlan.processId);
+                return process && numericArgument(process.command.arguments, '-c') === processPlan.connections &&
+                    numericArgument(process.command.arguments, '-q') === processPlan.offeredRps &&
+                    (!exactRequestCountMode ||
+                        numericArgument(process.command.arguments, '-n') === processPlan.requestedRequests);
+            }),
+    };
+}
+
+function processReports(node) {
+    return node.processes?.map((process) => process.report) ?? [node.report];
+}
+
+export function parseTelemetry(text) {
+    const lines = text.trim().split('\n').filter(Boolean);
+    if (lines.length < 2) return [];
+    const headers = lines[0].split('\t');
+    return lines.slice(1).map((line) => Object.fromEntries(line.split('\t').map((value, index) => [
+        headers[index],
+        index === 0 ? value : Number(value),
+    ])));
+}
+
+export function parseCounterText(text) {
+    return Object.fromEntries(text.trim().split('\n').filter(Boolean).map((line) => {
+        const [key, raw] = line.trim().split(/\s+/, 2);
+        return [key, Number(raw)];
+    }));
+}
+
+function counterDelta(before, after) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return Object.fromEntries([...keys].sort().map((key) => {
+        const value = (after[key] ?? 0) - (before[key] ?? 0);
+        if (!Number.isFinite(value) || value < 0) throw new Error(`counter decreased for ${key}`);
+        return [key, value];
+    }));
+}
+
+function numericArgument(args, name) {
+    const index = args.indexOf(name);
+    const value = Number(index >= 0 ? args[index + 1] : NaN);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`command is missing ${name}`);
+    return value;
+}
+
+function maxima(rows, fields) {
+    return Object.fromEntries(fields.map((field) => [field, Math.max(0, ...rows.map((row) => row[field] ?? 0))]));
+}
+
+function networkDelta(rows, durationSeconds) {
+    if (rows.length < 2) return { rxBytes: 0, txBytes: 0, rxMbps: 0, txMbps: 0 };
+    const first = rows[0];
+    const last = rows.at(-1);
+    const rxBytes = Math.max(0, last.rx_bytes - first.rx_bytes);
+    const txBytes = Math.max(0, last.tx_bytes - first.tx_bytes);
+    return { rxBytes, txBytes, rxMbps: rxBytes * 8 / durationSeconds / 1_000_000, txMbps: txBytes * 8 / durationSeconds / 1_000_000 };
+}
+
+function mergedHistogram(histograms) {
+    const bins = [];
+    for (const histogram of histograms) {
+        for (const [upperSeconds, count] of Object.entries(histogram ?? {})) {
+            bins.push({ upperMs: Number(upperSeconds) * 1_000, count: Number(count) });
+        }
+    }
+    return bins.sort((left, right) => left.upperMs - right.upperMs);
+}
+
+function histogramQuantiles(bins) {
+    const count = bins.reduce((total, bin) => total + bin.count, 0);
+    const quantile = (fraction) => {
+        const target = count * fraction;
+        let cumulative = 0;
+        for (const bin of bins) {
+            cumulative += bin.count;
+            if (cumulative >= target) return bin.upperMs;
+        }
+        return null;
+    };
+    return { method: 'merged-histogram-upper-bound', p50: quantile(0.50), p95: quantile(0.95), p99: quantile(0.99) };
+}
+
+function worstNodeQuantiles(nodes, field) {
+    return Object.fromEntries(['p50', 'p95', 'p99'].map((quantile) => [
+        quantile,
+        Math.max(...nodes.map((node) => node[field][quantile])),
+    ]));
+}
+
+function mergeDistributions(distributions) {
+    const result = {};
+    for (const distribution of distributions) {
+        for (const [key, count] of Object.entries(distribution ?? {})) result[key] = (result[key] ?? 0) + count;
+    }
+    return result;
+}
+
+function weightedAverage(values, value, weight) {
+    const denominator = sum(values, weight);
+    return denominator === 0 ? null : sum(values, (item) => value(item) * weight(item)) / denominator;
+}
+
+function sum(values, select) {
+    return values.reduce((total, value) => total + select(value), 0);
+}
+
+function requiredOption(name) {
+    const index = process.argv.indexOf(name);
+    const value = index >= 0 ? process.argv[index + 1] : undefined;
+    if (!value) throw new Error(`${name} is required`);
+    return value;
+}
+
+function readNodeEvidence(plan) {
+    const directory = resolve(plan.outputDir);
+    const processes = (plan.processes ?? []).map((process) => {
+        const processDirectory = resolve(directory, process.processId);
+        if (!existsSync(processDirectory)) throw new Error(`missing process evidence ${process.processId}`);
+        const commandDocument = JSON.parse(readFileSync(resolve(directory, 'oha-command.json'), 'utf8'));
+        const commandPlan = commandDocument.processes?.find((candidate) => candidate.processId === process.processId);
+        if (!commandPlan) throw new Error(`missing command evidence ${process.processId}`);
+        return {
+            processId: process.processId,
+            summary: JSON.parse(readFileSync(resolve(processDirectory, 'oha-summary.json'), 'utf8')),
+            report: JSON.parse(readFileSync(resolve(processDirectory, 'oha-report.json'), 'utf8')),
+            command: commandPlan.command,
+        };
+    });
+    return {
+        nodeId: plan.nodeId,
+        summary: JSON.parse(readFileSync(resolve(directory, 'oha-summary.json'), 'utf8')),
+        report: JSON.parse(readFileSync(resolve(directory, 'oha-report.json'), 'utf8')),
+        command: JSON.parse(readFileSync(resolve(directory, 'oha-command.json'), 'utf8')),
+        bootstrap: JSON.parse(readFileSync(resolve(directory, 'load-generator-bootstrap.json'), 'utf8')),
+        telemetryTsv: readFileSync(resolve(directory, 'load-generator-telemetry.tsv'), 'utf8'),
+        enaBefore: parseCounterText(readFileSync(resolve(directory, 'ena-allowance-before.txt'), 'utf8')),
+        enaAfter: parseCounterText(readFileSync(resolve(directory, 'ena-allowance-after.txt'), 'utf8')),
+        ...(processes.length > 0 ? { processes } : {}),
+    };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    const manifest = JSON.parse(readFileSync(requiredOption('--manifest'), 'utf8'));
+    const result = aggregateOha12k({ manifest, nodes: manifest.nodes.map(readNodeEvidence) });
+    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    const output = process.argv.includes('--output') ? requiredOption('--output') : undefined;
+    if (output) writeFileSync(output, serialized, 'utf8');
+    process.stdout.write(serialized);
+    if (!result.passed) process.exitCode = 2;
+}
